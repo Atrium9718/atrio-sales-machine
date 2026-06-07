@@ -1,45 +1,7 @@
-from fastapi import FastAPI, Request, Response
-from pydantic import BaseModel
+from fastapi import FastAPI
 
-app = FastAPI(
-    title="Atrio Agencia - Máquina de Ventas",
-    description="API para automatización de SEO/SEM, WhatsApp con IA, Email Marketing y Redes Sociales",
-    version="1.1.0"
-)
+app = FastAPI()
 
 @app.get("/")
 def read_root():
-    return {"status": "online", "agency": "Atrio Agencia", "system": "Máquina de Ventas Activa"}
-
-class LeadEmail(BaseModel):
-    email: str
-    nombre: str
-    interes: str
-
-class SocialPost(BaseModel):
-    plataforma: str
-    texto: str
-    imagen_url: str = None
-
-@app.get("/webhook/whatsapp")
-def verify_whatsapp(request: Request):
-    params = request.query_params
-    verify_token = "atrio_secret_token_2026"
-    if "hub.mode" in params and "hub.challenge" in params:
-        if params["hub.mode"] == "subscribe" and params["hub.verify_token"] == verify_token:
-            return Response(content=params["hub.challenge"], media_type="text/plain")
-    return Response(content="Error de verificación", status_code=403)
-
-@app.post("/webhook/whatsapp")
-async def receive_whatsapp_message(request: Request):
-    data = await request.json()
-    print("Mensaje de WhatsApp recibido:", data)
-    return {"status": "success"}
-
-@app.post("/api/email/disparar-seguimiento")
-async def trigger_followup(lead: LeadEmail):
-    return {"status": "sequencia_iniciada", "lead": lead.email}
-
-@app.post("/api/redes/publicar")
-async def publish_to_social(post: SocialPost):
-    return {"status": "publicado_exitosamente", "plataforma": post.plataforma}
+    return {"status": "Máquina de ventas en línea"}
