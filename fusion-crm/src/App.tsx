@@ -9,7 +9,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react
 import { CallPanel } from './components/CallPanel';
 import { AnimatePresence } from 'framer-motion';
 import { NewOpportunityModal } from './components/NewOpportunityModal';
-import { Network, Beaker, LayoutDashboard, MessageCircle, Plus, Users, TrendingUp, Calendar, FileText, Menu, X, Play, Package, Activity, DollarSign, Settings, Shield, ShieldAlert, FileCheck, Building, Database, Hash, Target, KeyRound, Blocks, DatabaseBackup, Wrench, Send, History , Bot, Home as HomeIcon, Megaphone, MessageSquare, PhoneCall, Sparkles, Calculator } from 'lucide-react';
+import { Link2, Network, Beaker, LayoutDashboard, MessageCircle, Plus, Users, TrendingUp, Calendar, FileText, Menu, X, Play, Package, Activity, DollarSign, Settings, Shield, ShieldAlert, FileCheck, Building, Database, Hash, Target, KeyRound, Blocks, DatabaseBackup, Wrench, Send, History , Bot, Home as HomeIcon, Megaphone, MessageSquare, PhoneCall, Sparkles, Calculator } from 'lucide-react';
 
 import { HomePage } from './pages/colaboracion/HomePage';
 import { AdminHomeLayoutPage } from './pages/colaboracion/AdminHomeLayoutPage';
@@ -74,6 +74,8 @@ const AgendaComercialPage = React.lazy(() => import('../apps/web/src/app/(dashbo
 const ComercialDashboardPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/comercial/page"));
 const PrecotizacionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/precotizaciones/page'));
 const PublicPortalPage = React.lazy(() => import('../apps/web/src/app/c/[publicToken]/page'));
+const ClientPortalPage = React.lazy(() => import('../apps/web/src/app/portal/[token]/page'));
+const PortalClientesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/portal-clientes/page'));
 const KioskPage = React.lazy(() => import('../apps/web/src/app/kiosko/page'));
 const CostosOmnicanalPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/costos-omnicanal/page'));
 
@@ -231,6 +233,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         { name: 'Agenda', path: '/dashboard/comercial/agenda', icon: Calendar },
         { name: 'Identidades (Triage)', path: '/dashboard/identidades', icon: Users },
         { name: 'Clientes', path: '/dashboard/clientes', icon: Users },
+        { name: 'Portal de clientes', path: '/dashboard/portal-clientes', icon: Link2 },
         { name: 'Pipeline y Oportunidades', path: '/dashboard/oportunidades', icon: TrendingUp },
         { name: 'Cotizador', path: '/dashboard/cotizador', icon: FileText },
         { name: 'Cotizaciones Históricas', path: '/dashboard/comercial/cotizaciones', icon: FileText },
@@ -586,6 +589,7 @@ export default function App() {
             <Routes>
             {/* Public Routes outside dashboard layout */}
             <Route path="/c/:publicToken" element={<PublicPortalPage />} />
+            <Route path="/portal/:token" element={<ClientPortalPage />} />
             <Route path="/kiosko" element={<KioskPage />} />
             <Route path="/kiosko-planta" element={<KioskoPlantaPage />} />
             <Route path="/preferencias/:token" element={<PreferenciasPage />} />
@@ -683,6 +687,7 @@ export default function App() {
                     <Route path="inbox" element={<InboxPage />} />
                     <Route path="identidades" element={<IdentidadesPage />} />
                     <Route path="clientes" element={<ClientesPage />} />
+                    <Route path="portal-clientes" element={<PortalClientesPage />} />
                     <Route path="clientes/importar" element={<ClientesImportarPage />} />
                     <Route path="clientes/:id" element={<ClienteProfilePage />} />
                     <Route path="oportunidades" element={<OportunidadesPage />} />

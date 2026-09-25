@@ -71,7 +71,7 @@ describe('requireAuth', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('deja pasar rutas públicas y archivos estáticos sin sesión', async () => {
-    for (const path of ['/api/health', '/api/auth/me', '/api/webhooks/meta', '/api/widget/session', '/', '/assets/app.js']) {
+    for (const path of ['/api/health', '/api/auth/me', '/api/webhooks/meta', '/api/widget/session', '/api/portal/abc', '/', '/assets/app.js']) {
       expect((await run(mockReq(path))).nextCalled).toBe(true);
     }
   });

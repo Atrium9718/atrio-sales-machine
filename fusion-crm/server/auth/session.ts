@@ -9,8 +9,11 @@ export const IMPERSONATE_COOKIE = 'fusion_impersonate';
 const SESSION_DURATION_MS = 5 * 24 * 60 * 60 * 1000;
 const MAX_SIGN_IN_AGE_S = 5 * 60;
 
-/** Rutas de la API accesibles sin sesión (webhooks externos y widget público). */
-const PUBLIC_API_PREFIXES = ['/api/health', '/api/auth/', '/api/webhooks/meta', '/api/widget'];
+/**
+ * Rutas de la API accesibles sin sesión: webhooks externos, widget público y portal del
+ * cliente (este último se autentica con el token de su enlace).
+ */
+const PUBLIC_API_PREFIXES = ['/api/health', '/api/auth/', '/api/webhooks/meta', '/api/widget', '/api/portal'];
 
 /** Módulos que solo pueden usar administradores (cualquier método). */
 const ADMIN_ONLY_PREFIXES = ['/api/ops', '/api/interventoria'];

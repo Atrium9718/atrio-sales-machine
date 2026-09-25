@@ -75,6 +75,14 @@ Cotizaciones, proyectos (OT), inventario y órdenes por demanda se guardan **en 
 
 Si un navegador tenía datos de la versión anterior en `localStorage` (`fusion_quotes`, `fusion_projects`, `fusion_inventory`, `fusion_print_orders`, `fusion_deleted_project_ids`), en su primer inicio de sesión sube los que falten en el servidor y borra esas claves. `localStorage` queda solo para preferencias de interfaz (filtros, dispositivos de audio, paneles colapsados).
 
+### Portal del cliente
+
+- El equipo genera un **enlace privado por cliente** en *Comercial y CRM → Portal de clientes* y se lo envía (hay botón para copiar y para WhatsApp). El cliente no necesita cuenta.
+- En `/portal/<token>` el cliente ve sus pedidos con **barra de progreso** y las etapas de producción (revisión, programado, en producción, acabados, listo, entregado), sin costos ni notas internas. También puede **enviar nuevas solicitudes** y ver las respuestas.
+- Qué pedidos ve: los de cotizaciones con el mismo NIT del enlace o, si no hay NIT, los que coinciden exactamente con el nombre del cliente.
+- Seguridad: el token (192 bits) solo se guarda como hash SHA-256; los enlaces se pueden revocar; el formulario admite 10 solicitudes por hora por enlace.
+- Las solicitudes llegan a la misma página interna, donde se les cambia el estado (nueva, en revisión, cotizada, cerrada) y se responde al cliente.
+
 ### Docker / VPS
 
 `firebase-applet-config.json` debe existir en el directorio antes de construir la imagen (el frontend lo importa en tiempo de compilación).

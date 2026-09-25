@@ -4,10 +4,10 @@ import { LogIn, ShieldCheck } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 
 /**
- * Rutas que se ven sin iniciar sesión: portal de cliente, kiosco de mostrador, preferencias
+ * Rutas que se ven sin iniciar sesión: portales de cliente, kiosco de mostrador, preferencias
  * y habeas data. El kiosco de planta (/kiosko-planta) muestra órdenes internas y exige sesión.
  */
-const PUBLIC_PATH_PREFIXES = ['/c/', '/preferencias/'];
+const PUBLIC_PATH_PREFIXES = ['/c/', '/preferencias/', '/portal/'];
 const PUBLIC_PATHS = ['/kiosko', '/habeas-data'];
 
 export function isPublicPath(pathname: string): boolean {
