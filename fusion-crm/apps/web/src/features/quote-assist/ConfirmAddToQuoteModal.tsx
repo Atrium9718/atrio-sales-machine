@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AssistFormState } from './types';
 import { PressQuoteResult, PressTechnique } from '../../../../../packages/core/src/pricing/press/types';
 import { getResultRuns, UnifiedRun } from './ResultsPanel';
+import { addPrintOrder } from '../../lib/printOrdersStore';
 import {
   Check,
   AlertTriangle,
@@ -113,15 +114,7 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
       ],
     };
 
-    try {
-      const stored = localStorage.getItem('fusion_print_orders');
-      const list = stored ? JSON.parse(stored) : [];
-      list.unshift(newOrder);
-      localStorage.setItem('fusion_print_orders', JSON.stringify(list));
-      window.dispatchEvent(new CustomEvent('fusion_print_orders_updated'));
-    } catch (err) {
-      console.warn('Error saving demand order in localStorage:', err);
-    }
+    addPrintOrder(newOrder).catch((err) => console.warn('Error saving demand order:', err));
 
     setCreatedDemandOrderNumber(orderNumber);
   };

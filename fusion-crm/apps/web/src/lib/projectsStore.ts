@@ -1,3 +1,6 @@
+import { createServerCollection, dataApiAdapter } from '@/lib/serverCollection';
+import { getQuotes, quotesCollection } from './quotesStore';
+
 export const INITIAL_PROJECTS: any[] = [];
 
 export interface ProductionItemDetail {
@@ -86,76 +89,98 @@ export function buildProjectFromQuote(quote: any, additional?: any) {
   };
 }
 
-// Helpers for tracking explicitly deleted projects so they are not auto-resurrected
+/**
+ * Proyectos (OT de producción): fuente de verdad en el servidor (/api/data/projects,
+ * colección `projects` de Firestore), caché en memoria en el navegador.
+ */
+export const projectsCollection = createServerCollection<any>({
+  updatedEvent: 'fusion_projects_updated',
+  legacyStorageKey: 'fusion_projects',
+  adapter: dataApiAdapter('projects'),
+});
+
+/**
+ * Claves de proyectos eliminados explícitamente, para no volver a crearlos a partir de
+ * su cotización ganada. Se guardan en el servidor para que valga en todos los equipos.
+ */
+interface ProjectTombstone {
+  id: string;
+  key: string;
+}
+
+const tombstoneId = (key: string) => key.trim().toLowerCase().replace(/\//g, '_').slice(0, 500);
+
+const tombstonesCollection = createServerCollection<ProjectTombstone>({
+  updatedEvent: 'fusion_project_tombstones_updated',
+  legacyStorageKey: 'fusion_deleted_project_ids',
+  fromLegacy: (raw) => (typeof raw === 'string' && raw.trim() ? { id: tombstoneId(raw), key: raw } : null),
+  adapter: dataApiAdapter('project-tombstones'),
+});
+
+const normalizeStage = (p: any) => (p.stageId === 'POR_REVISAR' || !p.stageId ? { ...p, stageId: '1' } : p);
+
 export const getDeletedProjectKeys = (): Set<string> => {
-  if (typeof window === 'undefined') return new Set();
-  try {
-    const raw = localStorage.getItem('fusion_deleted_project_ids');
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr : []);
-  } catch {
-    return new Set();
+  const keys = new Set<string>();
+  for (const t of tombstonesCollection.getAll()) {
+    keys.add(t.key);
+    keys.add(t.key.trim().toLowerCase());
   }
+  return keys;
+};
+
+const isDeletedProject = (p: any, deletedKeys: Set<string>) => {
+  const pId = p.id ? String(p.id) : '';
+  const qId = p.quoteId ? String(p.quoteId) : '';
+  const qNum = (p.quoteNumber || '').trim().toLowerCase();
+  const pNum = (p.number || '').trim().toLowerCase();
+  return deletedKeys.has(pId) || deletedKeys.has(qId) || deletedKeys.has(qNum) || deletedKeys.has(pNum);
 };
 
 export const markProjectAsDeleted = (keys: string[]) => {
-  if (typeof window === 'undefined') return;
-  try {
-    const current = getDeletedProjectKeys();
-    keys.forEach(k => {
-      if (k && typeof k === 'string') {
-        current.add(k);
-        current.add(k.trim().toLowerCase());
-      }
-    });
-    localStorage.setItem('fusion_deleted_project_ids', JSON.stringify(Array.from(current)));
-  } catch (err) {
-    console.warn('Error saving deleted project keys:', err);
+  const byId = new Map<string, ProjectTombstone>();
+  for (const k of keys) {
+    if (k && typeof k === 'string' && k.trim()) byId.set(tombstoneId(k), { id: tombstoneId(k), key: k });
   }
+  if (byId.size === 0) return;
+  tombstonesCollection
+    .save(Array.from(byId.values()))
+    .catch((err) => console.warn('Error saving deleted project keys:', err));
 };
 
+const isWonQuote = (q: any) => {
+  const s = (q.status || '').toLowerCase().trim();
+  return s === 'aprobada' || s === 'ganada' || s === 'ganado' || s === 'aceptada';
+};
+
+/** Proyectos y cotizaciones ya cargados del servidor (condición para reconciliar sin pisar datos). */
+const isReadyToReconcile = () =>
+  projectsCollection.isHydrated() && tombstonesCollection.isHydrated() && quotesCollection.isHydrated();
+
 export const syncWonQuotesToProjects = (existingProjects?: any[]) => {
-  if (typeof window === 'undefined') return existingProjects || [];
+  const projects: any[] = [...(existingProjects ?? projectsCollection.getAll())];
+  if (!isReadyToReconcile()) return projects;
+
   try {
-    const rawQuotes = localStorage.getItem('fusion_quotes');
-    if (!rawQuotes) return existingProjects || [];
-    const quotes = JSON.parse(rawQuotes);
-    if (!Array.isArray(quotes)) return existingProjects || [];
+    const wonQuotes = getQuotes().filter(isWonQuote);
+    if (wonQuotes.length === 0) return projects;
 
     const deletedKeys = getDeletedProjectKeys();
-
-    // Filter quotes that are approved / won
-    const wonQuotes = quotes.filter((q: any) => {
-      const s = (q.status || '').toLowerCase().trim();
-      return s === 'aprobada' || s === 'ganada' || s === 'ganado' || s === 'aceptada';
-    });
-
-    if (wonQuotes.length === 0) return existingProjects || [];
-
-    const projects: any[] = existingProjects 
-      ? [...existingProjects] 
-      : (() => {
-          const stored = localStorage.getItem('fusion_projects');
-          return stored ? JSON.parse(stored) : [];
-        })();
-
     let hasChanges = false;
 
     // 1. Normalize any projects where stageId was saved as 'POR_REVISAR'
-    projects.forEach((p: any) => {
-      if (p.stageId === 'POR_REVISAR' || !p.stageId) {
-        p.stageId = '1';
+    for (let i = 0; i < projects.length; i++) {
+      const normalized = normalizeStage(projects[i]);
+      if (normalized !== projects[i]) {
+        projects[i] = normalized;
         hasChanges = true;
       }
-    });
+    }
 
     // 2. Ensure every won quote has a project in the pipeline UNLESS explicitly deleted by user
     wonQuotes.forEach((q: any) => {
       const qId = q.id ? String(q.id) : '';
       const qNum = (q.number || '').trim().toLowerCase();
-      
-      // If user deleted this project previously, do NOT resurrect it!
+
       if (
         (qId && (deletedKeys.has(qId) || deletedKeys.has(`proj-${qId}`))) ||
         (qNum && deletedKeys.has(qNum))
@@ -163,45 +188,45 @@ export const syncWonQuotesToProjects = (existingProjects?: any[]) => {
         return;
       }
 
-      const alreadyHasProject = projects.some((p: any) => 
+      const alreadyHasProject = projectsCollection.getAll().concat(projects).some((p: any) =>
         (p.quoteId && String(p.quoteId) === qId) ||
         (p.quoteNumber && q.number && p.quoteNumber.trim().toLowerCase() === qNum) ||
         (p.id === `proj-${q.id}`)
       );
 
       if (!alreadyHasProject) {
-        const newProject = buildProjectFromQuote(q);
-        projects.unshift(newProject);
+        projects.unshift(buildProjectFromQuote(q));
         hasChanges = true;
       }
     });
 
     if (hasChanges) {
-      localStorage.setItem('fusion_projects', JSON.stringify(projects));
-      window.dispatchEvent(new Event('fusion_projects_updated'));
+      const merged = [
+        ...projects,
+        ...projectsCollection.getAll().filter((p: any) => !projects.some((x: any) => x.id === p.id)),
+      ];
+      projectsCollection.saveChanged(merged).catch((err) => console.warn('Error saving reconciled projects:', err));
     }
 
     return projects;
   } catch (err) {
     console.warn('Error syncing won quotes to projects:', err);
-    return existingProjects || [];
+    return projects;
   }
 };
 
 export const createOrEnsureProjectForQuote = (quote: any, additional?: any) => {
   if (!quote) return null;
   const projects = getProjects();
-  const existing = projects.find((p: any) => 
+  const existing = projects.find((p: any) =>
     (p.quoteId && p.quoteId === quote.id) ||
     (p.quoteNumber && quote.number && p.quoteNumber.trim().toLowerCase() === quote.number.trim().toLowerCase()) ||
     (p.id === `proj-${quote.id}`)
   );
 
   if (existing) {
-    // If it was in stage 'POR_REVISAR', normalize to '1'
     if (existing.stageId === 'POR_REVISAR') {
-      existing.stageId = '1';
-      updateProjectsList(projects);
+      addProject(existing);
     }
     return existing;
   }
@@ -211,67 +236,45 @@ export const createOrEnsureProjectForQuote = (quote: any, additional?: any) => {
   return newProj;
 };
 
+let autoHydrationRequested = false;
+
+const getVisibleProjects = () => {
+  const deletedKeys = getDeletedProjectKeys();
+  return projectsCollection.getAll().filter((p: any) => !isDeletedProject(p, deletedKeys));
+};
+
 export const getProjects = () => {
   if (typeof window === 'undefined') return [];
-  
-  // Trigger background sync if not already done in this session
-  if (!(window as any)._projectsSynced) {
-    (window as any)._projectsSynced = true;
+
+  // Carga inicial desde el servidor (una sola vez por carga de página)
+  if (!projectsCollection.isHydrated() && !autoHydrationRequested) {
+    autoHydrationRequested = true;
     syncProjectsFromApi();
   }
 
-  let projects: any[] = [];
-  const stored = localStorage.getItem('fusion_projects');
-  if (stored) {
-    try {
-      projects = JSON.parse(stored);
-    } catch {
-      projects = [];
-    }
-  }
-
-  // Filter out any explicitly deleted projects in case old state remained
   const deletedKeys = getDeletedProjectKeys();
-  if (deletedKeys.size > 0) {
-    projects = projects.filter((p: any) => {
-      const pId = p.id ? String(p.id) : '';
-      const qId = p.quoteId ? String(p.quoteId) : '';
-      const qNum = (p.quoteNumber || '').trim().toLowerCase();
-      const pNum = (p.number || '').trim().toLowerCase();
-      return !deletedKeys.has(pId) && !deletedKeys.has(qId) && !deletedKeys.has(qNum) && !deletedKeys.has(pNum);
-    });
-  }
+  const visible = projectsCollection.getAll().filter((p: any) => !isDeletedProject(p, deletedKeys));
 
   // Auto-reconcile won quotes into projects so they appear in "Por Revisar"
-  const reconciled = syncWonQuotesToProjects(projects);
-  return reconciled;
+  return syncWonQuotesToProjects(visible);
 };
 
 export const addProject = (project: any) => {
-  const projects = getProjects();
-  const normalized = {
-    ...project,
-    stageId: project.stageId === 'POR_REVISAR' || !project.stageId ? '1' : project.stageId
-  };
-  const updated = [normalized, ...projects.filter((p: any) => p.id !== normalized.id)];
-  localStorage.setItem('fusion_projects', JSON.stringify(updated));
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_projects_updated'));
+  projectsCollection
+    .save(normalizeStage(project))
+    .catch((err) => console.warn('Error saving project:', err));
 };
 
 export const updateProjectsList = (projects: any[]) => {
-  const normalizedList = (projects || []).map((p: any) => ({
-    ...p,
-    stageId: p.stageId === 'POR_REVISAR' || !p.stageId ? '1' : p.stageId
-  }));
-  localStorage.setItem('fusion_projects', JSON.stringify(normalizedList));
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_projects_updated'));
+  projectsCollection
+    .saveChanged((projects || []).map(normalizeStage))
+    .catch((err) => console.warn('Error saving projects:', err));
 };
 
 export const deleteProject = async (projectId: string) => {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem('fusion_projects');
-    const projects: any[] = raw ? JSON.parse(raw) : [];
+    const projects: any[] = projectsCollection.getAll();
     const target = projects.find((p: any) => p.id === projectId);
 
     const keysToMark = [projectId];
@@ -283,29 +286,23 @@ export const deleteProject = async (projectId: string) => {
 
     markProjectAsDeleted(keysToMark);
 
-    const remaining = projects.filter((p: any) => 
-      p.id !== projectId && 
+    const remaining = projects.filter((p: any) =>
+      p.id !== projectId &&
       (!target?.quoteId || p.quoteId !== target.quoteId) &&
       (!target?.quoteNumber || p.quoteNumber !== target.quoteNumber)
     );
+    projectsCollection.replaceLocal(remaining);
 
-    localStorage.setItem('fusion_projects', JSON.stringify(remaining));
-    window.dispatchEvent(new Event('fusion_projects_updated'));
-
-    // Asynchronously delete from backend / Firestore
-    try {
-      fetch(`/api/quotes/projects/${encodeURIComponent(projectId)}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          quoteId: target?.quoteId,
-          quoteNumber: target?.quoteNumber,
-          number: target?.number 
-        })
-      }).catch(err => console.warn('Backend delete project error:', err));
-    } catch (e) {
-      console.warn('Network call error on deleteProject:', e);
-    }
+    // El servidor elimina el proyecto y los relacionados por cotización/número
+    fetch(`/api/quotes/projects/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quoteId: target?.quoteId,
+        quoteNumber: target?.quoteNumber,
+        number: target?.number
+      })
+    }).catch(err => console.warn('Backend delete project error:', err));
 
     return remaining;
   } catch (err) {
@@ -316,48 +313,9 @@ export const deleteProject = async (projectId: string) => {
 
 export const syncProjectsFromApi = async () => {
   try {
-    const res = await fetch('/api/quotes/projects-sync');
-    if (!res.ok) return getProjects();
-    const data = await res.json();
-    
-    if (data.success && Array.isArray(data.projects)) {
-      const deletedKeys = getDeletedProjectKeys();
-      const local = getProjects();
-      const map = new Map<string, any>();
-      
-      // Mark local projects for identification (ignoring deleted)
-      local.forEach((p: any) => {
-        const pId = p.id ? String(p.id) : '';
-        const qId = p.quoteId ? String(p.quoteId) : '';
-        const qNum = (p.quoteNumber || '').trim().toLowerCase();
-        const pNum = (p.number || '').trim().toLowerCase();
-        if (deletedKeys.has(pId) || deletedKeys.has(qId) || deletedKeys.has(qNum) || deletedKeys.has(pNum)) {
-          return;
-        }
-        const normStage = p.stageId === 'POR_REVISAR' || !p.stageId ? '1' : p.stageId;
-        map.set(p.id, { ...p, stageId: normStage, isLocalOnly: true });
-      });
-      
-      // Overwrite or add remote (ignoring deleted)
-      data.projects.forEach((p: any) => {
-        const pId = p.id ? String(p.id) : '';
-        const qId = p.quoteId ? String(p.quoteId) : '';
-        const qNum = (p.quoteNumber || '').trim().toLowerCase();
-        const pNum = (p.number || '').trim().toLowerCase();
-        if (deletedKeys.has(pId) || deletedKeys.has(qId) || deletedKeys.has(qNum) || deletedKeys.has(pNum)) {
-          return;
-        }
-        const normStage = p.stageId === 'POR_REVISAR' || !p.stageId ? '1' : p.stageId;
-        map.set(p.id, { ...p, stageId: normStage, isLocalOnly: false });
-      });
-      
-      const merged = Array.from(map.values());
-      updateProjectsList(merged);
-      return merged;
-    }
+    await Promise.all([projectsCollection.hydrate(), tombstonesCollection.hydrate()]);
   } catch (err) {
     console.warn('Could not sync projects from API:', err);
   }
-  return getProjects();
+  return syncWonQuotesToProjects(getVisibleProjects());
 };
-

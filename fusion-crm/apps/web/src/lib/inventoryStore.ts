@@ -1,3 +1,5 @@
+import { createServerCollection, dataApiAdapter } from '@/lib/serverCollection';
+
 export interface InventoryItem {
   id: string;
   name: string;
@@ -10,28 +12,28 @@ export interface InventoryItem {
 
 export const INITIAL_INVENTORY: InventoryItem[] = [];
 
+/** Inventario: fuente de verdad en el servidor (/api/data/inventory), caché en memoria. */
+export const inventoryCollection = createServerCollection<InventoryItem>({
+  updatedEvent: 'fusion_inventory_updated',
+  legacyStorageKey: 'fusion_inventory',
+  adapter: dataApiAdapter('inventory'),
+});
+
+let autoHydrationRequested = false;
+
 export const getInventory = (): InventoryItem[] => {
   if (typeof window === 'undefined') return INITIAL_INVENTORY;
-  const stored = localStorage.getItem('fusion_inventory');
-  if (stored) {
-    try {
-      const parsed = JSON.parse(stored);
-      return Array.isArray(parsed) ? parsed : INITIAL_INVENTORY;
-    } catch {
-      return INITIAL_INVENTORY;
-    }
+  if (!inventoryCollection.isHydrated() && !autoHydrationRequested) {
+    autoHydrationRequested = true;
+    inventoryCollection.hydrate().catch((err) => console.warn('No se pudo cargar el inventario:', err));
   }
-  return INITIAL_INVENTORY;
+  return inventoryCollection.getAll();
 };
 
 export const deductInventory = (itemId: string, quantity: number) => {
-  const inventory = getInventory();
-  const updated = inventory.map(item => {
-    if (item.id === itemId) {
-      return { ...item, available: Math.max(0, item.available - quantity) };
-    }
-    return item;
-  });
-  localStorage.setItem('fusion_inventory', JSON.stringify(updated));
-  window.dispatchEvent(new Event('fusion_inventory_updated'));
+  const item = getInventory().find((i) => i.id === itemId);
+  if (!item) return;
+  inventoryCollection
+    .save({ ...item, available: Math.max(0, item.available - quantity) })
+    .catch((err) => console.warn('No se pudo descontar inventario en el servidor:', err));
 };

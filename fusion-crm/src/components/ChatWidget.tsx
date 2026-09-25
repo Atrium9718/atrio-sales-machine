@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, X, Send, Bot } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { useFusionAuth } from '@/context/FusionAuthContext';
+import { getProjects } from '../../apps/web/src/lib/projectsStore';
+import { getInventory } from '../../apps/web/src/lib/inventoryStore';
 
 export default function ChatWidget() {
   const { isSuperAdmin } = useFusionAuth();
@@ -72,11 +74,9 @@ export default function ChatWidget() {
     try {
       let context = {};
       if (typeof window !== 'undefined') {
-        const storedProjects = localStorage.getItem('fusion_projects');
-        const storedInventory = localStorage.getItem('fusion_inventory');
         context = {
-          projects: storedProjects ? JSON.parse(storedProjects) : [],
-          inventory: storedInventory ? JSON.parse(storedInventory) : []
+          projects: getProjects(),
+          inventory: getInventory()
         };
       }
 

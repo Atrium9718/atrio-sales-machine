@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { addQuote } from '../../../../../lib/quotesStore';
 import { 
   Send, Bot, RefreshCw, Sparkles, CheckCheck, User, 
   ArrowRightLeft, ShieldCheck, ChevronDown, ChevronUp, 
@@ -484,15 +485,8 @@ export default function IATestingPage() {
           return prev;
         });
 
-        // Sincronizar en localStorage para visibilidad instantánea en Cotizador
-        try {
-          const stored = JSON.parse(localStorage.getItem('fusion_quotes') || '[]');
-          const idx = stored.findIndex((q: any) => q.id === data.preQuote.id);
-          if (idx >= 0) stored[idx] = data.preQuote;
-          else stored.unshift(data.preQuote);
-          localStorage.setItem('fusion_quotes', JSON.stringify(stored));
-          window.dispatchEvent(new Event('fusion_quotes_updated'));
-        } catch (e) {}
+        // Guardar en el servidor y en la caché para verla al instante en el Cotizador
+        addQuote(data.preQuote);
 
         setMessages(prev => [
           ...prev,

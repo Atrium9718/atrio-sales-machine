@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { addPrintOrder } from '../../lib/printOrdersStore';
 import {
   calculateWideFormat,
   WideFormatClientType,
@@ -85,16 +86,8 @@ export const WideFormatAssist: React.FC<WideFormatAssistProps> = ({
         ],
       };
 
-      // Guardar en localStorage para módulo de demanda / kiosko
-      try {
-        const stored = localStorage.getItem('fusion_print_orders');
-        const list = stored ? JSON.parse(stored) : [];
-        list.unshift(newOrder);
-        localStorage.setItem('fusion_print_orders', JSON.stringify(list));
-        window.dispatchEvent(new CustomEvent('fusion_print_orders_updated'));
-      } catch (err) {
-        console.warn('Error al persistir orden en localStorage:', err);
-      }
+      // Guardar en el servidor para módulo de demanda / kiosko
+      addPrintOrder(newOrder).catch((err) => console.warn('Error al guardar la orden de impresión:', err));
 
       setCreatedOrderNumber(orderNumber);
       return;

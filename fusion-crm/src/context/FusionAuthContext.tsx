@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { canAccessModule, FusionModuleKey, SEED_ROLE_COLLABORATION_PERMISSIONS } from '../../packages/core/src/auth/permissions';
 import { LoginScreen, isPublicPath } from '../components/auth/LoginScreen';
+import { hydrateBusinessData } from '../lib/businessData';
 
 export interface FusionEmployee {
   id: string;
@@ -140,6 +141,7 @@ export const FusionAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const [empData, roleData] = await Promise.all([
           fetch('/api/admin/users').then(r => (r.ok ? r.json() : [])),
           fetch('/api/admin/roles').then(r => (r.ok ? r.json() : [])),
+          hydrateBusinessData(),
         ]);
 
         if (!mounted) return;

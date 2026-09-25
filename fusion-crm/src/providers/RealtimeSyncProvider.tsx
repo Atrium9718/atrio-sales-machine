@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '../lib/queryKeys';
 import { useFusionAuth } from '../context/FusionAuthContext';
 import { syncProjectsFromApi } from '../../apps/web/src/lib/projectsStore';
+import { syncQuotesFromApi } from '../../apps/web/src/lib/quotesStore';
 
 export type RealtimeConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
@@ -184,16 +185,9 @@ export const RealtimeSyncProvider: React.FC<RealtimeSyncProviderProps> = ({ chil
               payload
             );
 
-            // Limpieza higiénica de almacenamiento local del navegador
-            try {
-              if (typeof localStorage !== 'undefined') {
-                localStorage.removeItem('fusion_quotes');
-                localStorage.removeItem('fusion_projects');
-                localStorage.removeItem('fusion_deleted_project_ids');
-              }
-            } catch (storageErr) {
-              console.warn('[RealtimeSync] Error limpiando localStorage:', storageErr);
-            }
+            // Recargar desde el servidor las cachés en memoria de cotizaciones y proyectos
+            syncQuotesFromApi().catch(() => {});
+            syncProjectsFromApi().catch(() => {});
 
             // Invalidar masivamente todas las consultas de entidades transitorias
             await Promise.all([

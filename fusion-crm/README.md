@@ -69,6 +69,12 @@ Puesta en marcha:
 3. En Firebase Authentication, habilitar el proveedor **Google** y agregar el dominio de la app (p. ej. `app.fusioncg.com`) a los dominios autorizados.
 4. Desplegar las reglas: `firebase deploy --only firestore:rules`, o pegar `firestore.rules` en la consola de Firebase.
 
+### Datos de negocio en el navegador
+
+Cotizaciones, proyectos (OT), inventario y órdenes por demanda se guardan **en el servidor** (Firestore). Las cotizaciones usan `/api/quotes`; el resto, `/api/data/:colección`. En el navegador solo hay una caché en memoria (`src/lib/serverCollection.ts`) que se carga al iniciar sesión y se pierde al recargar.
+
+Si un navegador tenía datos de la versión anterior en `localStorage` (`fusion_quotes`, `fusion_projects`, `fusion_inventory`, `fusion_print_orders`, `fusion_deleted_project_ids`), en su primer inicio de sesión sube los que falten en el servidor y borra esas claves. `localStorage` queda solo para preferencias de interfaz (filtros, dispositivos de audio, paneles colapsados).
+
 ### Docker / VPS
 
 `firebase-applet-config.json` debe existir en el directorio antes de construir la imagen (el frontend lo importa en tiempo de compilación).

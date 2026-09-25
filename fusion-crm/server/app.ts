@@ -21,6 +21,7 @@ import { quotesRouter } from './routes/quotes';
 import { clientsRouter } from './routes/clients';
 import { interventoriaRouter } from './routes/interventoria';
 import { tariffRouter } from './routes/tariff';
+import { dataRouter } from './routes/data';
 import { callsService } from './services/callsService';
 import { loadStateFromFirestore, startStateSync, saveStateToFirestore } from './services/persistenceService';
 import { registerDomainSubscribers } from './events/subscribers';
@@ -75,6 +76,7 @@ export async function startServer() {
   app.use('/api/clients', clientsRouter);
   app.use('/api/interventoria', interventoriaRouter);
   app.use('/api/tariff', tariffRouter);
+  app.use('/api/data', dataRouter);
 
   // Explicit route to serve quotation PDF template cleanly without SPA fallback
   app.get('/plantilla-cotizacion.pdf', (req, res) => {

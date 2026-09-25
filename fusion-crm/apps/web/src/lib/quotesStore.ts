@@ -1,40 +1,57 @@
+import { createOrEnsureProjectForQuote, addProject, syncProjectsFromApi } from './projectsStore';
+import { createServerCollection } from '@/lib/serverCollection';
+
 export const INITIAL_QUOTES: any[] = [];
 
-import { createOrEnsureProjectForQuote, addProject, syncProjectsFromApi } from './projectsStore';
+/** IDs de cotizaciones demo de versiones anteriores que no deben migrarse al servidor. */
+const LEGACY_DEMO_QUOTE_IDS = new Set(['quote-pre-4812', 'quote-pre-3910', 'quote-pre-1029', 'quote-1', 'quote-2', 'quote-3', 'quote-4']);
 
-export const getQuotes = () => {
+async function postQuote(quote: any) {
+  const res = await fetch('/api/quotes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(quote),
+  });
+  if (!res.ok) throw new Error(`POST /api/quotes: HTTP ${res.status}`);
+}
 
-  if (typeof window === 'undefined') return [];
-  try {
-    const stored = localStorage.getItem('fusion_quotes');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        // Filter out any leftover mock quotes from earlier test sessions
-        const cleaned = parsed.filter((q: any) => !['quote-pre-4812', 'quote-pre-3910', 'quote-pre-1029', 'quote-1', 'quote-2', 'quote-3', 'quote-4'].includes(q?.id));
-        if (cleaned.length !== parsed.length) {
-          localStorage.setItem('fusion_quotes', JSON.stringify(cleaned));
-        }
-        return cleaned;
-      }
-    }
-  } catch (err) {
-    console.error('Error parsing fusion_quotes from localStorage:', err);
-  }
-  return [];
-};
+/** Cotizaciones: fuente de verdad en el servidor (/api/quotes), caché en memoria en el navegador. */
+export const quotesCollection = createServerCollection<any>({
+  updatedEvent: 'fusion_quotes_updated',
+  legacyStorageKey: 'fusion_quotes',
+  legacyFilter: (q) => !LEGACY_DEMO_QUOTE_IDS.has(q?.id) && !!q?.number,
+  adapter: {
+    async list() {
+      const res = await fetch('/api/quotes');
+      if (!res.ok) throw new Error(`GET /api/quotes: HTTP ${res.status}`);
+      const data = await res.json();
+      return Array.isArray(data.quotes) ? data.quotes : [];
+    },
+    async save(items) {
+      for (const q of items) await postQuote(q);
+    },
+    async remove(id) {
+      const res = await fetch(`/api/quotes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`DELETE /api/quotes/${id}: HTTP ${res.status}`);
+    },
+  },
+});
+
+export const getQuotes = (): any[] => quotesCollection.getAll();
+
+/** Guarda varias cotizaciones nuevas o modificadas (p. ej. revisiones recalculadas). */
+export const saveQuotes = (quotes: any[]) =>
+  quotesCollection.save(quotes).catch((err) => console.warn('No se pudieron guardar las cotizaciones:', err));
 
 export const addQuote = (quote: any) => {
-  const quotes = getQuotes();
-  // if exists update, else add
+  const quotes = [...getQuotes()];
   const existingIndex = quotes.findIndex((q: any) => q.id === quote.id);
   if (existingIndex >= 0) {
     quotes[existingIndex] = { ...quotes[existingIndex], ...quote };
   } else {
     quotes.unshift(quote);
   }
-  localStorage.setItem('fusion_quotes', JSON.stringify(quotes));
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_quotes_updated'));
+  quotesCollection.replaceLocal(quotes);
 
   // SI LA COTIZACIÓN SE FINALIZA O SE APRUEBA/GANA, ACTIVAR EL FLUJO DE CREACIÓN DE OT EN PRODUCCIÓN
   const normStatus = (quote.status || '').toLowerCase().trim();
@@ -46,39 +63,16 @@ export const addQuote = (quote: any) => {
     }
   }
 
-  // Sync with Firestore backend in background
-  try {
-    fetch('/api/quotes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(quote)
-    }).catch(err => console.warn('Background quote sync failed:', err));
-  } catch (e) {
-    // Ignore network errors in background
-  }
+  postQuote(quote).catch(err => console.warn('No se pudo guardar la cotización en el servidor:', err));
 };
 
 export const syncQuotesFromApi = async () => {
   try {
-    const res = await fetch('/api/quotes');
-    if (!res.ok) return getQuotes();
-    const data = await res.json();
-    if (data.success && Array.isArray(data.quotes) && data.quotes.length > 0) {
-      const local = getQuotes();
-      const map = new Map<string, any>();
-      // Put default/local first
-      local.forEach((q: any) => map.set(q.id, q));
-      // Overwrite/add remote
-      data.quotes.forEach((q: any) => map.set(q.id, q));
-      const merged = Array.from(map.values());
-      localStorage.setItem('fusion_quotes', JSON.stringify(merged));
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_quotes_updated'));
-      return merged;
-    }
+    return await quotesCollection.hydrate();
   } catch (err) {
     console.warn('Could not sync quotes from API:', err);
+    return getQuotes();
   }
-  return getQuotes();
 };
 
 export const generatePreQuoteWithAI = async (params: {
@@ -117,8 +111,7 @@ export const updateQuoteStatus = (quoteId: string, status: string, additionalDat
       Object.assign(quote, additionalData);
     }
     quote.updatedAt = new Date().toISOString();
-    localStorage.setItem('fusion_quotes', JSON.stringify(quotes));
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_quotes_updated'));
+    quotesCollection.replaceLocal(quotes);
 
     const s = (status || '').toLowerCase().trim();
     if (s === 'aprobada' || s === 'ganada' || s === 'ganado' || s === 'aceptada') {
@@ -131,11 +124,7 @@ export const updateQuoteStatus = (quoteId: string, status: string, additionalDat
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, ...additionalData })
       }).catch(() => {
-        fetch('/api/quotes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(quote)
-        }).catch(e => console.warn('Could not sync quote status:', e));
+        postQuote(quote).catch(e => console.warn('Could not sync quote status:', e));
       });
     } catch (e) {}
   }
@@ -155,8 +144,7 @@ export const approveQuote = async (quoteId: string, approvalData?: any) => {
     if (approvalData?.paymentTerms) quote.paymentTerms = approvalData.paymentTerms;
     quote.updatedAt = new Date().toISOString();
 
-    localStorage.setItem('fusion_quotes', JSON.stringify(quotes));
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_quotes_updated'));
+    quotesCollection.replaceLocal(quotes);
 
     // Inmediatamente crear el Proyecto (OT) en Producción en etapa 'Por Revisar'
     try {
@@ -211,8 +199,7 @@ export const markQuoteAsSent = async (quoteId: string, sendData: {
     quote.sentBy = sendData.sentBy || 'Asesor Comercial';
     quote.updatedAt = new Date().toISOString();
 
-    localStorage.setItem('fusion_quotes', JSON.stringify(quotes));
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_quotes_updated'));
+    quotesCollection.replaceLocal(quotes);
 
     try {
       await fetch(`/api/quotes/${quoteId}/send`, {
@@ -229,13 +216,7 @@ export const markQuoteAsSent = async (quoteId: string, sendData: {
 };
 
 export const deleteQuote = (quoteId: string) => {
-  const quotes = getQuotes().filter((q: any) => q.id !== quoteId);
-  localStorage.setItem('fusion_quotes', JSON.stringify(quotes));
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('fusion_quotes_updated'));
-
-  try {
-    fetch(`/api/quotes/${quoteId}`, { method: 'DELETE' }).catch(() => {});
-  } catch (e) {}
+  quotesCollection.remove(quoteId).catch((err) => console.warn('No se pudo eliminar la cotización en el servidor:', err));
 };
 
 export const seedQuotes = () => {

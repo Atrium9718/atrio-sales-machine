@@ -3,11 +3,16 @@ import { GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { LogIn, ShieldCheck } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 
-/** Rutas que se ven sin iniciar sesión (portal de cliente, kioscos, preferencias y habeas data). */
-const PUBLIC_PATH_PREFIXES = ['/c/', '/kiosko', '/preferencias/', '/habeas-data'];
+/**
+ * Rutas que se ven sin iniciar sesión: portal de cliente, kiosco de mostrador, preferencias
+ * y habeas data. El kiosco de planta (/kiosko-planta) muestra órdenes internas y exige sesión.
+ */
+const PUBLIC_PATH_PREFIXES = ['/c/', '/preferencias/'];
+const PUBLIC_PATHS = ['/kiosko', '/habeas-data'];
 
 export function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p));
+  const path = pathname.replace(/\/+$/, '') || '/';
+  return PUBLIC_PATHS.includes(path) || PUBLIC_PATH_PREFIXES.some((p) => path.startsWith(p));
 }
 
 export function LoginScreen() {

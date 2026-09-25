@@ -11,8 +11,7 @@ import jsPDF from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import autoTable from "jspdf-autotable";
 import { addProject } from "../../../../lib/projectsStore";
-import { getClients, addClient } from "../../../../lib/clientsStore";
-import { getQuotes, addQuote, updateQuoteStatus, deleteQuote, seedQuotes, syncQuotesFromApi } from "../../../../lib/quotesStore";
+import { getQuotes, addQuote, saveQuotes, updateQuoteStatus, deleteQuote, seedQuotes, syncQuotesFromApi } from "../../../../lib/quotesStore";
 import { generateQuotePDF, sendQuoteWhatsApp, sendQuoteEmail } from "../../../../lib/quoteSharing";
 import PrecotizacionesView from "../comercial/precotizaciones/PrecotizacionesView";
 import { QuoteAssistSheet, AssistRunReadOnlyModal, MassRecalculateModal } from "../../../../features/quote-assist";
@@ -2850,14 +2849,7 @@ function QuoteHistory({
 
   const handleApplyRevisions = (newRevisionQuotes: any[]) => {
     if (!newRevisionQuotes || newRevisionQuotes.length === 0) return;
-    const currentAll = getQuotes();
-    const updated = [...newRevisionQuotes, ...currentAll];
-    try {
-      localStorage.setItem('fusion_quotes', JSON.stringify(updated));
-    } catch (e) {
-      console.error('Error saving recalculated quotes', e);
-    }
-    window.dispatchEvent(new Event('fusion_quotes_updated'));
+    saveQuotes(newRevisionQuotes);
     loadQuotes();
   };
 
