@@ -12,3 +12,6 @@ firebase-applet-config.json
 
 # Estado en tiempo de ejecución que escribe el servidor
 local-app-state.json
+
+# Credenciales de cuentas de servicio
+secrets/

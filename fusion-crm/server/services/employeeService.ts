@@ -12,6 +12,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import { eventBus } from '../events/DomainEventBus';
+import { getRequestAuth } from '../auth/requestContext';
 
 export type ContractType = 'PLANTA' | 'SUPERNUMERARIO';
 export type UserStatus = 'ACTIVO' | 'INACTIVO';
@@ -849,7 +850,14 @@ export const employeeService = {
     return Array.from(employeesCache.values());
   },
 
+  /**
+   * Usuario de la petición en curso (verificado por la sesión). Fuera de una petición
+   * (jobs, arranque) conserva el comportamiento anterior.
+   */
   getActiveUser(): Employee {
+    const requestAuth = getRequestAuth();
+    if (requestAuth) return requestAuth.user;
+
     if (!activeSimulatedUser || activeSimulatedUser.status === 'INACTIVO') {
       const cristian =
         employeesCache.get('emp-03') ||

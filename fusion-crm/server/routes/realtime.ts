@@ -115,7 +115,7 @@ export async function handleSSEConnection(req: Request, res: Response): Promise<
   const defaultUserId = activeUser.id || 'emp-03';
   const defaultRole = activeUser.roleKey || 'super_admin';
 
-  const userId = (req.query.userId as string) || (req.headers['x-user-id'] as string) || defaultUserId;
+  const userId = (req.headers['x-user-id'] as string) || defaultUserId;
   const organizationId = (req.query.organizationId as string) || 'org-1';
   const userRole = (req.headers['x-user-role'] as string) || defaultRole;
 

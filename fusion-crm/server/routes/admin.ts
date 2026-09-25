@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { setImpersonation } from '../auth/session';
 import fs from 'fs';
 import path from 'path';
 import { getApps, initializeApp } from 'firebase/app';
@@ -154,16 +155,9 @@ adminRouter.get('/current-user', async (req, res) => {
   }
 });
 
-adminRouter.post('/current-user', async (req, res) => {
-  try {
-    const { id } = req.body;
-    if (!id) return res.status(400).json({ error: 'ID de usuario requerido' });
-    const user = employeeService.setActiveUser(id);
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(user);
-  } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'Error al cambiar usuario activo' });
-  }
+// Simulación de usuario: la guarda una cookie de sesión y solo la pueden usar administradores.
+adminRouter.post('/current-user', (req, res) => {
+  setImpersonation(req, res);
 });
 
 // Invitations & Reviews

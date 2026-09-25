@@ -54,6 +54,21 @@ bun run build
 bun run start       # node dist/server.cjs en el puerto 3000
 ```
 
+### Autenticación
+
+- Los colaboradores ingresan con **Google**. El correo de la cuenta debe coincidir con el de un empleado **activo** (Administración → Usuarios).
+- El servidor cambia el login por una cookie de sesión `httpOnly` (5 días) y toma de ahí la identidad de cada petición. Los headers `x-user-*` que envíe el navegador se ignoran.
+- Toda la API exige sesión salvo `/api/health`, `/api/webhooks/meta` y `/api/widget`. `/api/ops` e `/api/interventoria` son solo para administradores, igual que las escrituras en `/api/admin` y `/api/settings`.
+- Un administrador puede simular a otro colaborador desde el selector de usuario; la simulación se guarda en el servidor.
+- El navegador no accede a Firestore. El servidor se autentica con un token propio (claim `fusion_server`) y `firestore.rules` solo permite ese acceso.
+
+Puesta en marcha:
+
+1. En Google Cloud, crear una cuenta de servicio del proyecto Firebase con el rol **Service Account Token Creator** (además de acceso a Firestore) y descargar su clave JSON en `secrets/firebase-service-account.json`.
+2. Definir `GOOGLE_APPLICATION_CREDENTIALS` con esa ruta (ya viene en `docker-compose.yml`).
+3. En Firebase Authentication, habilitar el proveedor **Google** y agregar el dominio de la app (p. ej. `app.fusioncg.com`) a los dominios autorizados.
+4. Desplegar las reglas: `firebase deploy --only firestore:rules`, o pegar `firestore.rules` en la consola de Firebase.
+
 ### Docker / VPS
 
 `firebase-applet-config.json` debe existir en el directorio antes de construir la imagen (el frontend lo importa en tiempo de compilación).

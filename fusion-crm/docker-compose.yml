@@ -63,6 +63,10 @@ services:
       LIVEKIT_TOKEN_TTL_MINUTES: ${LIVEKIT_TOKEN_TTL_MINUTES:-60}
       LIVEKIT_MAX_PARTICIPANTS: ${LIVEKIT_MAX_PARTICIPANTS:-20}
       LIVEKIT_RECORDING_ENABLED: ${LIVEKIT_RECORDING_ENABLED:-false}
+      # Cuenta de servicio de Firebase: verifica sesiones y autentica al servidor ante Firestore
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/firebase-service-account.json
+    volumes:
+      - ./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
     depends_on:
       - postgres
       - redis

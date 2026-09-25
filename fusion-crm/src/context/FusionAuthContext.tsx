@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { canAccessModule, FusionModuleKey, SEED_ROLE_COLLABORATION_PERMISSIONS } from '../../packages/core/src/auth/permissions';
+import { LoginScreen, isPublicPath } from '../components/auth/LoginScreen';
 
 export interface FusionEmployee {
   id: string;
@@ -38,7 +39,11 @@ export const PERMANENT_SUPER_USER_ID = 'emp-03';
 
 interface FusionAuthContextType {
   currentUser: FusionEmployee | null;
+  /** Usuario que inició sesión con Google (distinto de currentUser mientras se simula a otro). */
+  realUser: FusionEmployee | null;
   permanentSuperUser: FusionEmployee | null;
+  canImpersonate: boolean;
+  logout: () => Promise<void>;
   employees: FusionEmployee[];
   roles: FusionRole[];
   isLoading: boolean;
@@ -53,14 +58,15 @@ interface FusionAuthContextType {
 
 const FusionAuthContext = createContext<FusionAuthContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_USER_KEY = 'fusion_active_user_id';
+const isAdminRoleKey = (roleKey?: string) => roleKey === 'super_admin' || roleKey === 'admin';
 
 export const FusionAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [employees, setEmployees] = useState<FusionEmployee[]>([]);
   const [roles, setRoles] = useState<FusionRole[]>([]);
   const [currentUser, setCurrentUser] = useState<FusionEmployee | null>(null);
-  const [permanentSuperUser, setPermanentSuperUser] = useState<FusionEmployee | null>(null);
+  const [realUser, setRealUser] = useState<FusionEmployee | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   const applyUserToWindow = useCallback((user: FusionEmployee, allRoles: FusionRole[]) => {
     if (typeof window === 'undefined') return;
@@ -116,48 +122,32 @@ export const FusionAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return [];
   }, []);
 
-  // Initial loading
+  // Carga inicial: la identidad la decide el servidor a partir de la cookie de sesión
   useEffect(() => {
     let mounted = true;
 
     async function initAuth() {
       setIsLoading(true);
       try {
+        const meRes = await fetch('/api/auth/me');
+        if (meRes.status === 401) {
+          if (mounted) setNeedsLogin(true);
+          return;
+        }
+        if (!meRes.ok) throw new Error(`HTTP ${meRes.status}`);
+        const me = await meRes.json();
+
         const [empData, roleData] = await Promise.all([
-          fetch('/api/admin/users').then(r => r.json()),
-          fetch('/api/admin/roles').then(r => r.json()),
+          fetch('/api/admin/users').then(r => (r.ok ? r.json() : [])),
+          fetch('/api/admin/roles').then(r => (r.ok ? r.json() : [])),
         ]);
 
         if (!mounted) return;
         setEmployees(empData || []);
         setRoles(roleData || []);
-
-        // Cristian Andrés Sepúlveda es el Super Usuario permanente
-        const permanent =
-          (empData || []).find(
-            (e: FusionEmployee) =>
-              e.id === PERMANENT_SUPER_USER_ID ||
-              e.email === 'andresepulveda718@gmail.com' ||
-              (e.name && e.name.toLowerCase().includes('cristian andrés sepúlveda'))
-          ) ||
-          (empData || []).find((e: FusionEmployee) => e.roleKey === 'super_admin') ||
-          (empData || [])[0];
-
-        setPermanentSuperUser(permanent || null);
-
-        // Retrieve stored user ID (for impersonation/simulation)
-        const storedId = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-        let selected = (empData || []).find((e: FusionEmployee) => e.id === storedId);
-
-        // Default to permanent super user
-        if (!selected) {
-          selected = permanent;
-        }
-
-        if (selected) {
-          setCurrentUser(selected);
-          applyUserToWindow(selected, roleData || []);
-        }
+        setRealUser(me.realUser);
+        setCurrentUser(me.user);
+        applyUserToWindow(me.user, roleData || []);
       } catch (err) {
         console.error('Error initializing Fusion auth', err);
       } finally {
@@ -172,6 +162,22 @@ export const FusionAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, [applyUserToWindow]);
 
+  // Si la sesión expira mientras se usa la aplicación, volver a pedir inicio de sesión
+  useEffect(() => {
+    const originalFetch = window.fetch;
+    window.fetch = async (...args: Parameters<typeof fetch>) => {
+      const res = await originalFetch(...args);
+      const url = typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].pathname : args[0].url;
+      if (res.status === 401 && url.startsWith('/api/') && !url.startsWith('/api/auth/') && !isPublicPath(window.location.pathname)) {
+        setNeedsLogin(true);
+      }
+      return res;
+    };
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
+
   useEffect(() => {
     const handleEmployeesUpdated = () => {
       refreshEmployees(true);
@@ -181,30 +187,35 @@ export const FusionAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [refreshEmployees]);
 
   const impersonateUser = useCallback(async (user: FusionEmployee) => {
-    setCurrentUser(user);
-    localStorage.setItem(LOCAL_STORAGE_USER_KEY, user.id);
-    applyUserToWindow(user, roles);
-
-    try {
-      await fetch('/api/admin/current-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: user.id }),
-      });
-    } catch (e) {
-      console.warn('Could not notify backend of active user change', e);
+    const res = await fetch('/api/admin/current-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: user.id }),
+    });
+    if (!res.ok) {
+      console.warn('El servidor rechazó el cambio de usuario simulado', res.status);
+      return;
     }
+    setCurrentUser(user);
+    applyUserToWindow(user, roles);
   }, [applyUserToWindow, roles]);
 
   const revertToSuperAdmin = useCallback(async () => {
-    const admin =
-      employees.find((e) => e.id === PERMANENT_SUPER_USER_ID) ||
-      employees.find((e) => e.email === 'andresepulveda718@gmail.com') ||
-      employees.find((e) => e.roleKey === 'super_admin');
-    if (admin) {
-      await impersonateUser(admin);
+    if (realUser) {
+      await impersonateUser(realUser);
     }
-  }, [employees, impersonateUser]);
+  }, [realUser, impersonateUser]);
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      window.location.href = '/';
+    }
+  }, []);
+
+  const permanentSuperUser = realUser && isAdminRoleKey(realUser.roleKey) ? realUser : null;
+  const canImpersonate = !!permanentSuperUser;
 
   const canSeeModule = useCallback((moduleKey: FusionModuleKey): boolean => {
     if (!currentUser) return true;
@@ -224,13 +235,23 @@ export const FusionAuthProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     currentUser?.roleKey === 'admin' ||
     currentUser?.id === PERMANENT_SUPER_USER_ID ||
     (typeof currentUser?.email === 'string' && currentUser.email.toLowerCase().includes('andresepulveda718'));
-  const isImpersonating = !isSuperAdmin;
+  const isImpersonating = !!realUser && !!currentUser && currentUser.id !== realUser.id;
+
+  if (!isPublicPath(typeof window !== 'undefined' ? window.location.pathname : '/')) {
+    if (needsLogin) return <LoginScreen />;
+    if (isLoading) {
+      return <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Cargando…</div>;
+    }
+  }
 
   return (
     <FusionAuthContext.Provider
       value={{
         currentUser,
+        realUser,
         permanentSuperUser,
+        canImpersonate,
+        logout,
         employees,
         roles,
         isLoading,
