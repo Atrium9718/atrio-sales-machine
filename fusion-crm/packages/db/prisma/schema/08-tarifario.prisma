@@ -1,0 +1,389 @@
+// ============================================================================
+// ETAPA 18.1 — TARIFARIO DE PRODUCCIÓN (Costos de Insumo y Proceso Gráfico)
+// ============================================================================
+
+enum TariffStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SheetFormat {
+  S70X100
+  S60X90
+}
+
+enum PrintTechnique {
+  LITHO
+  DIGITAL
+}
+
+enum FinishingService {
+  CUT
+  TRIM
+  PERFORATION
+  BINDING
+  LAMINATION
+  HALF_CUT
+  DIE_CUT
+  OTHER
+}
+
+enum FinishingMode {
+  NONE
+  PER_RUN
+  MINIMUM
+  PER_THOUSAND
+  PER_UNIT
+  PER_M2
+  PER_LINEAR_CM
+  PER_CM2
+  PER_LOOP
+}
+
+enum TariffScope {
+  DIGITAL
+  LITHO
+  BOTH
+}
+
+enum CommercialTermType {
+  DELIVERY_TIME
+  PAYMENT_TERM
+  VALIDITY
+  VAT
+  CLIENT_DISCOUNT
+  DESIGN_OWNER
+}
+
+enum AssistMode {
+  GUIDED
+  MANUAL_LITHO
+  WIDE_FORMAT
+  ON_DEMAND
+}
+
+model TariffVersion {
+  id             String       @id @default(cuid())
+  organizationId String
+  code           String       // TAR-AAAA-NN vía NumberSequence
+  name           String
+  status         TariffStatus @default(DRAFT)
+
+  validFrom    DateTime
+  validTo      DateTime?
+  publishedAt  DateTime?
+  publishedById String?
+  archivedAt   DateTime?
+
+  bleedCm                   Decimal @default(0.6) @db.Decimal(10, 2)  // sangrado que se suma a cada dimensión
+  gripMarginCm              Decimal @default(1.0) @db.Decimal(10, 2)  // centímetro que se resta al área imprimible
+  defaultWastageSheets      Int     @default(200)                     // mácula por juego de planchas
+  defaultLithoMarginPercent Decimal @default(30.0) @db.Decimal(5, 2)
+
+  notes         String?
+  sourceFileKey String? // el .xlsx del que se importó
+
+  // Convención de campos comunes
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  // Relaciones
+  paperTariffItems      PaperTariffItem[]
+  digitalFormatTariffs  DigitalFormatTariff[]
+  lithoFormatTariffs    LithoFormatTariff[]
+  sheetCuts             SheetCut[]
+  inkSetTariffs         InkSetTariff[]
+  finishingTariffs      FinishingTariff[]
+  commercialTermTariffs CommercialTermTariff[]
+  wideFormatTariffs     WideFormatTariff[]
+  quoteAssistRuns       QuoteAssistRun[]
+  quotes                Quote[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status, validFrom])
+  // REGLA: como máximo una versión PUBLISHED sin validTo por organización.
+  // Impuesto en PostgreSQL mediante:
+  // CREATE UNIQUE INDEX IF NOT EXISTS uq_tariff_published_current ON "TariffVersion" ("organizationId") WHERE "status" = 'PUBLISHED' AND "validTo" IS NULL;
+}
+
+model PaperTariffItem {
+  id              String         @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion  @relation(fields: [tariffVersionId], references: [id], onDelete: Restrict)
+
+  family          String
+  name            String
+  paperTypeId     String?        // enlace opcional a PaperType de la Etapa 10
+  sheetFormat     SheetFormat
+  pricePerSheet   Decimal        @db.Decimal(18, 2)
+  isActive        Boolean        @default(true)
+  order           Int            @default(0)
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([tariffVersionId, name, sheetFormat])
+  @@index([organizationId, tariffVersionId])
+}
+
+model DigitalFormatTariff {
+  id              String        @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  name                String
+  widthCm             Decimal @db.Decimal(10, 2)
+  heightCm            Decimal @db.Decimal(10, 2)
+  price1x0            Decimal @db.Decimal(15, 2)
+  price4x0            Decimal @db.Decimal(15, 2)
+  price4x4            Decimal @db.Decimal(15, 2)
+  laminationUnitPrice Decimal @default(0) @db.Decimal(15, 2)
+  isActive            Boolean @default(true)
+  order               Int     @default(0)
+
+  volumeTiers DigitalVolumeTier[]
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, tariffVersionId])
+}
+
+model DigitalVolumeTier {
+  id                    String              @id @default(cuid())
+  organizationId        String
+  digitalFormatTariffId String
+  digitalFormatTariff   DigitalFormatTariff @relation(fields: [digitalFormatTariffId], references: [id], onDelete: Cascade)
+
+  minSheets Int
+  maxSheets Int?
+  unitPrice Decimal @db.Decimal(15, 2)
+  label     String
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([digitalFormatTariffId, minSheets])
+  @@index([organizationId, digitalFormatTariffId])
+}
+
+model LithoFormatTariff {
+  id              String        @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  name                  String // "1/8", "Doble Carta", "1/4", "1/2", "Pliego"
+  machineLabel          String?
+  printAreaWidthCm      Decimal @db.Decimal(10, 2)
+  printAreaHeightCm     Decimal @db.Decimal(10, 2)
+  plateUnitPrice        Decimal @db.Decimal(15, 2)
+  pressPricePerThousand Decimal @db.Decimal(15, 2)
+  isActive              Boolean @default(true)
+  order                 Int     @default(0)
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, tariffVersionId])
+}
+
+model SheetCut {
+  id              String        @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  code     String  // ".1", ".1/2", ".1/4", ...
+  divisor  Int     // cuántas piezas salen del pliego
+  isActive Boolean @default(true)
+  order    Int     @default(0)
+
+  sizes SheetCutSize[]
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([tariffVersionId, code])
+  @@index([organizationId, tariffVersionId])
+}
+
+model SheetCutSize {
+  id             String      @id @default(cuid())
+  organizationId String
+  sheetCutId     String
+  sheetCut       SheetCut    @relation(fields: [sheetCutId], references: [id], onDelete: Cascade)
+
+  sheetFormat SheetFormat
+  widthCm     Decimal     @db.Decimal(10, 2)
+  heightCm    Decimal     @db.Decimal(10, 2)
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([sheetCutId, sheetFormat])
+  @@index([organizationId, sheetCutId])
+}
+
+model InkSetTariff {
+  id              String         @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion  @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  code      String         // "4X4", "4X3", ... "1X0"
+  plates    Int
+  technique PrintTechnique // LITHO, DIGITAL
+  order     Int            @default(0)
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([tariffVersionId, code, technique])
+  @@index([organizationId, tariffVersionId])
+}
+
+model FinishingTariff {
+  id              String        @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  service       FinishingService
+  mode          FinishingMode
+  label         String // "Por unidad (Bajada)", "Mínimo", "Por millar", "Por m2", etc.
+  price         Decimal          @db.Decimal(15, 2)
+  minimumCharge Decimal?         @db.Decimal(15, 2)
+  appliesTo     TariffScope
+  isActive      Boolean          @default(true)
+  order         Int              @default(0)
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([tariffVersionId, service, label])
+  @@index([organizationId, tariffVersionId])
+}
+
+model CommercialTermTariff {
+  id              String             @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion      @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  type         CommercialTermType
+  label        String
+  numericValue Decimal?           @db.Decimal(10, 4) // porcentaje como 0.19 o 0.05
+  isDefault    Boolean            @default(false)
+  isActive     Boolean            @default(true)
+  order        Int                @default(0)
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, tariffVersionId])
+}
+
+model WideFormatTariff {
+  id              String        @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion @relation(fields: [tariffVersionId], references: [id], onDelete: Cascade)
+
+  name                  String   // "UV-DTF"
+  pricePerMeter         Decimal  @db.Decimal(15, 2)
+  peerDiscountPerMeter  Decimal  @default(10000) @db.Decimal(15, 2)
+  roundToNearest        Int      @default(500)
+  minimumCharge         Decimal? @db.Decimal(15, 2)
+  isActive              Boolean  @default(true)
+
+  // Convención
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, tariffVersionId])
+}
+
+model QuoteAssistRun {
+  id              String         @id @default(cuid())
+  organizationId  String
+  tariffVersionId String
+  tariffVersion   TariffVersion  @relation(fields: [tariffVersionId], references: [id], onDelete: Restrict)
+
+  engineVersion   String
+  quoteId         String?
+  quoteItemIds    String[]
+  technique       PrintTechnique
+  mode            AssistMode
+  input           Json           @db.JsonB
+  result          Json           @db.JsonB
+  warnings        String[]
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  quoteItems QuoteItem[]
+
+  @@index([organizationId, quoteId])
+  @@index([organizationId, createdAt])
+}

@@ -1,0 +1,352 @@
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  NEGOTIATING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum QuoteSource {
+  MANUAL
+  PDF_IMPORT
+  DRIVE_SYNC
+  KIOSK
+  ODOO
+  DUPLICATE
+}
+
+enum ProductionMode {
+  IN_HOUSE
+  OUTSOURCED
+  AGENCY
+}
+
+enum QuoteApprovedVia {
+  PORTAL
+  WHATSAPP
+  EMAIL
+  PHONE
+  MANUAL
+}
+
+enum QuoteHistoryAction {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  REVISION_CREATED
+  SENT
+  VIEWED
+  APPROVED
+  REJECTED
+}
+
+model Quote {
+  id             String @id @default(cuid())
+  organizationId String
+
+  number        String // FCG-XXXXX
+  revision      Int     @default(1)
+  parentQuoteId String? // For revisions
+  parentQuote   Quote?  @relation("QuoteRevisions", fields: [parentQuoteId], references: [id])
+  childQuotes   Quote[] @relation("QuoteRevisions")
+
+  clientId        String
+  client          Client       @relation(fields: [clientId], references: [id])
+  contactId       String?
+  contact         Contact?     @relation(fields: [contactId], references: [id])
+  contactName     String?
+  contactJobTitle String?
+  opportunityId   String?
+  opportunity     Opportunity? @relation(fields: [opportunityId], references: [id])
+  ownerId         String
+  owner           User         @relation(fields: [ownerId], references: [id])
+
+  status QuoteStatus @default(DRAFT)
+
+  issueDate  DateTime
+  validUntil DateTime?
+  expiredAt  DateTime?
+
+  paymentTerms  String?
+  deliveryTime  String?
+  conditions    String?
+  notes         String?
+  internalNotes String?
+
+  applyVat        Boolean @default(true)
+  vatRate         Decimal @default(19.00) @db.Decimal(5, 2)
+  showGrandTotals Boolean @default(true)
+
+  subtotal        Decimal @default(0) @db.Decimal(15, 2)
+  discountAmount  Decimal @default(0) @db.Decimal(15, 2)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  vatAmount       Decimal @default(0) @db.Decimal(15, 2)
+  total           Decimal @default(0) @db.Decimal(15, 2)
+
+  internalCost  Decimal @default(0) @db.Decimal(15, 2)
+  grossMargin   Decimal @default(0) @db.Decimal(15, 2)
+  marginPercent Decimal @default(0) @db.Decimal(5, 2)
+
+  signatureUrl    String?
+  publicToken     String?   @unique
+  publicViewedAt  DateTime?
+  publicViewCount Int       @default(0)
+
+  approvedAt          DateTime?
+  approvedByName      String?
+  approvedBySignature String?
+  approvedVia         QuoteApprovedVia?
+  approvedPhone       String?
+
+  rejectedAt      DateTime?
+  rejectionReason String?
+
+  source          QuoteSource @default(MANUAL)
+  sourceFileKey   String?
+  odooQuotationId String?
+  aiExtracted     Boolean     @default(false)
+
+  sentAt         DateTime?
+  sentVia        String[] // EMAIL, WHATSAPP, etc.
+  lastFollowUpAt DateTime?
+  followUpCount  Int       @default(0)
+
+  // Tarifario de Producción (Etapa 18.1)
+  tariffVersionId String?
+  tariffVersion   TariffVersion? @relation(fields: [tariffVersionId], references: [id], onDelete: Restrict)
+  assistRunCount  Int            @default(0)
+
+  // System
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  items   QuoteItem[]
+  history QuoteHistory[]
+
+  @@unique([organizationId, number, revision])
+  @@index([organizationId, status, issueDate])
+  @@index([organizationId, clientId, issueDate])
+}
+
+model QuoteItem {
+  id             String @id @default(cuid())
+  organizationId String
+  quoteId        String
+  quote          Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  order          Int            @default(0)
+  reference      String?
+  description    String
+  productionMode ProductionMode @default(IN_HOUSE)
+
+  catalogProductId String?
+  catalogProduct   CatalogProduct? @relation(fields: [catalogProductId], references: [id])
+
+  size      String?
+  inks      String?
+  materials String?
+  finishes  String?
+
+  quantity     Decimal @db.Decimal(10, 2)
+  unit         String?
+  unitPrice    Decimal @db.Decimal(15, 2)
+  lineSubtotal Decimal @db.Decimal(15, 2)
+
+  applyVat  Boolean @default(true)
+  vatAmount Decimal @default(0) @db.Decimal(15, 2)
+  lineTotal Decimal @db.Decimal(15, 2)
+
+  rawMaterialCost Decimal @default(0) @db.Decimal(15, 2)
+  laborHours      Decimal @default(0) @db.Decimal(10, 2)
+  laborCost       Decimal @default(0) @db.Decimal(15, 2)
+  outsourcedCost  Decimal @default(0) @db.Decimal(15, 2)
+  otherCost       Decimal @default(0) @db.Decimal(15, 2)
+  internalCost    Decimal @default(0) @db.Decimal(15, 2)
+
+  marginPercent        Decimal @default(0) @db.Decimal(5, 2)
+  profitabilityPercent Decimal @default(0) @db.Decimal(5, 2)
+
+  paperTypeId  String?
+  paperSheets  Int?
+  wastePercent Decimal @default(0) @db.Decimal(5, 2)
+  notes        String?
+
+  // Tarifario de Producción (Etapa 18.1)
+  assistRunId        String?
+  assistRun          QuoteAssistRun? @relation(fields: [assistRunId], references: [id], onDelete: SetNull)
+  productionSpec     String?
+  impositionPerSheet Int?
+  plateCount         Int?
+  sheetsNeeded       Int?
+  printTechnique     PrintTechnique?
+
+  // System
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  @@index([organizationId, quoteId])
+}
+
+model CatalogProduct {
+  id             String @id @default(cuid())
+  organizationId String
+
+  code           String?
+  name           String // max 120 chars, validated at app level
+  normalizedName String // for deduplication
+  description    String?
+  categoryId     String?
+  category       ProductCategory? @relation(fields: [categoryId], references: [id])
+
+  size      String?
+  inks      String?
+  materials String?
+  finishes  String?
+  unit      String?
+
+  baseQuantity    Decimal? @db.Decimal(10, 2)
+  rawMaterialCost Decimal? @default(0) @db.Decimal(15, 2)
+  baseHours       Decimal? @default(0) @db.Decimal(10, 2)
+  baseMargin      Decimal? @default(0) @db.Decimal(5, 2)
+
+  suggestedPrice Decimal? @db.Decimal(15, 2)
+  lastPrice      Decimal? @db.Decimal(15, 2)
+
+  usageCount Int       @default(0)
+  lastUsedAt DateTime?
+
+  isActive  Boolean @default(true)
+  imageKey  String?
+  specSheet Json?   @db.JsonB
+
+  // System
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  quoteItems QuoteItem[]
+
+  // PostgreSQL extension pg_trgm index would normally be here: @@index([normalizedName(ops: raw("gin_trgm_ops"))], type: Gin) 
+  @@index([organizationId, normalizedName])
+}
+
+model ProductCategory {
+  id             String            @id @default(cuid())
+  organizationId String
+  name           String
+  parentId       String?
+  parent         ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children       ProductCategory[] @relation("CategoryHierarchy")
+
+  order    Int     @default(0)
+  icon     String?
+  isActive Boolean @default(true)
+
+  // System
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  products CatalogProduct[]
+
+  @@index([organizationId, parentId])
+}
+
+model QuoteHistory {
+  id      String @id @default(cuid())
+  quoteId String
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  action     QuoteHistoryAction
+  fromStatus QuoteStatus?
+  toStatus   QuoteStatus?
+  changes    Json?              @db.JsonB
+  userId     String?
+  user       User?              @relation(fields: [userId], references: [id])
+  notes      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([quoteId, createdAt])
+}
+
+model PriceList {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  currency       String  @default("COP")
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  versions PriceListVersion[]
+}
+
+model PriceListVersion {
+  id          String    @id @default(cuid())
+  priceListId String
+  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+
+  name      String
+  validFrom DateTime
+  validTo   DateTime?
+  isActive  Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items PriceListItem[]
+
+  @@index([priceListId, validFrom])
+}
+
+model PriceListItem {
+  id                 String           @id @default(cuid())
+  priceListVersionId String
+  priceListVersion   PriceListVersion @relation(fields: [priceListVersionId], references: [id], onDelete: Cascade)
+
+  catalogProductId String
+
+  price       Decimal  @db.Decimal(15, 2)
+  minQuantity Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([priceListVersionId, catalogProductId])
+}
+
+model AiExtractionLog {
+  id             String @id @default(cuid())
+  organizationId String
+
+  sourceType    String // e.g. DRIVE, MANUAL_UPLOAD
+  sourceKey     String
+  model         String
+  promptVersion String
+
+  inputTokens  Int?
+  outputTokens Int?
+  costUsd      Decimal? @db.Decimal(10, 6)
+  latencyMs    Int?
+  confidence   Decimal? @db.Decimal(5, 2)
+
+  humanCorrected  Boolean  @default(false)
+  correctedFields String[]
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, sourceType])
+}

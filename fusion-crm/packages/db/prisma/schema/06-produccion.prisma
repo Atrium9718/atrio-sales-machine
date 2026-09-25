@@ -1,0 +1,514 @@
+enum ProductType {
+  LITHOGRAPHY
+  DIGITAL
+  DTF_UV
+  LARGE_FORMAT
+  EDITORIAL
+  PACKAGING
+  MERCHANDISING
+  OUTSOURCED
+  PRINT_ON_DEMAND
+}
+
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum QualityResult {
+  APPROVED
+  REJECTED
+}
+
+enum MachineType {
+  OFFSET
+  DIGITAL
+  LARGE_FORMAT
+  CUTTER
+  FOLDER
+  LAMINATOR
+  DIE_CUTTER
+  BINDER
+  DTF
+  OTHER
+}
+
+enum MachineStatus {
+  AVAILABLE
+  RUNNING
+  MAINTENANCE
+  BREAKDOWN
+  RETIRED
+}
+
+enum ProcessCategory {
+  PREPRESS
+  PRINTING
+  FINISHING
+  LOGISTICS
+}
+
+enum ContractType {
+  PERMANENT
+  TEMPORARY
+  FREELANCE
+  APPRENTICE
+}
+
+enum MaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+}
+
+enum KioskHelpType {
+  MATERIAL
+  MACHINE
+  QUALITY
+  SUPERVISOR
+  OTHER
+}
+
+enum KioskHelpStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model ProductionStage {
+  id                       String   @id @default(cuid())
+  organizationId           String
+  key                      String
+  name                     String
+  order                    Int
+  color                    String?
+  icon                     String?
+  isFinal                  Boolean  @default(false)
+  requiresQualityApproval  Boolean  @default(false)
+  qualityApprovalsRequired Int      @default(1)
+  maxDaysInStage           Int      @default(3)
+  allowedNextStageIds      String[]
+  isActive                 Boolean  @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  projects ProductionProject[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, order])
+}
+
+model ProductionProject {
+  id             String  @id @default(cuid())
+  organizationId String
+  number         String // PROD-XXXXX
+  name           String
+  description    String?
+
+  clientId           String?
+  clientNameSnapshot String?
+  quoteId            String?
+  opportunityId      String?
+  printOrderId       String?
+
+  stageId        String
+  stage          ProductionStage @relation(fields: [stageId], references: [id])
+  stageEnteredAt DateTime        @default(now())
+
+  productType ProductType
+  priority    ProjectPriority @default(MEDIUM)
+
+  startDate       DateTime?
+  dueDate         DateTime?
+  completedAt     DateTime?
+  deliveryPercent Decimal   @default(0) @db.Decimal(5, 2)
+
+  budgetTotal    Decimal @default(0) @db.Decimal(15, 2)
+  laborCost      Decimal @default(0) @db.Decimal(15, 2)
+  materialCost   Decimal @default(0) @db.Decimal(15, 2)
+  outsourcedCost Decimal @default(0) @db.Decimal(15, 2)
+  otherCost      Decimal @default(0) @db.Decimal(15, 2)
+  totalCost      Decimal @default(0) @db.Decimal(15, 2)
+  grossMargin    Decimal @default(0) @db.Decimal(15, 2)
+  marginPercent  Decimal @default(0) @db.Decimal(5, 2)
+  totalRealHours Decimal @default(0) @db.Decimal(10, 2)
+
+  invoiced           Boolean   @default(false)
+  invoiceNumber      String?
+  paid               Boolean   @default(false)
+  paidAt             DateTime?
+  deliveryNoteNumber String?
+
+  costsLocked      Boolean  @default(false)
+  artworkKeys      String[]
+  purchaseOrderKey String?
+  paymentProofKey  String?
+  itemsDetail      Json?    @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  assignments      ProjectAssignment[]
+  qualityApprovals QualityApproval[]
+  tasks            ProductionTask[]
+  comments         ProjectComment[]
+  deliveryNotes    DeliveryNote[]
+  machineLogs      MachineUsageLog[]
+  timeEntries      TimeEntry[]
+  helpRequests     KioskHelpRequest[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, stageId])
+}
+
+model ProductionRole {
+  id             String  @id @default(cuid())
+  organizationId String
+  key            String
+  name           String
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  assignments ProjectAssignment[]
+
+  @@unique([organizationId, key])
+}
+
+model ProjectAssignment {
+  id        String            @id @default(cuid())
+  projectId String
+  project   ProductionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  roleId String
+  role   ProductionRole @relation(fields: [roleId], references: [id])
+
+  userId     String?
+  employeeId String?
+
+  assignedAt   DateTime  @default(now())
+  assignedById String
+  unassignedAt DateTime?
+
+  @@index([projectId, roleId])
+}
+
+model QualityApproval {
+  id        String            @id @default(cuid())
+  projectId String
+  project   ProductionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  sequence     Int // 1 or 2
+  approvedById String
+  approvedAt   DateTime @default(now())
+
+  checklist Json?    @db.JsonB
+  notes     String?
+  photoKeys String[]
+
+  result          QualityResult
+  rejectionReason String?
+}
+
+model TaskTemplate {
+  id             String      @id @default(cuid())
+  organizationId String
+  productType    ProductType
+  name           String
+  defaultRoleId  String?
+  defaultHours   Decimal     @db.Decimal(10, 2)
+  order          Int
+  isRequired     Boolean     @default(true)
+}
+
+model ProductionTask {
+  id             String            @id @default(cuid())
+  organizationId String
+  projectId      String
+  project        ProductionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  templateId  String?
+  name        String
+  description String?
+
+  status             TaskStatus @default(PENDING)
+  assigneeEmployeeId String?
+  machineId          String?
+  processId          String?
+
+  estimatedHours Decimal @default(0) @db.Decimal(10, 2)
+  actualHours    Decimal @default(0) @db.Decimal(10, 2)
+
+  startedAt     DateTime?
+  completedAt   DateTime?
+  blockedReason String?
+
+  order            Int      @default(0)
+  dependsOnTaskIds String[]
+
+  timeEntries TimeEntry[]
+  machineLogs MachineUsageLog[]
+
+  @@index([projectId])
+}
+
+model ProjectComment {
+  id               String            @id @default(cuid())
+  projectId        String
+  project          ProductionProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId           String
+  body             String
+  attachmentKeys   String[]
+  mentionedUserIds String[]
+  createdAt        DateTime          @default(now())
+}
+
+model DeliveryNote {
+  id             String            @id @default(cuid())
+  organizationId String
+  number         String
+  projectId      String
+  project        ProductionProject @relation(fields: [projectId], references: [id])
+  clientId       String?
+  items          Json              @db.JsonB
+
+  deliveredQuantity Int     @default(0)
+  partialDelivery   Boolean @default(false)
+
+  receivedByName       String?
+  receivedById         String?
+  receivedSignatureKey String?
+
+  deliveredAt           DateTime?
+  deliveredByEmployeeId String?
+  vehiclePlate          String?
+  notes                 String?
+  pdfKey                String?
+  odooDocumentId        String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  @@unique([organizationId, number])
+}
+
+// ==========================================
+// CAPACIDAD INSTALADA (INSTALLED CAPACITY)
+// ==========================================
+
+model Machine {
+  id             String  @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  brand          String?
+  model          String?
+  serialNumber   String?
+
+  type   MachineType
+  status MachineStatus @default(AVAILABLE)
+
+  maxSheetWidth  Decimal? @db.Decimal(10, 2)
+  maxSheetHeight Decimal? @db.Decimal(10, 2)
+  minSheetWidth  Decimal? @db.Decimal(10, 2)
+  minSheetHeight Decimal? @db.Decimal(10, 2)
+  maxColors      Int?
+
+  sheetsPerHour Int     @default(0)
+  setupMinutes  Int     @default(0)
+  hourlyCost    Decimal @default(0) @db.Decimal(10, 2)
+
+  purchaseDate  DateTime?
+  purchaseValue Decimal?  @db.Decimal(15, 2)
+
+  maintenanceIntervalHours Int       @default(500)
+  lastMaintenanceAt        DateTime?
+  nextMaintenanceAt        DateTime?
+  totalHours               Decimal   @default(0) @db.Decimal(10, 2)
+
+  location String?
+  notes    String?
+  isActive Boolean @default(true)
+
+  processes       MachineProcess[]
+  usageLogs       MachineUsageLog[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@unique([organizationId, code])
+}
+
+model Process {
+  id             String          @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  description    String?
+  category       ProcessCategory
+
+  standardMinutesPerUnit Decimal @default(0) @db.Decimal(10, 4)
+  setupMinutes           Int     @default(0)
+  isOutsourceable        Boolean @default(false)
+
+  order    Int     @default(0)
+  isActive Boolean @default(true)
+
+  machines MachineProcess[]
+}
+
+model MachineProcess {
+  machineId String
+  machine   Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  processId String
+  process   Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  minutesPerUnit Decimal @db.Decimal(10, 4)
+  setupMinutes   Int
+  isPreferred    Boolean @default(false)
+
+  @@id([machineId, processId])
+}
+
+model ProductionEmployee {
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String? @unique // Link to core User model
+  code           String
+  firstName      String
+  lastName       String
+  documentNumber String?
+
+  roleIds         String[]
+  skillProcessIds String[]
+
+  hourlyRate   Decimal      @default(0) @db.Decimal(10, 2)
+  contractType ContractType
+
+  hireDate        DateTime?
+  terminationDate DateTime?
+  weeklyHours     Int       @default(48)
+
+  phone            String?
+  emergencyContact String?
+  isActive         Boolean @default(true)
+
+  @@unique([organizationId, code])
+}
+
+model MachineUsageLog {
+  id             String            @id @default(cuid())
+  organizationId String
+  machineId      String
+  machine        Machine           @relation(fields: [machineId], references: [id])
+  projectId      String
+  project        ProductionProject @relation(fields: [projectId], references: [id])
+  taskId         String?
+  task           ProductionTask?   @relation(fields: [taskId], references: [id])
+  employeeId     String
+
+  startedAt DateTime
+  endedAt   DateTime?
+  hours     Decimal   @default(0) @db.Decimal(10, 2)
+
+  sheetsProcessed Int     @default(0)
+  setupMinutes    Int     @default(0)
+  downtimeMinutes Int     @default(0)
+  downtimeReason  String?
+  notes           String?
+}
+
+model TimeEntry {
+  id             String            @id @default(cuid())
+  organizationId String
+  employeeId     String
+  projectId      String
+  project        ProductionProject @relation(fields: [projectId], references: [id])
+  taskId         String?
+  task           ProductionTask?   @relation(fields: [taskId], references: [id])
+  processId      String?
+
+  startedAt  DateTime
+  endedAt    DateTime?
+  hours      Decimal   @default(0) @db.Decimal(10, 2)
+  isOvertime Boolean   @default(false)
+
+  hourlyRate Decimal @db.Decimal(10, 2) // Frozen at entry
+  cost       Decimal @db.Decimal(15, 2)
+
+  approvedById String?
+  approvedAt   DateTime?
+  notes        String?
+}
+
+model MaintenanceLog {
+  id        String  @id @default(cuid())
+  machineId String
+  machine   Machine @relation(fields: [machineId], references: [id])
+
+  type        MaintenanceType
+  performedAt DateTime        @default(now())
+  performedBy String
+
+  cost          Decimal @default(0) @db.Decimal(15, 2)
+  downtimeHours Decimal @default(0) @db.Decimal(10, 2)
+
+  description   String
+  partsReplaced Json?     @db.JsonB
+  nextDueAt     DateTime?
+}
+
+// ==========================================
+// KIOSKO DE PLANTA (PLANT KIOSK)
+// ==========================================
+
+model KioskInstance {
+  id                String    @id @default(cuid())
+  organizationId    String
+  name              String
+  location          String?
+  machineIds        String[]
+  deviceFingerprint String?
+  pairingCode       String?
+  lastSeenAt        DateTime?
+  isActive          Boolean   @default(true)
+  config            Json?     @db.JsonB
+
+  sessions     KioskSession[]
+  helpRequests KioskHelpRequest[]
+}
+
+model KioskSession {
+  id              String        @id @default(cuid())
+  kioskInstanceId String
+  kioskInstance   KioskInstance @relation(fields: [kioskInstanceId], references: [id])
+  employeeId      String
+
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  tasksCompleted Int       @default(0)
+  hoursLogged    Decimal   @default(0) @db.Decimal(10, 2)
+}
+
+model KioskHelpRequest {
+  id              String             @id @default(cuid())
+  kioskInstanceId String
+  kioskInstance   KioskInstance      @relation(fields: [kioskInstanceId], references: [id])
+  employeeId      String
+  projectId       String?
+  project         ProductionProject? @relation(fields: [projectId], references: [id])
+  machineId       String?
+
+  type    KioskHelpType
+  message String?
+
+  status           KioskHelpStatus @default(OPEN)
+  acknowledgedById String?
+  resolvedAt       DateTime?
+  createdAt        DateTime        @default(now())
+}

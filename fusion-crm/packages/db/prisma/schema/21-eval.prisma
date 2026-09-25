@@ -1,0 +1,64 @@
+enum EvalSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum EvalSource {
+  MANUAL
+  FROM_NEGATIVE_FEEDBACK
+  FROM_INCIDENT
+}
+
+model EvalCase {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  agentKey           String
+  category           String
+  
+  input              Json
+  expectedBehavior   String             @db.Text
+  assertions         Json
+  
+  severity           EvalSeverity
+  source             EvalSource         @default(MANUAL)
+  
+  isActive           Boolean            @default(true)
+  
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model EvalRun {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  agentKey           String
+  promptVersion      Int
+  
+  totalCases         Int
+  passed             Int
+  failed             Int
+  score              Decimal            @db.Decimal(5,2)
+  failedCaseIds      String[]
+  
+  costCop            Decimal?           @db.Decimal(18,2)
+  durationMs         Int?
+  triggeredBy        String?
+  
+  executedAt         DateTime           @default(now())
+}
+
+model AiBudget {
+  id                 String             @id @default(cuid())
+  organizationId     String             @unique
+  monthlyBudgetCop   Decimal            @db.Decimal(18,2)
+  alertAt70Sent      Boolean            @default(false)
+  alertAt90Sent      Boolean            @default(false)
+  exhaustedAlertSent Boolean            @default(false)
+  currentMonthSpend  Decimal            @default(0) @db.Decimal(18,2)
+  currentMonth       String             // YYYY-MM
+  
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}

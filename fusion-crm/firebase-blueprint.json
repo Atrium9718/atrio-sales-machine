@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Directorio canónico de empleados de Fusión Gráfica y Publicidad.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "ID único e invariante del empleado" },
+        "initials": { "type": "string", "description": "Iniciales para avatar" },
+        "name": { "type": "string", "description": "Nombre completo del colaborador" },
+        "jobTitle": { "type": "string", "description": "Cargo u ocupación" },
+        "status": { "type": "string", "enum": ["ACTIVO", "INACTIVO"], "description": "Estado operativo del empleado" },
+        "contractType": { "type": "string", "enum": ["PLANTA", "SUPERNUMERARIO"], "description": "Tipo de vinculación" },
+        "email": { "type": "string", "format": "email", "description": "Correo corporativo" },
+        "phone": { "type": "string", "description": "Número de teléfono" },
+        "extension": { "type": "string", "description": "Extensión telefónica PBX" },
+        "roleKey": { "type": "string", "description": "Clave del rol en el sistema" },
+        "roleName": { "type": "string", "description": "Nombre legible del rol" },
+        "area": { "type": "string", "description": "Área o departamento asignado" },
+        "customAllowedModules": { "type": "array", "description": "Módulos personalizados habilitados" },
+        "customDeniedModules": { "type": "array", "description": "Módulos personalizados bloqueados" },
+        "customPermissions": { "type": "array", "description": "Permisos granulares" },
+        "mfaEnabled": { "type": "boolean", "description": "Autenticación de dos factores activada" },
+        "lastLoginAt": { "type": "string", "format": "date-time", "description": "Fecha y hora de último acceso" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Fecha de creación" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Fecha de última modificación" }
+      },
+      "required": ["id", "name", "status", "contractType", "email", "roleKey", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Colección centralizada de empleados (SSOT) de Fusión."
+    }
+  }
+}

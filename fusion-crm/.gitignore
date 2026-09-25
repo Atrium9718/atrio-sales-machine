@@ -1,0 +1,14 @@
+node_modules/
+build/
+.DS_Store
+*.log
+.env*
+!.env.example
+dist/
+
+# Configuración de Firebase del entorno (no versionar: el repo es público).
+# Copiar firebase-applet-config.example.json y completar.
+firebase-applet-config.json
+
+# Estado en tiempo de ejecución que escribe el servidor
+local-app-state.json

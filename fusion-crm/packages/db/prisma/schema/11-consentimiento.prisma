@@ -1,0 +1,117 @@
+enum ConsentPurpose {
+  TRANSACTIONAL
+  MARKETING
+  SURVEY
+  PRODUCTION_UPDATE
+}
+
+enum ConsentStatus {
+  GRANTED
+  DENIED
+  WITHDRAWN
+  PENDING
+}
+
+enum ConsentSource {
+  FORM
+  INBOUND_MESSAGE
+  VERBAL
+  CONTRACT
+  IMPORT
+  PORTAL
+}
+
+enum ConsentChannelType {
+  EMAIL
+  WHATSAPP
+  SMS
+  VOICE
+  ALL
+}
+
+model ConsentRecord {
+  id               String             @id @default(cuid())
+  organizationId   String
+  contactId        String?
+  clientId         String?
+  channelType      ConsentChannelType
+  purpose          ConsentPurpose
+  status           ConsentStatus
+  source           ConsentSource
+  sourceDetail     String?
+  evidenceSnapshot Json?
+  policyVersion    String?
+
+  grantedAt   DateTime?
+  withdrawnAt DateTime?
+  expiresAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, contactId, channelType, purpose])
+}
+
+enum DSRType {
+  ACCESS
+  RECTIFICATION
+  DELETION
+  REVOCATION
+  COMPLAINT
+}
+
+enum DSRStatus {
+  RECEIVED
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+model DataSubjectRequest {
+  id             String    @id @default(cuid())
+  organizationId String
+  contactId      String?
+  clientId       String?
+  type           DSRType
+  status         DSRStatus @default(RECEIVED)
+  channel        String?
+  requestText    String?
+  responseText   String?
+
+  receivedAt         DateTime  @default(now())
+  dueAt              DateTime
+  resolvedAt         DateTime?
+  assigneeId         String?
+  resolutionEvidence Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+}
+
+enum RetentionAction {
+  ANONYMIZE
+  DELETE
+  ARCHIVE
+}
+
+model RetentionPolicy {
+  id              String          @id @default(cuid())
+  organizationId  String
+  entity          String
+  retentionMonths Int
+  action          RetentionAction
+  isActive        Boolean         @default(true)
+  lastRunAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+}

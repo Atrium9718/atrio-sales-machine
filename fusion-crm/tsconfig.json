@@ -1,0 +1,61 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@fusion/core": [
+        "./packages/core/src/index.ts"
+      ],
+      "@fusion/core/*": [
+        "./packages/core/src/*",
+        "./packages/core/*"
+      ],
+      "@fusion/db/*": [
+        "./packages/db/*"
+      ],
+      "@fusion/contracts": [
+        "./packages/contracts/src/index.ts"
+      ],
+      "@fusion/contracts/*": [
+        "./packages/contracts/src/*",
+        "./packages/contracts/*"
+      ],
+      "@fusion/config": [
+        "./packages/config/src/env.ts"
+      ],
+      "@fusion/jobs/*": [
+        "./packages/jobs/*"
+      ],
+      "@fusion/ui": [
+        "./packages/ui/src/index.ts"
+      ],
+      "@fusion/ui/*": [
+        "./packages/ui/src/*"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "noEmit": true
+  },
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

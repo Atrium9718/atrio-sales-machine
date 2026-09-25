@@ -1,0 +1,71 @@
+// 10-identidad.prisma
+
+enum IdentityVerificationMethod {
+  INBOUND_REPLY
+  OTP
+  MANUAL
+  IMPORT
+}
+
+enum IdentityStatus {
+  LINKED
+  UNLINKED
+  IGNORED
+  BLOCKED
+}
+
+enum IdentityLinkAction {
+  LINKED
+  UNLINKED
+  RELINKED
+  MERGED
+}
+
+enum IdentityLinkMethod {
+  AUTO
+  MANUAL
+  MERGE_CASCADE
+}
+
+model ContactIdentity {
+  id                   String                      @id @default(cuid())
+  organizationId       String
+  contactId            String?
+  clientId             String?
+  channelType          ChannelType
+  rawIdentifier        String
+  normalizedIdentifier String
+  displayName          String?
+  avatarUrl            String?
+  verifiedAt           DateTime?
+  verificationMethod   IdentityVerificationMethod?
+  confidence           Int                         @default(0)
+  firstSeenAt          DateTime                    @default(now())
+  lastSeenAt           DateTime                    @default(now())
+  messageCount         Int                         @default(0)
+  status               IdentityStatus              @default(UNLINKED)
+
+  // System
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, channelType, normalizedIdentifier])
+  @@index([organizationId, status])
+}
+
+model IdentityLinkLog {
+  id             String             @id @default(cuid())
+  organizationId String
+  identityId     String
+  fromContactId  String?
+  toContactId    String?
+  action         IdentityLinkAction
+  method         IdentityLinkMethod
+  actorId        String?
+  reason         String?
+  createdAt      DateTime           @default(now())
+}

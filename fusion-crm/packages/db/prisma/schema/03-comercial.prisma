@@ -1,0 +1,197 @@
+enum DocumentType {
+  NIT
+  CC
+  CE
+  PASSPORT
+  NONE
+}
+
+enum ClientType {
+  PROSPECT
+  ACTIVE
+  INACTIVE
+  LOST
+}
+
+enum ClientSource {
+  REFERRAL
+  WEB
+  DIRECTORY
+  DRIVE_IMPORT
+  KIOSK
+  CAMPAIGN
+  ODOO
+  MANUAL
+  OTHER
+}
+
+enum PaymentTerms {
+  CASH
+  DAYS_15
+  DAYS_30
+  DAYS_60
+  DAYS_90
+}
+
+enum ClientTemperature {
+  COLD
+  WARM
+  HOT
+}
+
+model Client {
+  id                   String            @id @default(cuid())
+  organizationId       String
+  code                 String // CLI-XXXXX
+  name                 String
+  legalName            String?
+  documentType         DocumentType      @default(NONE)
+  documentNumber       String?
+  documentDv           String?
+  email                String?
+  phone                String?
+  mobile               String?
+  website              String?
+  address              String?
+  city                 String?
+  department           String?
+  country              String            @default("CO")
+  sector               String?
+  clientType           ClientType        @default(PROSPECT)
+  source               ClientSource      @default(MANUAL)
+  paymentTerms         PaymentTerms      @default(CASH)
+  creditLimit          Decimal?          @db.Decimal(15, 2)
+  taxRegime            String?
+  notes                String?           @db.Text
+  temperature          ClientTemperature @default(COLD)
+  temperatureScore     Int               @default(0)
+  temperatureUpdatedAt DateTime?
+  ownerId              String? // Comercial responsable
+  driveFolderId        String?
+  odooPartnerId        String?
+  normalizedName       String // Para GIN trgm (sin tildes, minúsculas)
+  tags                 String[]          @default([])
+  customFields         Json              @default("{}") @db.JsonB
+
+  lastContactAt DateTime?
+  lastQuoteAt   DateTime?
+  lastOrderAt   DateTime?
+
+  // Convenciones base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner        User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  contacts                 Contact[]
+  files                    ClientFile[]
+  survivingClientMergeLogs ClientMergeLog[]     @relation("MergeSurvivor")
+  Quote                    Quote[]
+  Opportunity              Opportunity[]
+  Activity                 Activity[]
+  Task                     Task[]
+  Appointment              Appointment[]
+  identities               ContactIdentity[]
+  consentRecords           ConsentRecord[]
+  dataSubjectRequests      DataSubjectRequest[]
+  Conversation             Conversation[]
+  SequenceEnrollment       SequenceEnrollment[]
+
+  // En PostgreSQL, múltiples nulos en columnas con UNIQUE están permitidos.
+  @@unique([organizationId, documentNumber])
+  // NOTA: Una migración RAW posterior (Ej: db execute) aplicará `USING gin("normalizedName" gin_trgm_ops)`
+  @@index([organizationId, normalizedName])
+  @@index([organizationId, clientType, temperature])
+  @@map("clients")
+}
+
+model Contact {
+  id               String       @id @default(cuid())
+  organizationId   String
+  clientId         String
+  firstName        String
+  lastName         String
+  jobTitle         String?
+  email            String?
+  phone            String?
+  mobile           String?
+  isPrimary        Boolean      @default(false)
+  birthday         DateTime?    @db.Date
+  notes            String?      @db.Text
+  linkedinUrl      String?
+  preferredChannel ChannelType?
+
+  // Convenciones base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  organization        Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client              Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  Quote               Quote[]
+  AppointmentAttendee AppointmentAttendee[]
+  Conversation        Conversation[]
+  SequenceEnrollment  SequenceEnrollment[]
+  identities          ContactIdentity[]
+  consentRecords      ConsentRecord[]
+  dataSubjectRequests DataSubjectRequest[]
+
+  @@map("contacts")
+}
+
+enum FileCategory {
+  CONTRACT
+  RUT
+  CHAMBER
+  ART
+  OTHER
+}
+
+model ClientFile {
+  id             String       @id @default(cuid())
+  organizationId String
+  clientId       String
+  fileName       String
+  mimeType       String
+  sizeBytes      BigInt
+  storageKey     String
+  category       FileCategory @default(OTHER)
+  uploadedById   String?
+
+  // Convenciones base
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy   User?        @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@map("client_files")
+}
+
+model ClientMergeLog {
+  id                String   @id @default(cuid())
+  organizationId    String
+  survivingClientId String
+  mergedClientId    String
+  mergedSnapshot    Json     @db.JsonB
+  mergedById        String?
+  mergedAt          DateTime @default(now())
+  reason            String?
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  survivingClient Client       @relation("MergeSurvivor", fields: [survivingClientId], references: [id], onDelete: Restrict)
+  mergedBy        User?        @relation(fields: [mergedById], references: [id], onDelete: SetNull)
+
+  @@map("client_merge_logs")
+}

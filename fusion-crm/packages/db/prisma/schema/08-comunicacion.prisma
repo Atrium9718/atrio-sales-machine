@@ -1,0 +1,321 @@
+enum ConversationStatus {
+  OPEN
+  PENDING
+  SNOOZED
+  RESOLVED
+  CLOSED
+}
+
+enum HandoffReason {
+  CUSTOMER_REQUEST
+  LOW_CONFIDENCE
+  COMPLEX_QUERY
+  ESCALATION
+  PRICING
+  COMPLAINT
+}
+
+enum HandoffType {
+  AI
+  HUMAN
+}
+
+enum SequenceTriggerType {
+  MANUAL
+  EVENT
+  SEGMENT
+}
+
+enum SequenceDelayUnit {
+  MINUTES
+  HOURS
+  DAYS
+  BUSINESS_DAYS
+}
+
+enum SequenceEnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  EXITED
+  FAILED
+}
+
+enum SurveyType {
+  CSAT
+  NPS
+  CES
+}
+
+enum KnowledgeAudience {
+  INTERNAL
+  CUSTOMER
+  BOTH
+}
+
+enum KnowledgeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ConversationIntent {
+  NEW_QUOTE
+  ORDER_STATUS
+  COMPLAINT
+  BILLING
+  GENERAL_INFO
+  OTHER
+}
+
+enum ConversationUrgency {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ConversationSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  VERY_NEGATIVE
+}
+
+model Channel {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  type           ChannelType
+  isActive       Boolean        @default(true)
+  conversations  Conversation[]
+  phoneLines     PhoneLine[]
+}
+
+model MessageTemplate {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  content        String
+  sequenceSteps  SequenceStep[]
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  organizationId String
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+  content        String
+
+  // Extensiones para Meta / WhatsApp / Webhook
+  mid          String? @unique
+  fromId       String?
+  toId         String?
+  direction    String  @default("INBOUND") // INBOUND, OUTBOUND
+  mediaUrl     String?
+  mediaType    String?
+  thumbnailUrl String?
+  transcript   String? @db.Text
+  replyToId    String?
+  context      Json?   @db.JsonB
+  isDeleted    Boolean @default(false)
+  reactions    Json?   @db.JsonB
+
+  createdAt DateTime @default(now())
+}
+
+model Conversation {
+  id             String   @id @default(cuid())
+  organizationId String
+  channelId      String
+  channel        Channel  @relation(fields: [channelId], references: [id])
+  clientId       String?
+  client         Client?  @relation(fields: [clientId], references: [id])
+  contactId      String?
+  contact        Contact? @relation(fields: [contactId], references: [id])
+  externalId     String?
+  subject        String?
+
+  status ConversationStatus @default(OPEN)
+
+  assigneeId       String?
+  assignedAt       DateTime?
+  intent           ConversationIntent?
+  urgency          ConversationUrgency?
+  sentiment        ConversationSentiment?
+  sentimentScore   Decimal?               @db.Decimal(5, 2)
+  autoClassifiedAt DateTime?
+  webchatSessions  WebchatSession[]
+  isAiHandled      Boolean                @default(true)
+  priority         String                 @default("MEDIUM")
+  tags             String[]
+  leadScore        Int                    @default(0)
+
+  firstResponseAt       DateTime?
+  lastMessageAt         DateTime?
+  lastInboundAt         DateTime?
+  lastOutboundAt        DateTime?
+  resolvedAt            DateTime?
+  resolutionTimeMinutes Int?
+  unreadCount           Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+  handoffs Handoff[]
+}
+
+model Handoff {
+  id             String        @id @default(cuid())
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  fromType       HandoffType
+  toType         HandoffType
+  toUserId       String?
+  reason         HandoffReason
+  context        Json?         @db.JsonB
+  createdAt      DateTime      @default(now())
+}
+
+model Sequence {
+  id             String              @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  goal           String?
+  triggerType    SequenceTriggerType @default(MANUAL)
+  triggerConfig  Json?               @db.JsonB
+  exitConditions Json?               @db.JsonB
+  isActive       Boolean             @default(true)
+
+  enrolledCount  Int     @default(0)
+  completedCount Int     @default(0)
+  responseRate   Decimal @default(0) @db.Decimal(5, 2)
+
+  steps       SequenceStep[]
+  enrollments SequenceEnrollment[]
+}
+
+model SequenceStep {
+  id              String            @id @default(cuid())
+  sequenceId      String
+  sequence        Sequence          @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  order           Int
+  delayValue      Int
+  delayUnit       SequenceDelayUnit
+  channel         String
+  templateId      String?
+  template        MessageTemplate?  @relation(fields: [templateId], references: [id])
+  conditions      Json?             @db.JsonB
+  abTestVariantOf String?
+}
+
+model SequenceEnrollment {
+  id            String   @id @default(cuid())
+  sequenceId    String
+  sequence      Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  clientId      String?
+  client        Client?  @relation(fields: [clientId], references: [id])
+  contactId     String?
+  contact       Contact? @relation(fields: [contactId], references: [id])
+  opportunityId String?
+
+  status           SequenceEnrollmentStatus @default(ACTIVE)
+  currentStepOrder Int                      @default(1)
+  nextRunAt        DateTime?
+  enrolledAt       DateTime                 @default(now())
+  exitedAt         DateTime?
+  exitReason       String?
+
+  executions StepExecution[]
+}
+
+model StepExecution {
+  id           String             @id @default(cuid())
+  enrollmentId String
+  enrollment   SequenceEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  stepId       String
+  messageId    String?
+  status       String
+  executedAt   DateTime           @default(now())
+  error        String?
+}
+
+model Survey {
+  id             String     @id @default(cuid())
+  organizationId String
+  type           SurveyType
+  pregunta       String
+  escala         Int
+  plantilla      String?
+  trigger        String?
+  isActive       Boolean    @default(true)
+}
+
+model SurveyResponse {
+  id             String   @id @default(cuid())
+  surveyId       String
+  clientId       String?
+  projectId      String?
+  conversationId String?
+  score          Int
+  comment        String?
+  respondedAt    DateTime @default(now())
+  sentiment      String?
+  followUpTaskId String?
+}
+
+model KnowledgeCategory {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  parentId       String?
+  order          Int     @default(0)
+  icon           String?
+
+  articles KnowledgeArticle[]
+}
+
+model KnowledgeArticle {
+  id             String             @id @default(cuid())
+  organizationId String
+  categoryId     String?
+  category       KnowledgeCategory? @relation(fields: [categoryId], references: [id])
+  title          String
+  slug           String
+  content        String
+  summary        String?
+  tags           String[]
+  audience       KnowledgeAudience  @default(BOTH)
+  status         KnowledgeStatus    @default(DRAFT)
+  version        Int                @default(1)
+
+  authorId     String
+  reviewedById String?
+  reviewedAt   DateTime?
+
+  viewCount       Int @default(0)
+  helpfulCount    Int @default(0)
+  notHelpfulCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chunks KnowledgeChunk[]
+
+  @@unique([organizationId, slug])
+}
+
+model KnowledgeChunk {
+  id         String                      @id @default(cuid())
+  articleId  String
+  article    KnowledgeArticle            @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  chunkIndex Int
+  content    String
+  // We represent the embedding vector as a generic JSON or string for Prisma if pgvector isn't strictly setup in Prisma schema yet.
+  // The prompt mentions: embedding vector(768). Prisma supports Unsupported("vector(768)").
+  embedding  Unsupported("vector(768)")?
+  tokenCount Int                         @default(0)
+  createdAt  DateTime                    @default(now())
+}

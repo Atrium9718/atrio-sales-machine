@@ -1,0 +1,12 @@
+{
+  "name": "@fusion/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fusion/core": "workspace:*",
+    "@fusion/db": "workspace:*",
+    "bullmq": "^6.3.4",
+    "ioredis": "^6.0.0"
+  }
+}

@@ -1,0 +1,70 @@
+// 09-efficiency.prisma
+
+model QuickReply {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String? // null si es compartida con todo el equipo
+  shortcut       String // ej: /tiempos
+  title          String
+  bodyText       String   @db.Text
+  channel        String? // opcional, para restringir a un canal
+  category       String?
+  usageCount     Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  CANCELLED
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  organizationId String
+  name           String
+  channel        String
+  segmentQuery   Json           @db.JsonB
+  templateId     String
+  scheduledAt    DateTime?
+  status         CampaignStatus @default(DRAFT)
+  sentCount      Int            @default(0)
+  deliveredCount Int            @default(0)
+  readCount      Int            @default(0)
+  clickCount     Int            @default(0)
+  optOutCount    Int            @default(0)
+  createdById    String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  recipients CampaignRecipient[]
+}
+
+model CampaignRecipient {
+  id          String    @id @default(cuid())
+  campaignId  String
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  clientId    String?
+  contactId   String?
+  status      String
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  clickedAt   DateTime?
+  optedOutAt  DateTime?
+}
+
+model ConversationReview {
+  id             String   @id @default(cuid())
+  conversationId String
+  // relation missing just for mockup simplicity
+  reviewedById   String
+  score          Int
+  criteria       Json     @db.JsonB
+  comments       String?  @db.Text
+  reviewedAt     DateTime @default(now())
+}
