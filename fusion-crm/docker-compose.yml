@@ -50,6 +50,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@postgres:5432/fusion_crm?schema=public
+      # firestore (por defecto) o postgres: dónde viven clientes, cotizaciones y proyectos
+      DATA_BACKEND: ${DATA_BACKEND:-firestore}
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
@@ -68,10 +70,14 @@ services:
     volumes:
       - ./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
     depends_on:
-      - postgres
-      - redis
-      - minio
-      - livekit
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      livekit:
+        condition: service_started
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.app.rule=Host(`app.fusioncg.com`)"
@@ -89,9 +95,14 @@ services:
     environment:
       POSTGRES_DB: fusion_crm
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-fusion_secret_db_2026}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fusion_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     networks:
       - fusion-internal
 

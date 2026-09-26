@@ -89,6 +89,25 @@ Si un navegador tenía datos de la versión anterior en `localStorage` (`fusion_
 - Cuando entra una solicitud, el equipo conectado recibe un **aviso emergente** en tiempo real y el menú muestra el número de solicitudes nuevas.
 - Los adjuntos se guardan en Firebase Storage (`client-requests/…`): la cuenta de servicio necesita el rol **Storage Object Admin** sobre el bucket de `storageBucket`. El tipo de cada archivo se valida por su contenido, no por la extensión.
 
+### Base de datos: migración a Postgres (fase 1)
+
+Clientes, cotizaciones (con sus ítems) y proyectos de producción pueden vivir en **Postgres**. Los elige la variable `DATA_BACKEND` (`firestore` por defecto, o `postgres`). Todo lo demás sigue en Firestore por ahora: empleados, chat, anuncios, portal y solicitudes, corridas del cotizador, configuración, etc.
+
+- **Esquema:** `packages/db/prisma/schema`. Migraciones en `schema/migrations`; se aplican con `bun run db:migrate`. El contenedor las aplica solo al arrancar con `DATA_BACKEND=postgres`.
+- **Qué se guarda dónde:** los datos clave van en columnas relacionales (cliente, NIT, responsable, número, estado, fechas, totales, ítems, etapa y costos), listas para reportes. El documento completo que usa la app se conserva en `appData`.
+- **Qué queda para la fase 2:** tareas, tiempos y aprobaciones de los proyectos siguen dentro de `appData`. Pasarán a sus propias tablas junto con la migración de empleados.
+
+**Paso a paso (en un momento sin actividad):**
+
+1. En `.env`: `DB_PASSWORD=<contraseña segura>` y `DATABASE_URL=postgresql://postgres:<contraseña>@localhost:5432/fusion_crm?schema=public`. Levantar la base: `docker compose up -d postgres`.
+2. Crear las tablas: `bun run db:migrate`.
+3. Simular: `bun run db:migrate-data -- --dry-run` (cuenta lo que hay en Firestore).
+4. Copiar: `bun run db:migrate-data`. Es idempotente y al final compara origen y destino. Si hay errores o diferencias, los lista y termina con código 1.
+5. Activar: `DATA_BACKEND=postgres` en `.env` y `docker compose up -d --build app`.
+6. Si hubo cambios en Firestore entre el paso 4 y el 5, repetir el paso 4 justo antes de activar.
+
+**Volver atrás:** `DATA_BACKEND=firestore` y reiniciar la app. Lo que se haya creado o editado mientras se usaba Postgres no está en Firestore.
+
 ### Docker / VPS
 
 `firebase-applet-config.json` debe existir en el directorio antes de construir la imagen (el frontend lo importa en tiempo de compilación).

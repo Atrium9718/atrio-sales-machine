@@ -24,6 +24,20 @@ jobs:
     name: Tipos, pruebas y build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: fusion_crm_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:ci@localhost:5432/fusion_crm_test?schema=public
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +58,13 @@ jobs:
       - name: Verificar tipos
         run: bun run lint
 
-      - name: Pruebas unitarias
+      - name: Aplicar migraciones de Postgres
+        run: DATABASE_URL="$TEST_DATABASE_URL" bun run db:migrate
+
+      - name: Esquema y migraciones sin diferencias
+        run: npx prisma migrate diff --from-url "$TEST_DATABASE_URL" --to-schema-datamodel packages/db/prisma/schema --exit-code
+
+      - name: Pruebas (unitarias e integración con Postgres)
         run: npx vitest run
 
       - name: Build (cliente Vite + servidor)
@@ -63,3 +83,15 @@ jobs:
 
       - name: Construir imagen
         run: docker build -t fusion-crm:ci .
+
+      - name: Arrancar con Postgres (aplica migraciones) y responder /api/health
+        run: |
+          docker network create ci
+          docker run -d --name pg --network ci -e POSTGRES_PASSWORD=ci -e POSTGRES_DB=fusion_crm pgvector/pgvector:pg16
+          for i in $(seq 1 30); do docker exec pg pg_isready -U postgres && break; sleep 2; done
+          sleep 3  # la imagen reinicia Postgres tras crear la base
+          docker run -d --name app --network ci -p 3000:3000 -e DATA_BACKEND=postgres \
+            -e DATABASE_URL="postgresql://postgres:ci@pg:5432/fusion_crm?schema=public" fusion-crm:ci
+          for i in $(seq 1 30); do curl -fs localhost:3000/api/health && exit 0; sleep 2; done
+          docker logs app
+          exit 1
