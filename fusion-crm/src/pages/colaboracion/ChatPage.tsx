@@ -93,6 +93,24 @@ interface SavedReply {
   body: string;
 }
 
+/** Etiqueta del separador de día: "Hoy", "Ayer" o la fecha. */
+export function dayLabel(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOf(now) - startOf(d)) / 86_400_000);
+  if (diffDays === 0) return 'Hoy';
+  if (diffDays === 1) return 'Ayer';
+  const label = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Mensajes seguidos del mismo autor (menos de 5 min) se muestran sin repetir nombre ni avatar. */
+export function isContinuation(prev: { authorId: string; createdAt: string } | undefined, msg: { authorId: string; createdAt: string }): boolean {
+  if (!prev || prev.authorId !== msg.authorId) return false;
+  const gap = new Date(msg.createdAt).getTime() - new Date(prev.createdAt).getTime();
+  return gap >= 0 && gap < 5 * 60_000 && new Date(prev.createdAt).toDateString() === new Date(msg.createdAt).toDateString();
+}
+
 interface UserPresence {
   userId: string;
   userName?: string;
@@ -115,7 +133,9 @@ export const ChatPage: React.FC = () => {
 
   const [channels, setChannels] = useState<Channel[]>([]);
   const [activeChannelId, setActiveChannelId] = useState<string>('chn-general');
-  const [mobileChatView, setMobileChatView] = useState<'sidebar' | 'chat'>('chat');
+  const [mobileChatView, setMobileChatView] = useState<'sidebar' | 'chat'>(
+    channelParam || targetUserParam ? 'chat' : 'sidebar'
+  );
   const [messages, setMessages] = useState<Message[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
   const [presences, setPresences] = useState<Record<string, UserPresence>>({});
@@ -161,6 +181,10 @@ export const ChatPage: React.FC = () => {
   const [newChannelType, setNewChannelType] = useState<'PUBLIC' | 'PRIVATE'>('PUBLIC');
   const [newChannelTopic, setNewChannelTopic] = useState<string>('');
 
+  // Modal de nuevo mensaje directo (selector de personas)
+  const [isNewDmModalOpen, setIsNewDmModalOpen] = useState<boolean>(false);
+  const [dmSearch, setDmSearch] = useState<string>('');
+
   // Modal de Presencia / Estado personalizado
   const [isPresenceModalOpen, setIsPresenceModalOpen] = useState<boolean>(false);
   const [myCustomEmoji, setMyCustomEmoji] = useState<string>('💬');
@@ -179,6 +203,7 @@ export const ChatPage: React.FC = () => {
 
   // Referencias para auto-scroll y timers
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const typingTimeoutRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -405,6 +430,11 @@ export const ChatPage: React.FC = () => {
       setThreadReplies([]);
     }
   }, [activeChannelId]);
+
+  // Al vaciarse el compositor (mensaje enviado) vuelve a su alto de una línea
+  useEffect(() => {
+    if (!inputText && composerRef.current) composerRef.current.style.height = '';
+  }, [inputText]);
 
   // Auto-scroll al final al recibir mensajes
   useEffect(() => {
@@ -643,11 +673,23 @@ export const ChatPage: React.FC = () => {
           return [...prev, data.channel];
         });
         setActiveChannelId(data.channel.id);
+        setMobileChatView('chat');
         setSearchParams({ channelId: data.channel.id });
       }
     } catch (err) {
       console.error('Error creando canal directo:', err);
     }
+  };
+
+  // Abrir (o crear) la conversación directa con una persona
+  const openDirectWith = (targetUserId: string) => {
+    setIsNewDmModalOpen(false);
+    setDmSearch('');
+    const existing = channels.find(
+      (c) => c.type === 'DIRECT' && c.members?.some((m: any) => m.userId === targetUserId)
+    );
+    if (existing) handleSelectChannel(existing.id);
+    else createDirectChannel(targetUserId);
   };
 
   // Crear nuevo canal público / privado
@@ -779,7 +821,7 @@ export const ChatPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-[calc(100vh-4.5rem)] bg-card rounded-xl border border-border overflow-hidden shadow-sm">
+    <div className="flex h-full min-h-[420px] bg-card md:rounded-xl md:border border-border overflow-hidden md:shadow-sm">
       {/* ==================================================================== */}
       {/* BARRA LATERAL: CANALES, DIRECTOS Y PRESENCIA                        */}
       {/* ==================================================================== */}
@@ -793,12 +835,20 @@ export const ChatPage: React.FC = () => {
               </div>
               <span className="font-bold text-sm text-foreground">Chat de Equipo</span>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setIsNewDmModalOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              <Edit2 className="w-3.5 h-3.5" /> Nuevo mensaje
+            </button>
             <button
               onClick={() => setIsNewChannelModalOpen(true)}
-              className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-              title="Crear nuevo canal"
+              className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-border text-xs font-semibold text-foreground hover:bg-muted transition-colors"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3.5 h-3.5" /> Nuevo canal
             </button>
           </div>
 
@@ -807,7 +857,7 @@ export const ChatPage: React.FC = () => {
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Buscar en mensajes (sin tildes)..."
+              placeholder="Buscar en los mensajes…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-background border border-border/80 rounded-lg pl-8 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
@@ -848,7 +898,7 @@ export const ChatPage: React.FC = () => {
                 <div
                   key={res.id}
                   onClick={() => {
-                    setActiveChannelId(res.channelId);
+                    handleSelectChannel(res.channelId);
                     setSearchResults(null);
                   }}
                   className="p-2 rounded-lg bg-card border border-border hover:border-primary/40 cursor-pointer space-y-1 transition-all"
@@ -868,22 +918,22 @@ export const ChatPage: React.FC = () => {
         ) : (
           /* Lista Clasificada de Canales */
           <div className="flex-1 overflow-y-auto p-2 space-y-4">
-            {/* CANALES PÚBLICOS */}
+            {/* CANALES (públicos y privados) */}
             <div>
               <div className="px-2 mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                <span>Canales Públicos</span>
+                <span>Canales</span>
                 <span className="text-[9px] font-normal">
-                  {channels.filter((c) => c.type === 'PUBLIC').length}
+                  {channels.filter((c) => c.type === 'PUBLIC' || c.type === 'PRIVATE').length}
                 </span>
               </div>
               <div className="space-y-0.5">
                 {channels
-                  .filter((c) => c.type === 'PUBLIC')
+                  .filter((c) => c.type === 'PUBLIC' || c.type === 'PRIVATE')
                   .map((ch) => (
                     <button
                       key={ch.id}
                       onClick={() => handleSelectChannel(ch.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      className={`w-full flex items-center justify-between px-2.5 py-2.5 md:py-1.5 rounded-lg text-sm md:text-xs font-medium transition-all ${
                         activeChannelId === ch.id
                           ? 'bg-primary text-primary-foreground shadow-sm'
                           : 'text-foreground/80 hover:bg-muted hover:text-foreground'
@@ -904,6 +954,7 @@ export const ChatPage: React.FC = () => {
             </div>
 
             {/* CANALES DE ENTIDAD (Cotizaciones / Proyectos / Clientes) */}
+            {channels.some((c) => c.type === 'ENTITY') && (
             <div>
               <div className="px-2 mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
                 <span>Cotizaciones y Proyectos</span>
@@ -918,7 +969,7 @@ export const ChatPage: React.FC = () => {
                     <button
                       key={ch.id}
                       onClick={() => handleSelectChannel(ch.id)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      className={`w-full flex items-center justify-between px-2.5 py-2.5 md:py-1.5 rounded-lg text-sm md:text-xs font-medium transition-all ${
                         activeChannelId === ch.id
                           ? 'bg-primary text-primary-foreground shadow-sm'
                           : 'text-foreground/80 hover:bg-muted hover:text-foreground'
@@ -932,15 +983,28 @@ export const ChatPage: React.FC = () => {
                   ))}
               </div>
             </div>
+            )}
 
             {/* MENSAJES DIRECTOS */}
             <div>
               <div className="px-2 mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
                 <span>Mensajes Directos</span>
-                <span className="text-[9px] font-normal">
-                  {channels.filter((c) => c.type === 'DIRECT').length}
-                </span>
+                <button
+                  onClick={() => setIsNewDmModalOpen(true)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10"
+                  title="Escribirle a alguien"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
               </div>
+              {!channels.some((c) => c.type === 'DIRECT') && (
+                <button
+                  onClick={() => setIsNewDmModalOpen(true)}
+                  className="w-full text-left px-2.5 py-2 rounded-lg text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  Aún no tienes conversaciones privadas. <span className="text-primary font-semibold">Escríbele a un compañero →</span>
+                </button>
+              )}
               <div className="space-y-0.5">
                 {channels
                   .filter((c) => c.type === 'DIRECT')
@@ -951,7 +1015,7 @@ export const ChatPage: React.FC = () => {
                       <button
                         key={ch.id}
                         onClick={() => handleSelectChannel(ch.id)}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                        className={`w-full flex items-center justify-between px-2.5 py-2.5 md:py-1.5 rounded-lg text-sm md:text-xs font-medium transition-all ${
                           activeChannelId === ch.id
                             ? 'bg-primary text-primary-foreground shadow-sm'
                             : 'text-foreground/80 hover:bg-muted hover:text-foreground'
@@ -1012,10 +1076,11 @@ export const ChatPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setMobileChatView('sidebar')}
-              className="md:hidden p-1.5 -ml-1 text-muted-foreground hover:bg-muted hover:text-foreground rounded-lg transition-colors shrink-0"
-              title="Volver a la lista de canales"
+              className="md:hidden p-2 -ml-1.5 text-foreground hover:bg-muted rounded-lg transition-colors shrink-0"
+              title="Volver a las conversaciones"
+              aria-label="Volver a las conversaciones"
             >
-              <ArrowLeft className="w-4.5 h-4.5" />
+              <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
               {activeChannel && getChannelIcon(activeChannel.type, activeChannel.name)}
@@ -1085,31 +1150,47 @@ export const ChatPage: React.FC = () => {
               </div>
               <h3 className="font-bold text-sm text-foreground">Inicio de la conversación</h3>
               <p className="text-xs text-muted-foreground max-w-sm">
-                Sé el primero en enviar un mensaje a este canal. Puedes usar @menciones, #cotizaciones o /respuestas.
+                Escribe abajo y presiona Enter para enviar. Usa @ para avisarle a alguien.
               </p>
             </div>
           ) : (
-            messages.map((msg) => {
+            messages.map((msg, idx) => {
               const isMine = msg.authorId === currentUserId;
               const hasAttachments = msg.attachments && msg.attachments.length > 0;
+              const prev = messages[idx - 1];
+              const newDay = !prev || new Date(prev.createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
+              const compact = !newDay && !msg.isPinned && isContinuation(prev, msg);
 
               return (
+                <React.Fragment key={msg.id}>
+                {newDay && (
+                  <div className="flex items-center gap-3 py-1" aria-label={dayLabel(msg.createdAt)}>
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[11px] font-semibold text-muted-foreground">{dayLabel(msg.createdAt)}</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                )}
                 <div
-                  key={msg.id}
-                  className={`group relative flex items-start gap-3 p-2 rounded-xl transition-all ${
+                  tabIndex={0}
+                  className={`group relative flex items-start gap-3 px-2 ${compact ? 'py-0.5 -mt-2' : 'py-2'} rounded-xl transition-all focus:outline-none ${
                     msg.isPinned
                       ? 'bg-amber-500/5 border border-amber-500/20'
-                      : 'hover:bg-muted/30'
+                      : 'hover:bg-muted/30 focus:bg-muted/30'
                   }`}
                 >
-                  {/* Avatar */}
-                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
-                    {msg.authorName.charAt(0)}
-                  </div>
+                  {/* Avatar (se omite en mensajes seguidos del mismo autor) */}
+                  {compact ? (
+                    <div className="w-8 shrink-0" />
+                  ) : (
+                    <div className={`w-8 h-8 rounded-full font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 ${isMine ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary'}`}>
+                      {msg.authorName.charAt(0)}
+                    </div>
+                  )}
 
                   {/* Contenido */}
                   <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2">
+                    {!compact && (
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-xs text-foreground">{msg.authorName}</span>
                       {msg.authorRole && (
                         <span className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-muted text-muted-foreground uppercase">
@@ -1131,14 +1212,15 @@ export const ChatPage: React.FC = () => {
                         </span>
                       )}
                     </div>
+                    )}
 
                     {/* Cuerpo del Mensaje con Markdown renderizado */}
-                    <div className="text-xs text-foreground leading-relaxed break-words">
+                    <div className="text-sm text-foreground leading-relaxed break-words">
                       {msg.deletedById ? (
                         <span className="italic text-muted-foreground">{msg.bodyPlain}</span>
                       ) : (
                         <div
-                          className="prose prose-sm dark:prose-invert max-w-none text-xs"
+                          className="prose prose-sm dark:prose-invert max-w-none text-sm"
                           dangerouslySetInnerHTML={{
                             __html: msg.renderedHtml || msg.body,
                           }}
@@ -1214,8 +1296,8 @@ export const ChatPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Barra de Acciones Flotante al Hover */}
-                  <div className="opacity-0 group-hover:opacity-100 absolute right-2 top-2 bg-card border border-border rounded-lg shadow-sm flex items-center p-0.5 gap-0.5 transition-opacity">
+                  {/* Barra de acciones: al pasar el mouse o al tocar el mensaje (móvil) */}
+                  <div className="opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto absolute right-2 -top-3 bg-card border border-border rounded-lg shadow-sm flex items-center p-0.5 gap-0.5 transition-opacity z-10">
                     <button
                       onClick={() => handleToggleReaction(msg.id, '👍')}
                       className="p-1 rounded hover:bg-muted text-xs"
@@ -1255,6 +1337,7 @@ export const ChatPage: React.FC = () => {
                     )}
                   </div>
                 </div>
+                </React.Fragment>
               );
             })
           )}
@@ -1279,7 +1362,7 @@ export const ChatPage: React.FC = () => {
         {/* ==================================================================== */}
         {/* COMPOSITOR DE MENSAJES Y AUTOCOMPLETADO                             */}
         {/* ==================================================================== */}
-        <div className="p-3 border-t border-border bg-card relative">
+        <div className="p-2 sm:p-3 border-t border-border bg-card relative shrink-0">
           {/* Overlay de Autocompletado */}
           {autocompleteMode !== 'NONE' && (
             <div className="absolute bottom-full left-3 right-3 mb-2 bg-card border border-border rounded-xl shadow-lg p-2 max-h-56 overflow-y-auto space-y-1 z-30">
@@ -1398,10 +1481,28 @@ export const ChatPage: React.FC = () => {
               disabled={isUploading}
               className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
               title="Adjuntar archivo o imagen (máx 25 MB)"
+              aria-label="Adjuntar archivo"
             >
               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
             </button>
             {isUploading && <span className="text-[10px] text-blue-500 absolute -top-4 left-2">{uploadProgressMsg}</span>}
+
+            {/* Mencionar a alguien (atajo visible para quien no conoce la @) */}
+            <button
+              type="button"
+              onClick={() => {
+                const sep = inputText && !/\s$/.test(inputText) ? ' ' : '';
+                setInputText(inputText + sep + '@');
+                setAutocompleteMode('MENTIONS');
+                setAutocompleteFilter('');
+                composerRef.current?.focus();
+              }}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              title="Mencionar a alguien"
+              aria-label="Mencionar a alguien"
+            >
+              <AtSign className="w-4 h-4" />
+            </button>
 
             {/* Input de texto multilínea */}
             <textarea
@@ -1414,8 +1515,16 @@ export const ChatPage: React.FC = () => {
                   handleSendMessage();
                 }
               }}
-              placeholder={`Escribe un mensaje en ${activeChannel?.name || 'el canal'} (Usa / para atajos, @ para personas, # para proyectos)...`}
-              className="flex-1 bg-transparent border-0 resize-none text-xs text-foreground placeholder:text-muted-foreground focus:outline-none max-h-32 py-1.5"
+              onInput={(e) => {
+                // Crece con el texto hasta ~6 líneas
+                const el = e.currentTarget;
+                el.style.height = 'auto';
+                el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+              }}
+              ref={composerRef}
+              placeholder={`Mensaje para ${activeChannel?.name || 'el canal'}`}
+              aria-label="Escribe tu mensaje"
+              className="flex-1 bg-transparent border-0 resize-none text-sm text-foreground placeholder:text-muted-foreground focus:outline-none max-h-40 py-2"
             />
 
             {/* Botón de Envío */}
@@ -1424,10 +1533,14 @@ export const ChatPage: React.FC = () => {
               disabled={(!inputText.trim() && pendingAttachments.length === 0) || isSending}
               className="p-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 shadow-sm"
               title="Enviar mensaje (Enter)"
+              aria-label="Enviar mensaje"
             >
-              <Send className="w-4 h-4" />
+              {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
+          <p className="hidden md:block mt-1.5 px-1 text-[11px] text-muted-foreground">
+            <b>Enter</b> envía · <b>Shift + Enter</b> nueva línea · <b>@</b> avisar a alguien · <b>#</b> vincular cotización o proyecto · <b>/</b> respuestas guardadas
+          </p>
         </div>
       </div>
 
@@ -1619,6 +1732,67 @@ export const ChatPage: React.FC = () => {
                   Guardar Estado
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* MODAL: NUEVO MENSAJE DIRECTO                                         */}
+      {/* ==================================================================== */}
+      {isNewDmModalOpen && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-2xl max-w-sm w-full p-5 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-sm text-foreground">¿A quién le quieres escribir?</h3>
+              <button
+                onClick={() => { setIsNewDmModalOpen(false); setDmSearch(''); }}
+                className="text-muted-foreground"
+                aria-label="Cerrar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Buscar por nombre o cargo…"
+                value={dmSearch}
+                onChange={(e) => setDmSearch(e.target.value)}
+                className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-0.5 -mx-1">
+              {(() => {
+                const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                const q = norm(dmSearch.trim());
+                const people = employees
+                  .filter((emp) => emp.id !== currentUserId)
+                  .filter((emp) => !q || norm(`${emp.name} ${emp.jobTitle || ''} ${emp.roleName || ''}`).includes(q));
+                if (people.length === 0) {
+                  return <p className="p-3 text-center text-xs text-muted-foreground">No hay personas que coincidan.</p>;
+                }
+                return people.map((emp) => (
+                  <button
+                    key={emp.id}
+                    onClick={() => openDirectWith(emp.id)}
+                    className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-muted text-left transition-colors"
+                  >
+                    <div className="relative shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-xs flex items-center justify-center">
+                        {emp.name.charAt(0)}
+                      </div>
+                      <span className="absolute -bottom-0.5 -right-0.5 flex">{renderPresenceDot(emp.id)}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{emp.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{emp.jobTitle || emp.roleName}</p>
+                    </div>
+                  </button>
+                ));
+              })()}
             </div>
           </div>
         </div>

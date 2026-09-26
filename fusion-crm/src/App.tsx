@@ -480,6 +480,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
   const location = useLocation();
   const identity = useCompanyIdentity();
+  // En el chat interno los botones flotantes tapaban la caja de mensaje: ahí se ocultan
+  // y la página ocupa todo el alto disponible.
+  const isChatRoute = /^(\/dashboard)?\/chat(\/|$)/.test(location.pathname);
 
   const mobileTabs = [
     { name: 'Inicio', path: '/dashboard', icon: HomeIcon },
@@ -526,7 +529,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-4 md:p-6 pb-24 md:pb-6">
+        <div className={isChatRoute ? 'flex-1 min-h-0 overflow-hidden md:p-4 pb-16 md:pb-4' : 'flex-1 overflow-auto p-4 md:p-6 pb-24 md:pb-6'}>
           {children}
         </div>
         
@@ -545,7 +548,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* FLOATING ACTION BUTTONS GLOBALLY (EXCLUSIVOS PARA SUPER ADMIN) */}
-        {isSuperAdmin && (
+        {isSuperAdmin && !isChatRoute && (
           <>
             <button 
               onClick={() => setIsNewModalOpen(true)}
@@ -559,9 +562,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             </button>
             <ChatWidget />
             <InterventorFloatingButton />
-            <ClientRequestToasts />
           </>
         )}
+        {isSuperAdmin && <ClientRequestToasts />}
 
         {/* Modales y Paneles de Telefonía (Etapa 17.4) */}
         <VoiceIncomingCallModal />
