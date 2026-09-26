@@ -83,7 +83,7 @@ services:
 
   # ── Base de Datos Relacional ──────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: fusion-postgres
     restart: unless-stopped
     environment:
