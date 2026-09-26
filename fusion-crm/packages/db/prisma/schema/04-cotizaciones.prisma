@@ -119,6 +119,9 @@ model Quote {
   tariffVersion   TariffVersion? @relation(fields: [tariffVersionId], references: [id], onDelete: Restrict)
   assistRunCount  Int            @default(0)
 
+  /// Campos adicionales del documento de la aplicación (fase 1 de la migración desde Firestore)
+  appData Json @default("{}") @db.JsonB
+
   // System
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -184,6 +187,9 @@ model QuoteItem {
   plateCount         Int?
   sheetsNeeded       Int?
   printTechnique     PrintTechnique?
+
+  /// Campos adicionales del documento de la aplicación (fase 1 de la migración desde Firestore)
+  appData Json @default("{}") @db.JsonB
 
   // System
   createdAt DateTime  @default(now())

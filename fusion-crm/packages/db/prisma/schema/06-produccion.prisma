@@ -149,6 +149,9 @@ model ProductionProject {
   paymentProofKey  String?
   itemsDetail      Json?    @db.JsonB
 
+  /// Campos adicionales del documento de la aplicación (fase 1 de la migración desde Firestore)
+  appData Json @default("{}") @db.JsonB
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
