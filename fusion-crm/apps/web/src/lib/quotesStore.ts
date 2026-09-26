@@ -44,27 +44,32 @@ export const getQuotes = (): any[] => quotesCollection.getAll();
 export const saveQuotes = (quotes: any[]) =>
   quotesCollection.save(quotes).catch((err) => console.warn('No se pudieron guardar las cotizaciones:', err));
 
-export const addQuote = (quote: any) => {
+const APPROVED_STATUSES = ['aprobada', 'ganada', 'ganado', 'aceptada'];
+const isApprovedStatus = (status: unknown) => APPROVED_STATUSES.includes(String(status ?? '').toLowerCase().trim());
+
+function upsertLocal(quote: any) {
   const quotes = [...getQuotes()];
-  const existingIndex = quotes.findIndex((q: any) => q.id === quote.id);
-  if (existingIndex >= 0) {
-    quotes[existingIndex] = { ...quotes[existingIndex], ...quote };
-  } else {
-    quotes.unshift(quote);
-  }
+  const idx = quotes.findIndex((q: any) => q.id === quote.id);
+  if (idx >= 0) quotes[idx] = quote;
+  else quotes.unshift(quote);
   quotesCollection.replaceLocal(quotes);
+}
 
-  // SI LA COTIZACIÓN SE FINALIZA O SE APRUEBA/GANA, ACTIVAR EL FLUJO DE CREACIÓN DE OT EN PRODUCCIÓN
+export const addQuote = (quote: any) => {
+  const existing = getQuotes().find((q: any) => q.id === quote.id);
+  const merged = existing ? { ...existing, ...quote } : quote;
   const normStatus = (quote.status || '').toLowerCase().trim();
-  if (normStatus === 'finalizada' || normStatus === 'aprobada' || normStatus === 'ganada' || normStatus === 'ganado' || normStatus === 'aceptada') {
-    createOrEnsureProjectForQuote(quote);
-    if (quote.status === 'Finalizada') {
-      approveQuote(quote.id, quote);
-      return;
-    }
+
+  // Aprobar (o finalizar) pasa por el servidor, que revisa precios y puede rechazarlo
+  if ((normStatus === 'finalizada' || isApprovedStatus(normStatus)) && !isApprovedStatus(existing?.status)) {
+    upsertLocal({ ...merged, status: existing?.status || 'Borrador' });
+    approveQuote(merged.id, merged).catch((err) => alert(err.message));
+    return;
   }
 
-  postQuote(quote).catch(err => console.warn('No se pudo guardar la cotización en el servidor:', err));
+  upsertLocal(merged);
+  if (isApprovedStatus(normStatus)) createOrEnsureProjectForQuote(merged);
+  postQuote(merged).catch(err => console.warn('No se pudo guardar la cotización en el servidor:', err));
 };
 
 export const syncQuotesFromApi = async () => {
@@ -104,85 +109,72 @@ export const generatePreQuoteWithAI = async (params: {
 };
 
 export const updateQuoteStatus = (quoteId: string, status: string, additionalData?: any) => {
-  const quotes = getQuotes();
-  const quote = quotes.find((q: any) => q.id === quoteId);
-  if (quote) {
-    quote.status = status;
-    if (additionalData) {
-      Object.assign(quote, additionalData);
-    }
-    quote.updatedAt = new Date().toISOString();
-    quotesCollection.replaceLocal(quotes);
+  const quote = getQuotes().find((q: any) => q.id === quoteId);
+  if (!quote) return;
 
-    const s = (status || '').toLowerCase().trim();
-    if (s === 'aprobada' || s === 'ganada' || s === 'ganado' || s === 'aceptada') {
-      createOrEnsureProjectForQuote(quote, additionalData);
-    }
-
-    try {
-      fetch(`/api/quotes/${quoteId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, ...additionalData })
-      }).catch(() => {
-        postQuote(quote).catch(e => console.warn('Could not sync quote status:', e));
-      });
-    } catch (e) {}
+  if (isApprovedStatus(status) && !isApprovedStatus(quote.status)) {
+    approveQuote(quoteId, { ...(additionalData || {}), status }).catch((err) => alert(err.message));
+    return;
   }
+
+  const updated = { ...quote, ...(additionalData || {}), status, updatedAt: new Date().toISOString() };
+  upsertLocal(updated);
+  if (isApprovedStatus(status)) createOrEnsureProjectForQuote(updated, additionalData);
+
+  fetch(`/api/quotes/${quoteId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, ...additionalData })
+  }).catch(() => {
+    postQuote(updated).catch(e => console.warn('Could not sync quote status:', e));
+  });
 };
 
+/**
+ * Aprueba una cotización. El servidor recalcula los montos y revisa los precios contra el
+ * costo del motor: si hay ítems por debajo del costo y el usuario no es administrador, la
+ * rechaza y esta función lanza un error con el motivo. Solo si el servidor la aprueba se
+ * actualiza la pantalla y se crea la orden de trabajo.
+ */
 export const approveQuote = async (quoteId: string, approvalData?: any) => {
-  const quotes = getQuotes();
-  const quote = quotes.find((q: any) => q.id === quoteId);
-  if (quote) {
-    quote.status = approvalData?.status || 'Aprobada';
-    quote.approvedBy = getCurrentUserName(approvalData?.approvedBy || '');
-    quote.approvedAt = new Date().toISOString();
-    if (approvalData?.items) quote.items = approvalData.items;
-    if (approvalData?.subtotal !== undefined) quote.subtotal = approvalData.subtotal;
-    if (approvalData?.total !== undefined) quote.total = approvalData.total;
-    if (approvalData?.deliveryTime) quote.deliveryTime = approvalData.deliveryTime;
-    if (approvalData?.paymentTerms) quote.paymentTerms = approvalData.paymentTerms;
-    quote.updatedAt = new Date().toISOString();
+  const current = getQuotes().find((q: any) => q.id === quoteId);
+  if (!current && !approvalData) return null;
 
-    quotesCollection.replaceLocal(quotes);
+  const payloadQuote = {
+    ...(current || {}),
+    ...(approvalData?.items ? { items: approvalData.items } : {}),
+    ...(approvalData?.deliveryTime ? { deliveryTime: approvalData.deliveryTime } : {}),
+    ...(approvalData?.paymentTerms ? { paymentTerms: approvalData.paymentTerms } : {}),
+    id: quoteId,
+  };
 
-    // Inmediatamente crear el Proyecto (OT) en Producción en etapa 'Por Revisar'
-    try {
-      createOrEnsureProjectForQuote(quote, approvalData);
-    } catch (err) {
-      console.warn('Error creating local project for approved quote:', err);
-    }
-
-    try {
-      const res = await fetch(`/api/quotes/${quoteId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(approvalData || {}),
-          quote
-        })
-      });
-      if (res.ok) {
-        const result = await res.json();
-        if (result.project) {
-          addProject(result.project);
-        } else {
-          syncProjectsFromApi();
-        }
-        if (result.success && result.quote) {
-          return result.quote;
-        }
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        console.warn('Backend returned error during approve:', errorData);
-      }
-    } catch (e: any) {
-      console.warn('Backend approve sync error (using local state):', e);
-    }
-    return quote;
+  let res: Response;
+  try {
+    res = await fetch(`/api/quotes/${quoteId}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...(approvalData || {}), quote: payloadQuote })
+    });
+  } catch {
+    throw new Error('No se pudo aprobar la cotización: no hay conexión con el servidor.');
   }
-  return null;
+
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok || !result.success) {
+    throw new Error(result.error || `No se pudo aprobar la cotización (HTTP ${res.status}).`);
+  }
+
+  const approved = {
+    ...payloadQuote,
+    ...(result.quote || {}),
+    // "Finalizada" se conserva en pantalla como antes; el servidor la guarda como aprobada
+    status: approvalData?.status || result.quote?.status || 'Aprobada',
+  };
+  upsertLocal(approved);
+
+  if (result.project) addProject(result.project);
+  else createOrEnsureProjectForQuote(approved, approvalData);
+  return approved;
 };
 
 export const markQuoteAsSent = async (quoteId: string, sendData: {

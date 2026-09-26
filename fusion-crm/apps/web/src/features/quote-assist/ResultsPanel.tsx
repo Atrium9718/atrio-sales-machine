@@ -19,7 +19,10 @@ import {
 export interface UnifiedRun {
   technique: 'DIGITAL' | 'LITHO';
   quantity: number;
+  /** Precio unitario con impuestos (para mostrar al asesor). */
   unitPrice: number;
+  /** Precio unitario antes de IVA: es el que se lleva a la cotización. */
+  unitPriceBeforeTax: number;
   totalPrice: number;
   imposition: number;
   printedSheets: number;
@@ -50,6 +53,7 @@ export function getResultRuns(
         technique: 'DIGITAL',
         quantity: Number(q.quantity),
         unitPrice: Number(q.unitPrice),
+        unitPriceBeforeTax: Number(q.unitPriceBeforeTax),
         totalPrice: Number(q.total),
         imposition: q.impositionPerSheet,
         printedSheets: q.sheetsPrinted,
@@ -75,6 +79,7 @@ export function getResultRuns(
         technique: 'LITHO',
         quantity: Number(q.quantity),
         unitPrice: Number(q.unitPrice),
+        unitPriceBeforeTax: Number(q.unitPriceBeforeTax),
         totalPrice: Number(q.total),
         imposition: q.impositionPerSheet,
         printedSheets: q.sheetsPrinted,

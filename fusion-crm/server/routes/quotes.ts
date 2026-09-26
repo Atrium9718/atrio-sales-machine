@@ -3,6 +3,8 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, limit, where, addDoc } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { eventBus } from '../events/DomainEventBus';
+import { reviewQuote, approvalBlockReason } from '../services/quoteReviewService';
+import { isApprovedStatus } from '../../packages/core/src/pricing/quoteReview';
 import { initializeApp as initAdmin, getApps as getAdminApps } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { getStorage as getAdminStorage } from 'firebase-admin/storage';
@@ -92,13 +94,35 @@ quotesRouter.post('/', async (req, res) => {
     const quoteId = quote.id || `quote-${Date.now()}`;
     const db = getDb();
     const docRef = doc(db, 'quotes', quoteId);
+    const existing = await getDoc(docRef);
+    const previous = existing.exists() ? existing.data() : null;
 
-    const dataToSave = {
+    const dataToSave: any = {
       ...quote,
       id: quoteId,
       updatedAt: new Date().toISOString(),
       createdAt: quote.createdAt || new Date().toISOString()
     };
+
+    // Los montos los calcula el servidor a partir de los ítems (no se confía en los del navegador)
+    const itemsToReview = Array.isArray(quote.items) ? quote.items : previous?.items;
+    if (Array.isArray(itemsToReview)) {
+      const { totals, pricingReview } = await reviewQuote(db, itemsToReview);
+      Object.assign(dataToSave, {
+        items: totals.items,
+        subtotal: totals.subtotal,
+        vatAmount: totals.vatAmount,
+        total: totals.total,
+        pricingReview,
+      });
+
+      const becomingApproved = isApprovedStatus(quote.status) && !isApprovedStatus(previous?.status);
+      if (becomingApproved) {
+        const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
+        if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
+        Object.assign(dataToSave, { approvedBy: actor(req).name, approvedById: actor(req).id, approvedAt: new Date().toISOString() });
+      }
+    }
 
     await setDoc(docRef, dataToSave, { merge: true });
     res.json({ success: true, quote: dataToSave });
@@ -126,7 +150,11 @@ quotesRouter.patch('/:id/status', async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
-    if (status === 'Aprobada') {
+    if (isApprovedStatus(status) && !isApprovedStatus(snap.data().status)) {
+      const { totals, pricingReview } = await reviewQuote(db, snap.data().items);
+      const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
+      if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
+      Object.assign(updates, { items: totals.items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total, pricingReview });
       updates.approvedBy = actor(req).name;
       updates.approvedById = actor(req).id;
       updates.approvedAt = new Date().toISOString();
@@ -186,9 +214,11 @@ quotesRouter.post('/:id/approve', async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
-    if (Array.isArray(items)) updates.items = items;
-    if (subtotal !== undefined) updates.subtotal = subtotal;
-    if (total !== undefined) updates.total = total;
+    // Montos y revisión de precios calculados en el servidor
+    const { totals, pricingReview } = await reviewQuote(db, Array.isArray(items) ? items : quoteData.items);
+    const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
+    if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
+    Object.assign(updates, { items: totals.items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total, pricingReview });
     if (paymentTerms) updates.paymentTerms = paymentTerms;
     if (deliveryTime) updates.deliveryTime = deliveryTime;
 

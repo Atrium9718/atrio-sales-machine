@@ -12,7 +12,7 @@ import jsPDF from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import autoTable from "jspdf-autotable";
 import { addProject } from "../../../../lib/projectsStore";
-import { getQuotes, addQuote, saveQuotes, updateQuoteStatus, deleteQuote, seedQuotes, syncQuotesFromApi } from "../../../../lib/quotesStore";
+import { getQuotes, addQuote, saveQuotes, updateQuoteStatus, approveQuote, deleteQuote, seedQuotes, syncQuotesFromApi } from "../../../../lib/quotesStore";
 import { generateQuotePDF, sendQuoteWhatsApp, sendQuoteEmail } from "../../../../lib/quoteSharing";
 import PrecotizacionesView from "../comercial/precotizaciones/PrecotizacionesView";
 import { QuoteAssistSheet, AssistRunReadOnlyModal, MassRecalculateModal } from "../../../../features/quote-assist";
@@ -105,6 +105,8 @@ interface QuoteItem {
   unitPrice: number;
   subtotal: number;
   applyVat: boolean;
+  /** Tasa de IVA del ítem (0,19 si no se indica). */
+  vatRate?: number;
   vatAmount: number;
   total: number;
   
@@ -544,7 +546,7 @@ function QuoteEditor({
       const etapa7Res = resolverDesdeCampoEditado(
         { quantity: it.quantity, unitPrice: it.unitPrice },
         'unitPrice',
-        CONFIG.vatRate,
+        it.vatRate ?? CONFIG.vatRate,
         it.applyVat
       );
 
@@ -1119,6 +1121,7 @@ function QuoteEditor({
   };
 
   const handleStatusChange = (newStatus: string) => {
+    const previousStatus = quoteStatus;
     setQuoteStatus(newStatus);
     if (newStatus === 'Finalizada' || newStatus === 'Enviada' || newStatus === 'Aprobada') {
       setIsTerminada(true);
@@ -1168,9 +1171,15 @@ function QuoteEditor({
             otherCost: 0,
             isBilled: false
           };
-         addProject(newProject);
-         updateQuoteStatus(quoteId, 'Aprobada');
-         alert(`¡Éxito! La Orden de Trabajo (${newProject.number}) fue enviada a Planta/Producción con escala blindada (${totalQuantity.toLocaleString()} uds).`);
+         approveQuote(quoteId, { status: 'Aprobada', items })
+           .then(() => {
+             addProject(newProject);
+             alert(`¡Éxito! La Orden de Trabajo (${newProject.number}) fue enviada a Planta/Producción con escala blindada (${totalQuantity.toLocaleString()} uds).`);
+           })
+           .catch((err) => {
+             setQuoteStatus(previousStatus);
+             alert(err.message);
+           });
       }
     } else {
       updateQuoteStatus(quoteId, newStatus);
@@ -1194,7 +1203,7 @@ function QuoteEditor({
           const res = resolverDesdeCampoEditado(
             { quantity: item.quantity, unitPrice: item.unitPrice, subtotal: item.subtotal, total: item.total },
             'quantity', // trigger recalc from subtotal base
-            CONFIG.vatRate,
+            item.vatRate ?? CONFIG.vatRate,
             newGlobalVat
           );
           return { 
@@ -1226,7 +1235,7 @@ function QuoteEditor({
 
         const res = resolverDesdeCampoEditado(
           { quantity: qty, unitPrice: uPrice, subtotal: sTotal, total: tTotal },
-          field, CONFIG.vatRate, item.applyVat
+          field, item.vatRate ?? CONFIG.vatRate, item.applyVat
         );
         const isManual = field === 'unitPrice' || field === 'lineSubtotal' || field === 'lineTotal';
         return { 
@@ -1406,7 +1415,7 @@ function QuoteEditor({
       try {
         const res = resolverDesdeCampoEditado(
           { quantity: item.quantity, unitPrice: item.unitPrice, subtotal: item.subtotal, total: item.total },
-          'quantity', CONFIG.vatRate, newVat
+          'quantity', item.vatRate ?? CONFIG.vatRate, newVat
         );
         return { 
           ...item, 
@@ -2866,7 +2875,6 @@ function QuoteHistory({
         const { approveQuote } = await import("../../../../lib/quotesStore");
         await approveQuote(quote.id, { 
           status: 'Aprobada',
-          approvedBy: 'Gerencia Comercial (Ganada)',
           total: quote.total,
           subtotal: quote.subtotal,
           items: quote.items

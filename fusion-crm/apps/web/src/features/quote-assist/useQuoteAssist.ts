@@ -9,7 +9,7 @@ import {
   PressQuoteResult,
   PressQuoteInput,
 } from '../../../../../packages/core/src/pricing/press/types';
-import { calculatePressQuote } from '../../../../../packages/core/src/pricing/press';
+import { calculatePressQuote, buildPressQuoteInput } from '../../../../../packages/core/src/pricing/press';
 import { DEFAULT_OFFICIAL_TARIFF } from '../../../../../packages/core/src/pricing/press/defaultTariff';
 import { calculateImposition } from '../../../../../packages/core/src/pricing/press/imposition';
 
@@ -117,63 +117,9 @@ export function useQuoteAssist(initialState?: Partial<AssistFormState>, quoteId?
 
   // 5. Motor de cálculo sincrónico (< 16ms)
   const result: PressQuoteResult | null = useMemo(() => {
-    const quantities = [form.qty1, form.qty2, form.qty3].filter(
-      (q): q is number => !!q && q > 0
-    );
-    if (quantities.length === 0 || form.artWidthCm <= 0 || form.artHeightCm <= 0) {
-      return null;
-    }
-
+    const quoteInput = buildPressQuoteInput(form, tariff);
+    if (!quoteInput) return null;
     try {
-      const quoteInput: PressQuoteInput = {
-        technique: form.technique,
-        jobName: form.jobName || 'Trabajo gráfico',
-        artWidthCm: form.artWidthCm,
-        artHeightCm: form.artHeightCm,
-        applyBleed: form.applyBleed,
-        pagesPerUnit: form.pagesPerUnit ?? undefined,
-        quantities,
-        tariff,
-        digital:
-          form.technique === 'DIGITAL' || form.technique === 'BOTH'
-            ? {
-                formatName: form.digitalFormatName,
-                inkMode: form.digitalInkMode,
-                onDemand: form.digitalOnDemand,
-              }
-            : undefined,
-        litho:
-          form.technique === 'LITHO' || form.technique === 'BOTH'
-            ? {
-                paperName: form.paperName,
-                sheetFormat: form.sheetFormat,
-                sheetCutCode: form.sheetCutCode,
-                plateFormatName: form.lithoPlateFormatName,
-                inkSetCode: form.lithoInkSetCode,
-                plateBacking: form.lithoPlateBacking,
-                manualPlateCount: form.lithoManualPlateCount ?? undefined,
-                marginPercent: (form.lithoMarginPercent || 30) / 100,
-                wastageSheets: form.lithoWastageSheets ?? 200,
-              }
-            : undefined,
-        finishing: {
-          cut: form.cutRuns > 0 ? { runs: form.cutRuns } : undefined,
-          trim: form.trimRuns > 0 ? { runs: form.trimRuns } : undefined,
-          perforation: form.perforationCount > 0 ? { count: form.perforationCount } : undefined,
-          binding: form.bindingLoops > 0 ? { loops: form.bindingLoops } : undefined,
-          lamination: form.laminationMode !== 'NONE' ? { mode: form.laminationMode } : undefined,
-          halfCut: form.halfCutLinearCm > 0 ? { linearCm: form.halfCutLinearCm } : undefined,
-          dieCut: form.dieCutPrice > 0 ? { price: form.dieCutPrice } : undefined,
-        },
-        commercial: {
-          vatLabel: form.vatLabel,
-          otherTaxPercent: form.otherTaxPercent || 0,
-          clientDiscountLabel: form.clientDiscountLabel,
-          otherDiscountPercent: form.otherDiscountPercent || 0,
-          salesCommissionPercent: form.salesCommissionPercent || 0,
-        },
-      };
-
       return calculatePressQuote(quoteInput);
     } catch (err) {
       console.error('Error running calculatePressQuote:', err);

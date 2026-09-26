@@ -16,6 +16,7 @@ export * from './finishing';
 export * from './wide-format';
 export * from './defaultTariff';
 export * from './manual-litho';
+export * from './assistInput';
 
 /**
  * MOTOR DE CÁLCULO LITOGRÁFICO Y DIGITAL (FUNCIÓN PURA)

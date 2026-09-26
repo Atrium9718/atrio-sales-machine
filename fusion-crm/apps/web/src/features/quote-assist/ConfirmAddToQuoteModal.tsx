@@ -3,6 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { AssistFormState } from './types';
 import { PressQuoteResult, PressTechnique } from '../../../../../packages/core/src/pricing/press/types';
 import { getResultRuns, UnifiedRun } from './ResultsPanel';
+import { resolveVatRate } from '../../../../../packages/core/src/pricing/press/digital';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Montos de la línea en el modelo del cotizador: cantidad × precio antes de IVA, más IVA. */
+function engineLineAmounts(run: UnifiedRun, vatRate: number) {
+  const unitPrice = round2(run.unitPriceBeforeTax);
+  const lineSubtotal = round2(unitPrice * run.quantity);
+  const vatAmount = round2(lineSubtotal * vatRate);
+  const total = round2(lineSubtotal + vatAmount);
+  return { unitPrice, subtotal: lineSubtotal, lineSubtotal, vatAmount, total, lineTotal: total };
+}
 import { addPrintOrder } from '../../lib/printOrdersStore';
 import {
   Check,
@@ -251,7 +263,8 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
       if (form.dieCutPrice > 0) finishList.push(`Troquelado`);
       const finishStr = finishList.length > 0 ? finishList.join(', ') : 'Sin acabados';
 
-      const applyVat = form.vatLabel !== 'EXENTO';
+      const vatRate = Number(resolveVatRate(form.vatLabel));
+      const applyVat = vatRate > 0;
 
       // 4. Si "Una línea por cantidad" está encendido: Crear un QuoteItem por cada cantidad
       let createdItems: any[] = [];
@@ -297,13 +310,10 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
             finishes: finishStr,
             quantity: r.quantity,
             unit: 'Unidades',
-            unitPrice: Math.round(r.unitPrice * 100) / 100,
-            subtotal: Math.round(r.subtotalBeforeMargin * 100) / 100,
-            lineSubtotal: Math.round((r.unitPrice * r.quantity) * 100) / 100,
+            // Precio de venta antes de IVA; el IVA va aparte con la tasa del motor
+            ...engineLineAmounts(r, vatRate),
             applyVat,
-            vatAmount: Math.round(r.vat * 100) / 100,
-            total: Math.round(r.totalPrice * 100) / 100,
-            lineTotal: Math.round(r.totalPrice * 100) / 100,
+            vatRate,
 
             // Costos técnicos del motor
             rawMaterialCost: Math.round(paperCost),
@@ -311,7 +321,7 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
             otherCost: Math.round(finishCost),
             internalCost: Math.round(r.internalCost),
             marginPercent: r.marginPercent,
-            suggestedUnitPrice: Math.round(r.unitPrice * 100) / 100,
+            suggestedUnitPrice: Math.round(r.unitPriceBeforeTax * 100) / 100,
             manualAdjustedPrice: undefined,
             isManuallyAdjusted: false,
 
@@ -383,20 +393,17 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
             finishes: finishStr,
             quantity: r1.quantity,
             unit: 'Unidades',
-            unitPrice: Math.round(r1.unitPrice * 100) / 100,
-            subtotal: Math.round(r1.subtotalBeforeMargin * 100) / 100,
-            lineSubtotal: Math.round((r1.unitPrice * r1.quantity) * 100) / 100,
+            // Precio de venta antes de IVA; el IVA va aparte con la tasa del motor
+            ...engineLineAmounts(r1, vatRate),
             applyVat,
-            vatAmount: Math.round(r1.vat * 100) / 100,
-            total: Math.round(r1.totalPrice * 100) / 100,
-            lineTotal: Math.round(r1.totalPrice * 100) / 100,
+            vatRate,
 
             rawMaterialCost: Math.round(paperCost),
             outsourcedCost: 0,
             otherCost: Math.round(finishCost),
             internalCost: Math.round(r1.internalCost),
             marginPercent: r1.marginPercent,
-            suggestedUnitPrice: Math.round(r1.unitPrice * 100) / 100,
+            suggestedUnitPrice: Math.round(r1.unitPriceBeforeTax * 100) / 100,
             manualAdjustedPrice: undefined,
             isManuallyAdjusted: false,
 

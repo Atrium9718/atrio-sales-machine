@@ -34,7 +34,7 @@ function getDb() {
 }
 
 // In-memory fallback stores
-const memoryAssistRuns = new Map<string, any>();
+export const memoryAssistRuns = new Map<string, any>();
 const memoryTemplates: any[] = [
   {
     id: 'tmpl-01',

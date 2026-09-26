@@ -205,15 +205,16 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
       return;
     }
 
-    await approveQuote(quote.id, {
-      approvedBy: getCurrentUserName(),
-      items: quote.items,
-      subtotal: quote.subtotal,
-      total: quote.total,
-      deliveryTime: quote.deliveryTime,
-      paymentTerms: quote.paymentTerms
-    });
-    triggerFeedback(`¡Pre-cotización ${quote.number} aprobada formalmente para envío!`);
+    try {
+      await approveQuote(quote.id, {
+        items: quote.items,
+        deliveryTime: quote.deliveryTime,
+        paymentTerms: quote.paymentTerms
+      });
+      triggerFeedback(`¡Pre-cotización ${quote.number} aprobada formalmente para envío!`);
+    } catch (err: any) {
+      triggerFeedback(err.message);
+    }
   };
 
   // Direct send handler
