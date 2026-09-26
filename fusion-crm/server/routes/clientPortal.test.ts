@@ -6,6 +6,7 @@ import {
   NewRequestSchema,
   allowRequest,
   toClientRequestView,
+  parseIncomingAttachments,
 } from './clientPortal';
 
 describe('tokens del portal', () => {
@@ -68,6 +69,43 @@ describe('toClientRequestView', () => {
       id: 's1', linkId: 'hash', clientName: 'X', clientNit: '1', description: 'd', quantity: 1, desiredDate: null,
       contactName: 'Ana', contactPhone: '300', status: 'NEW', response: null, createdAt: 'c', updatedAt: 'u',
     });
-    expect(Object.keys(view).sort()).toEqual(['createdAt', 'description', 'desiredDate', 'id', 'quantity', 'response', 'status']);
+    expect(Object.keys(view).sort()).toEqual(['attachments', 'createdAt', 'description', 'desiredDate', 'id', 'quantity', 'response', 'status']);
+  });
+
+  it('muestra los adjuntos sin su ruta interna de almacenamiento', () => {
+    const view = toClientRequestView({
+      id: 's1', linkId: 'hash', clientName: 'X', clientNit: '1', description: 'd', quantity: null, desiredDate: null,
+      contactName: null, contactPhone: null, status: 'NEW', response: null, createdAt: 'c', updatedAt: 'u',
+      attachments: [{ name: 'arte.pdf', contentType: 'application/pdf', size: 10, storagePath: 'client-requests/s1/1-arte.pdf' }],
+    });
+    expect(view.attachments).toEqual([{ name: 'arte.pdf', size: 10, contentType: 'application/pdf' }]);
+    expect(JSON.stringify(view)).not.toContain('client-requests/');
+  });
+});
+
+describe('parseIncomingAttachments', () => {
+  const pdf = Buffer.from('%PDF-1.7 contenido').toString('base64');
+
+  it('acepta solicitudes sin adjuntos', () => {
+    expect(parseIncomingAttachments(undefined)).toEqual({ ok: true, files: [] });
+  });
+
+  it('decodifica y tipa por contenido', () => {
+    const result = parseIncomingAttachments([{ name: 'arte.pdf', dataBase64: pdf }]) as any;
+    expect(result.ok).toBe(true);
+    expect(result.files[0].mime).toBe('application/pdf');
+    expect(result.files[0].bytes.toString()).toBe('%PDF-1.7 contenido');
+  });
+
+  it('rechaza más de 3 archivos, formatos no permitidos y datos malformados', () => {
+    expect(parseIncomingAttachments(Array(4).fill({ name: 'a.pdf', dataBase64: pdf }))).toMatchObject({ ok: false });
+    expect(parseIncomingAttachments([{ name: 'a.pdf', dataBase64: Buffer.from('<script>').toString('base64') }])).toMatchObject({ ok: false });
+    expect(parseIncomingAttachments([{ name: 'a.pdf' }])).toMatchObject({ ok: false });
+    expect(parseIncomingAttachments('x')).toMatchObject({ ok: false });
+  });
+
+  it('rechaza archivos demasiado grandes antes de decodificarlos', () => {
+    const huge = 'A'.repeat(15 * 1024 * 1024);
+    expect(parseIncomingAttachments([{ name: 'a.pdf', dataBase64: huge }])).toMatchObject({ ok: false });
   });
 });

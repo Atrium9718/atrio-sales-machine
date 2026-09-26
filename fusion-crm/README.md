@@ -78,10 +78,12 @@ Si un navegador tenía datos de la versión anterior en `localStorage` (`fusion_
 ### Portal del cliente
 
 - El equipo genera un **enlace privado por cliente** en *Comercial y CRM → Portal de clientes* y se lo envía (hay botón para copiar y para WhatsApp). El cliente no necesita cuenta.
-- En `/portal/<token>` el cliente ve sus pedidos con **barra de progreso** y las etapas de producción (revisión, programado, en producción, acabados, listo, entregado), sin costos ni notas internas. También puede **enviar nuevas solicitudes** y ver las respuestas.
+- En `/portal/<token>` el cliente ve sus pedidos con **barra de progreso** y las etapas de producción (revisión, programado, en producción, acabados, listo, entregado), sin costos ni notas internas. También puede **enviar nuevas solicitudes** con hasta 3 archivos (PDF, AI, EPS, PNG, JPG, WEBP o TIFF; 10 MB cada uno) y ver las respuestas.
 - Qué pedidos ve: los de cotizaciones con el mismo NIT del enlace o, si no hay NIT, los que coinciden exactamente con el nombre del cliente.
 - Seguridad: el token (192 bits) solo se guarda como hash SHA-256; los enlaces se pueden revocar; el formulario admite 10 solicitudes por hora por enlace.
-- Las solicitudes llegan a la misma página interna, donde se les cambia el estado (nueva, en revisión, cotizada, cerrada) y se responde al cliente.
+- Las solicitudes llegan a la misma página interna, donde se descargan sus adjuntos, se les cambia el estado (nueva, en revisión, cotizada, cerrada) y se responde al cliente.
+- Cuando entra una solicitud, el equipo conectado recibe un **aviso emergente** en tiempo real y el menú muestra el número de solicitudes nuevas.
+- Los adjuntos se guardan en Firebase Storage (`client-requests/…`): la cuenta de servicio necesita el rol **Storage Object Admin** sobre el bucket de `storageBucket`. El tipo de cada archivo se valida por su contenido, no por la extensión.
 
 ### Docker / VPS
 

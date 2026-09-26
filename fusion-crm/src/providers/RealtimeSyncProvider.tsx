@@ -178,6 +178,13 @@ export const RealtimeSyncProvider: React.FC<RealtimeSyncProviderProps> = ({ chil
             break;
           }
 
+          // --- PORTAL DEL CLIENTE ---
+          case 'CLIENT_REQUEST_CREATED': {
+            window.dispatchEvent(new CustomEvent('fusion_client_request_created', { detail: payload }));
+            window.dispatchEvent(new Event('fusion_client_requests_updated'));
+            break;
+          }
+
           // --- PURGA Y RESETEO DE DATOS TRANSITORIOS ---
           case 'SYSTEM_TRANSIENT_DATA_PURGED': {
             console.log(

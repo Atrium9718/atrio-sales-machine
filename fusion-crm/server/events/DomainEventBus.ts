@@ -25,6 +25,13 @@ export interface DomainEventPayloadMap {
     quoteId: string;
     totalValue: number;
   };
+  CLIENT_REQUEST_CREATED: {
+    requestId: string;
+    clientName: string;
+    preview: string;
+    attachmentCount: number;
+    createdAt: string;
+  };
   SYSTEM_TRANSIENT_DATA_PURGED: {
     purgedCollections: string[];
     recordsDeleted: number;

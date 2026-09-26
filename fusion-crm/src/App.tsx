@@ -73,7 +73,6 @@ const VeaPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboa
 const AgendaComercialPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/agenda/page'));
 const ComercialDashboardPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/comercial/page"));
 const PrecotizacionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/precotizaciones/page'));
-const PublicPortalPage = React.lazy(() => import('../apps/web/src/app/c/[publicToken]/page'));
 const ClientPortalPage = React.lazy(() => import('../apps/web/src/app/portal/[token]/page'));
 const PortalClientesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/portal-clientes/page'));
 const KioskPage = React.lazy(() => import('../apps/web/src/app/kiosko/page'));
@@ -129,6 +128,7 @@ const IATestingPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/d
 const KioskoPlantaPage = React.lazy(() => import('../apps/web/src/app/kiosko-planta/page'));
 import { InterventoriaPage } from './pages/admin/InterventoriaPage';
 import { InterventorFloatingButton } from './components/interventoria/InterventorFloatingButton';
+import { ClientRequestToasts, useNewClientRequestsCount } from './components/portal/ClientRequestAlerts';
 
 function useCompanyIdentity() {
   const [identity, setIdentity] = React.useState<{ name: string; logoUrl?: string }>({
@@ -196,6 +196,8 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
 
   const voiceStatus = useVoiceStatus();
   const { canSeeModule, isSuperAdmin } = useFusionAuth();
+  const newClientRequests = useNewClientRequestsCount(canSeeModule('comercial'));
+  const itemBadges: Record<string, number> = { '/dashboard/portal-clientes': newClientRequests };
   const permissions = isSuperAdmin ? ['*'] : ((window as any).__FUSION_USER_PERMISSIONS__ || ['*']);
   const hasVoiceUse = isSuperAdmin || can(permissions, 'voice:use');
   const canSupervise = isSuperAdmin || can(permissions, 'voice:supervise');
@@ -433,6 +435,14 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
                                 SUPER
                               </span>
                             )}
+                            {itemBadges[item.path] > 0 && (
+                              <span
+                                className="min-w-5 h-5 px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center shrink-0"
+                                aria-label={`${itemBadges[item.path]} nuevas`}
+                              >
+                                {itemBadges[item.path] > 99 ? '99+' : itemBadges[item.path]}
+                              </span>
+                            )}
                           </Link>
                         );
                       })}
@@ -549,6 +559,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
             </button>
             <ChatWidget />
             <InterventorFloatingButton />
+            <ClientRequestToasts />
           </>
         )}
 
@@ -588,7 +599,6 @@ export default function App() {
           <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-background text-primary font-bold">Cargando Sistema Fusion...</div>}>
             <Routes>
             {/* Public Routes outside dashboard layout */}
-            <Route path="/c/:publicToken" element={<PublicPortalPage />} />
             <Route path="/portal/:token" element={<ClientPortalPage />} />
             <Route path="/kiosko" element={<KioskPage />} />
             <Route path="/kiosko-planta" element={<KioskoPlantaPage />} />

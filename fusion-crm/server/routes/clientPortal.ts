@@ -14,7 +14,10 @@ import {
   where,
   type Firestore,
 } from 'firebase/firestore';
+import { getStorage } from 'firebase-admin/storage';
 import { loadFirebaseConfig } from '../auth/firebaseConfig';
+import { getAdminApp } from '../auth/firebaseAdmin';
+import { eventBus } from '../events/DomainEventBus';
 import {
   toClientProjectView,
   projectBelongsToClient,
@@ -22,6 +25,12 @@ import {
   normalizeClientName,
   type ClientProjectView,
 } from '../../packages/core/src/portal/clientProgress';
+import {
+  MAX_CLIENT_ATTACHMENTS,
+  MAX_CLIENT_ATTACHMENT_BYTES,
+  sanitizeFileName,
+  validateClientAttachment,
+} from '../../packages/core/src/portal/attachments';
 
 /**
  * Portal del cliente.
@@ -50,6 +59,14 @@ export interface PortalLink {
   lastAccessAt: string | null;
 }
 
+export interface ClientRequestAttachment {
+  name: string;
+  contentType: string;
+  size: number;
+  /** Ruta interna en Firebase Storage (no se expone al cliente). */
+  storagePath: string;
+}
+
 export interface ClientRequest {
   id: string;
   linkId: string;
@@ -60,6 +77,7 @@ export interface ClientRequest {
   desiredDate: string | null;
   contactName: string | null;
   contactPhone: string | null;
+  attachments?: ClientRequestAttachment[];
   status: RequestStatus;
   response: string | null;
   createdAt: string;
@@ -102,10 +120,69 @@ export function toClientRequestView(r: ClientRequest) {
     description: r.description,
     quantity: r.quantity,
     desiredDate: r.desiredDate,
+    attachments: (r.attachments || []).map((a) => ({ name: a.name, size: a.size, contentType: a.contentType })),
     status: r.status,
     response: r.response,
     createdAt: r.createdAt,
   };
+}
+
+// ── Adjuntos (Firebase Storage) ─────────────────────────────────
+
+function getBucket() {
+  const app = getAdminApp();
+  if (!app || !loadFirebaseConfig().storageBucket) return null;
+  try {
+    return getStorage(app).bucket();
+  } catch {
+    return null;
+  }
+}
+
+export interface IncomingAttachment {
+  name: string;
+  bytes: Buffer;
+  mime: string;
+}
+
+/** Decodifica y valida los adjuntos del cuerpo de la solicitud. */
+export function parseIncomingAttachments(raw: unknown): { ok: true; files: IncomingAttachment[] } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, files: [] };
+  if (!Array.isArray(raw)) return { ok: false, error: 'Adjuntos inválidos' };
+  if (raw.length > MAX_CLIENT_ATTACHMENTS) {
+    return { ok: false, error: `Puedes adjuntar máximo ${MAX_CLIENT_ATTACHMENTS} archivos.` };
+  }
+  const files: IncomingAttachment[] = [];
+  for (const item of raw) {
+    const name = typeof item?.name === 'string' ? item.name.slice(0, 200) : '';
+    const data = typeof item?.dataBase64 === 'string' ? item.dataBase64 : '';
+    if (!name || !data) return { ok: false, error: 'Adjuntos inválidos' };
+    // Evita decodificar cadenas muy grandes antes de medir (base64 ≈ 4/3 del tamaño real)
+    if (data.length > Math.ceil((MAX_CLIENT_ATTACHMENT_BYTES * 4) / 3) + 8) {
+      return { ok: false, error: `"${name}" supera el máximo de ${MAX_CLIENT_ATTACHMENT_BYTES / (1024 * 1024)} MB.` };
+    }
+    const bytes = Buffer.from(data, 'base64');
+    const check = validateClientAttachment(name, bytes);
+    if ('error' in check) return { ok: false, error: check.error };
+    files.push({ name, bytes, mime: check.mime });
+  }
+  return { ok: true, files };
+}
+
+async function streamAttachment(res: Response, attachment: ClientRequestAttachment | undefined) {
+  const bucket = getBucket();
+  if (!attachment || !bucket) return res.status(404).json({ success: false, error: 'Archivo no encontrado' });
+  try {
+    const [buffer] = await bucket.file(attachment.storagePath).download();
+    res.setHeader('Content-Type', attachment.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFileName(attachment.name)}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(buffer);
+  } catch (err) {
+    console.error('[portal] Error descargando adjunto:', err);
+    res.status(404).json({ success: false, error: 'Archivo no encontrado' });
+  }
 }
 
 async function findActiveLink(db: Firestore, token: string): Promise<PortalLink | null> {
@@ -186,14 +263,32 @@ portalPublicRouter.post('/:token/requests', async (req: Request, res: Response) 
     if (!parsed.success) {
       return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || 'Datos inválidos' });
     }
+    const incoming = parseIncomingAttachments(req.body?.attachments);
+    if ('error' in incoming) return res.status(400).json({ success: false, error: incoming.error });
+    const bucket = incoming.files.length > 0 ? getBucket() : null;
+    if (incoming.files.length > 0 && !bucket) {
+      return res.status(503).json({
+        success: false,
+        error: 'En este momento no podemos recibir archivos. Envía la solicitud sin adjuntos y tu asesor te los pedirá.',
+      });
+    }
     if (!allowRequest(link.id)) {
       return res.status(429).json({ success: false, error: 'Has enviado muchas solicitudes. Intenta de nuevo más tarde.' });
     }
 
     const now = new Date().toISOString();
     const data = parsed.data;
+    const requestId = `sol-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+
+    const attachments: ClientRequestAttachment[] = [];
+    for (const [i, file] of incoming.files.entries()) {
+      const storagePath = `client-requests/${requestId}/${i + 1}-${sanitizeFileName(file.name)}`;
+      await bucket!.file(storagePath).save(file.bytes, { contentType: file.mime, resumable: false });
+      attachments.push({ name: file.name, contentType: file.mime, size: file.bytes.length, storagePath });
+    }
+
     const request: ClientRequest = {
-      id: `sol-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+      id: requestId,
       linkId: link.id,
       clientName: link.clientName,
       clientNit: link.clientNit,
@@ -202,17 +297,44 @@ portalPublicRouter.post('/:token/requests', async (req: Request, res: Response) 
       desiredDate: data.desiredDate || null,
       contactName: data.contactName || null,
       contactPhone: data.contactPhone || null,
+      attachments,
       status: 'NEW',
       response: null,
       createdAt: now,
       updatedAt: now,
     };
     await setDoc(doc(db, REQUESTS, request.id), request);
+
+    // Aviso en tiempo real al equipo (SSE)
+    eventBus.publish('CLIENT_REQUEST_CREATED', {
+      requestId: request.id,
+      clientName: request.clientName,
+      preview: request.description.slice(0, 140),
+      attachmentCount: attachments.length,
+      createdAt: request.createdAt,
+    });
+
     res.status(201).json({ success: true, request: toClientRequestView(request) });
   } catch (err: any) {
     console.error('[portal] Error creando solicitud:', err);
     res.status(500).json({ success: false, error: 'No se pudo enviar la solicitud' });
   }
+});
+
+async function getRequest(db: Firestore, id: string): Promise<ClientRequest | null> {
+  if (!/^sol-[A-Za-z0-9-]{1,60}$/.test(id)) return null;
+  const snap = await getDoc(doc(db, REQUESTS, id));
+  return snap.exists() ? { ...(snap.data() as ClientRequest), id: snap.id } : null;
+}
+
+portalPublicRouter.get('/:token/requests/:id/attachments/:index', async (req: Request, res: Response) => {
+  const db = getDb();
+  if (!db) return res.status(503).json({ success: false, error: 'Servicio no disponible' });
+  const link = await findActiveLink(db, req.params.token);
+  if (!link) return res.status(404).json(NOT_FOUND);
+  const request = await getRequest(db, req.params.id);
+  if (!request || request.linkId !== link.id) return res.status(404).json({ success: false, error: 'Archivo no encontrado' });
+  await streamAttachment(res, request.attachments?.[Number(req.params.index)]);
 });
 
 // ── Gestión interna (requiere sesión) ───────────────────────────
@@ -299,6 +421,25 @@ clientPortalRouter.delete('/links/:id', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+/** Número de solicitudes nuevas (contador del menú). */
+clientPortalRouter.get('/requests/summary', async (_req, res) => {
+  const db = requireDb(res);
+  if (!db) return;
+  try {
+    const snap = await getDocs(query(collection(db, REQUESTS), where('status', '==', 'NEW')));
+    res.json({ success: true, newCount: snap.size });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+clientPortalRouter.get('/requests/:id/attachments/:index', async (req, res) => {
+  const db = requireDb(res);
+  if (!db) return;
+  const request = await getRequest(db, req.params.id);
+  await streamAttachment(res, request?.attachments?.[Number(req.params.index)]);
 });
 
 clientPortalRouter.get('/requests', async (_req, res) => {

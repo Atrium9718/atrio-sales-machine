@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Link2, Copy, Check, Ban, Inbox, MessageCircle, RefreshCw, AlertCircle } from 'lucide-react';
+import { Link2, Copy, Check, Ban, Inbox, MessageCircle, RefreshCw, AlertCircle, Paperclip } from 'lucide-react';
+import { CLIENT_REQUESTS_UPDATED_EVENT, notifyClientRequestsChanged } from '../../../../../../../src/components/portal/ClientRequestAlerts';
 
 /**
  * Gestión del portal del cliente: generar/revocar enlaces privados y atender las
@@ -27,6 +28,7 @@ interface ClientRequest {
   desiredDate: string | null;
   contactName: string | null;
   contactPhone: string | null;
+  attachments?: { name: string; size: number; contentType: string }[];
   status: RequestStatus;
   response: string | null;
   createdAt: string;
@@ -66,6 +68,7 @@ function RequestRow({ request, onSaved }: { request: ClientRequest; onSaved: () 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, response }),
       });
+      notifyClientRequestsChanged();
       onSaved();
     } catch (err: any) {
       alert(`No se pudo guardar: ${err.message}`);
@@ -94,6 +97,21 @@ function RequestRow({ request, onSaved }: { request: ClientRequest; onSaved: () 
         {request.quantity ? `Cantidad: ${request.quantity.toLocaleString('es-CO')}` : 'Sin cantidad'}
         {request.desiredDate ? ` · Para: ${request.desiredDate}` : ''}
       </p>
+      {request.attachments && request.attachments.length > 0 && (
+        <ul className="flex flex-wrap gap-2">
+          {request.attachments.map((a, i) => (
+            <li key={i}>
+              <a
+                href={`/api/client-portal/requests/${encodeURIComponent(request.id)}/attachments/${i}`}
+                className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg border border-border bg-muted/50 text-foreground hover:bg-muted"
+              >
+                <Paperclip className="w-3 h-3" /> {a.name}
+                <span className="text-muted-foreground">({(a.size / (1024 * 1024)).toFixed(1)} MB)</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="grid sm:grid-cols-[180px_1fr_auto] gap-2 items-start">
         <select value={status} onChange={(e) => setStatus(e.target.value as RequestStatus)} className={inputClass}>
           {STATUS_OPTIONS.map((o) => (
@@ -151,6 +169,9 @@ export default function PortalClientesPage() {
 
   React.useEffect(() => {
     load();
+    // Se recarga cuando llega una solicitud nueva (tiempo real) o cambia alguna
+    window.addEventListener(CLIENT_REQUESTS_UPDATED_EVENT, load);
+    return () => window.removeEventListener(CLIENT_REQUESTS_UPDATED_EVENT, load);
   }, [load]);
 
   const onClientNameChange = (value: string) => {

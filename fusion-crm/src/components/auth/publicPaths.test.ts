@@ -5,13 +5,13 @@ const { isPublicPath } = await import('./LoginScreen');
 
 describe('isPublicPath', () => {
   it('permite las páginas públicas', () => {
-    for (const p of ['/c/abc123', '/portal/tok', '/kiosko', '/kiosko/', '/preferencias/tok', '/habeas-data']) {
+    for (const p of ['/portal/tok', '/kiosko', '/kiosko/', '/preferencias/tok', '/habeas-data']) {
       expect(isPublicPath(p)).toBe(true);
     }
   });
 
   it('exige sesión en el resto, incluido el kiosco de planta', () => {
-    for (const p of ['/', '/kiosko-planta', '/dashboard/produccion', '/cotizaciones', '/habeas-data-admin']) {
+    for (const p of ['/', '/c/abc123', '/kiosko-planta', '/dashboard/produccion', '/cotizaciones', '/habeas-data-admin']) {
       expect(isPublicPath(p)).toBe(false);
     }
   });

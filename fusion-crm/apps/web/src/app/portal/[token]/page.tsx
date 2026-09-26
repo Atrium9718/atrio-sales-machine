@@ -1,6 +1,11 @@
 import * as React from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle2, Circle, Clock, PackageCheck, Plus, Send, X, AlertCircle, CalendarDays, Inbox } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, PackageCheck, Plus, Send, X, AlertCircle, CalendarDays, Inbox, Paperclip, Download } from 'lucide-react';
+import {
+  CLIENT_ATTACHMENT_EXTENSIONS,
+  MAX_CLIENT_ATTACHMENTS,
+  MAX_CLIENT_ATTACHMENT_BYTES,
+} from '../../../../../../packages/core/src/portal/attachments';
 import type { ClientProjectView } from '../../../../../../packages/core/src/portal/clientProgress';
 
 /**
@@ -13,6 +18,7 @@ interface ClientRequestView {
   description: string;
   quantity: number | null;
   desiredDate: string | null;
+  attachments: { name: string; size: number; contentType: string }[];
   status: 'NEW' | 'IN_REVIEW' | 'QUOTED' | 'CLOSED';
   response: string | null;
   createdAt: string;
@@ -131,10 +137,40 @@ function ProjectCard({ project }: { project: ClientProjectView }) {
   );
 }
 
+const formatSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error(`No se pudo leer "${file.name}"`));
+    reader.readAsDataURL(file);
+  });
+}
+
 function NewRequestForm({ token, onCreated, onCancel }: { token: string; onCreated: () => void; onCancel: () => void }) {
   const [form, setForm] = React.useState({ description: '', quantity: '', desiredDate: '', contactName: '', contactPhone: '' });
+  const [files, setFiles] = React.useState<File[]>([]);
   const [isSending, setIsSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  const addFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    const tooBig = picked.find((f) => f.size > MAX_CLIENT_ATTACHMENT_BYTES);
+    if (tooBig) {
+      setError(`"${tooBig.name}" supera el máximo de ${MAX_CLIENT_ATTACHMENT_BYTES / (1024 * 1024)} MB.`);
+      return;
+    }
+    const next = [...files, ...picked];
+    if (next.length > MAX_CLIENT_ATTACHMENTS) {
+      setError(`Puedes adjuntar máximo ${MAX_CLIENT_ATTACHMENTS} archivos.`);
+      return;
+    }
+    setError(null);
+    setFiles(next);
+  };
 
   const update = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -144,6 +180,7 @@ function NewRequestForm({ token, onCreated, onCancel }: { token: string; onCreat
     setIsSending(true);
     setError(null);
     try {
+      const attachments = await Promise.all(files.map(async (f) => ({ name: f.name, dataBase64: await readAsBase64(f) })));
       const res = await fetch(`/api/portal/${encodeURIComponent(token)}/requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,6 +190,7 @@ function NewRequestForm({ token, onCreated, onCancel }: { token: string; onCreat
           desiredDate: form.desiredDate || null,
           contactName: form.contactName || null,
           contactPhone: form.contactPhone || null,
+          attachments,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -207,6 +245,47 @@ function NewRequestForm({ token, onCreated, onCancel }: { token: string; onCreat
           <span className="text-sm font-medium text-foreground">Teléfono de contacto (opcional)</span>
           <input type="tel" maxLength={40} value={form.contactPhone} onChange={update('contactPhone')} className={inputClass} />
         </label>
+      </div>
+
+      <div className="space-y-2">
+        <span className="text-sm font-medium text-foreground">Archivos (opcional)</span>
+        <p className="text-xs text-muted-foreground">
+          Artes o referencias: PDF, AI, EPS, PNG, JPG, WEBP o TIFF. Máximo {MAX_CLIENT_ATTACHMENTS} archivos de{' '}
+          {MAX_CLIENT_ATTACHMENT_BYTES / (1024 * 1024)} MB.
+        </p>
+        {files.length > 0 && (
+          <ul className="space-y-1.5">
+            {files.map((f, i) => (
+              <li key={`${f.name}-${i}`} className="flex items-center justify-between gap-3 text-sm bg-muted/60 rounded-lg px-3 py-2">
+                <span className="flex items-center gap-2 min-w-0">
+                  <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate text-foreground">{f.name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{formatSize(f.size)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                  className="p-1 rounded text-muted-foreground hover:bg-muted"
+                  aria-label={`Quitar ${f.name}`}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {files.length < MAX_CLIENT_ATTACHMENTS && (
+          <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border text-sm text-foreground cursor-pointer hover:bg-muted">
+            <Paperclip className="w-4 h-4" /> Adjuntar archivo
+            <input
+              type="file"
+              multiple
+              accept={CLIENT_ATTACHMENT_EXTENSIONS.join(',')}
+              onChange={addFiles}
+              className="sr-only"
+            />
+          </label>
+        )}
       </div>
 
       {error && (
@@ -336,6 +415,20 @@ export default function ClientPortalPage() {
                     </span>
                   </div>
                   <p className="text-sm text-foreground whitespace-pre-line break-words">{r.description}</p>
+                  {r.attachments?.length > 0 && (
+                    <ul className="flex flex-wrap gap-2 pt-0.5">
+                      {r.attachments.map((a, i) => (
+                        <li key={i}>
+                          <a
+                            href={`/api/portal/${encodeURIComponent(token)}/requests/${encodeURIComponent(r.id)}/attachments/${i}`}
+                            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-border bg-muted/50 text-foreground hover:bg-muted"
+                          >
+                            <Download className="w-3 h-3" /> {a.name}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {r.response && (
                     <p className="text-sm text-muted-foreground border-l-2 border-primary/40 pl-3">
                       <span className="font-semibold text-foreground">Respuesta: </span>
