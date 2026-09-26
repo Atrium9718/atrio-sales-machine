@@ -1,3 +1,4 @@
+import { repositories } from '../repositories';
 import { getApps } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
 import fs from 'fs';
@@ -163,17 +164,9 @@ export async function loadAllCustomers(forceRefresh = false): Promise<CustomerRe
     return customerCache;
   }
 
-  const db = getDb();
-  if (!db) {
-    return customerCache || [];
-  }
-
   try {
-    const snap = await getDocs(collection(db, 'customers'));
-    const list: CustomerRecord[] = [];
-    for (const d of snap.docs) {
-      list.push(normalizeDoc(d.id, d.data()));
-    }
+    const docs = await repositories().clients.list();
+    const list: CustomerRecord[] = docs.map((d) => normalizeDoc(d.id, d));
     customerCache = list;
     lastCacheUpdate = now;
     return list;

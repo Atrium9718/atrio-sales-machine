@@ -5,6 +5,16 @@ import { GoogleGenAI } from '@google/genai';
 import { eventBus } from '../events/DomainEventBus';
 import { reviewQuote, approvalBlockReason } from '../services/quoteReviewService';
 import { isApprovedStatus } from '../../packages/core/src/pricing/quoteReview';
+import { repositories, writeContextFrom } from '../repositories';
+
+/** Firestore solo para lo que sigue ahí en esta fase (corridas del asistente); null si no está. */
+function firestoreOrNull() {
+  try {
+    return getDb();
+  } catch {
+    return null;
+  }
+}
 import { initializeApp as initAdmin, getApps as getAdminApps } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { getStorage as getAdminStorage } from 'firebase-admin/storage';
@@ -73,9 +83,7 @@ function getAdminDb() {
 // GET /api/quotes - Obtener todas las cotizaciones de Firestore
 quotesRouter.get('/', async (req, res) => {
   try {
-    const db = getDb();
-    const snap = await getDocs(collection(db, 'quotes'));
-    const quotes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const quotes = await repositories().quotes.list();
     res.json({ success: true, quotes });
   } catch (err: any) {
     console.error('Error fetching quotes:', err);
@@ -92,10 +100,7 @@ quotesRouter.post('/', async (req, res) => {
     }
 
     const quoteId = quote.id || `quote-${Date.now()}`;
-    const db = getDb();
-    const docRef = doc(db, 'quotes', quoteId);
-    const existing = await getDoc(docRef);
-    const previous = existing.exists() ? existing.data() : null;
+    const previous: any = await repositories().quotes.get(quoteId);
 
     const dataToSave: any = {
       ...quote,
@@ -107,7 +112,7 @@ quotesRouter.post('/', async (req, res) => {
     // Los montos los calcula el servidor a partir de los ítems (no se confía en los del navegador)
     const itemsToReview = Array.isArray(quote.items) ? quote.items : previous?.items;
     if (Array.isArray(itemsToReview)) {
-      const { totals, pricingReview } = await reviewQuote(db, itemsToReview);
+      const { totals, pricingReview } = await reviewQuote(firestoreOrNull(), itemsToReview);
       Object.assign(dataToSave, {
         items: totals.items,
         subtotal: totals.subtotal,
@@ -124,8 +129,9 @@ quotesRouter.post('/', async (req, res) => {
       }
     }
 
-    await setDoc(docRef, dataToSave, { merge: true });
-    res.json({ success: true, quote: dataToSave });
+    // Equivale a { merge: true }: los campos no enviados se conservan
+    const saved = await repositories().quotes.upsert({ ...(previous || {}), ...dataToSave }, writeContextFrom(req));
+    res.json({ success: true, quote: saved });
   } catch (err: any) {
     console.error('Error saving quote:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -137,13 +143,12 @@ quotesRouter.patch('/:id/status', async (req, res) => {
   try {
     const { id } = req.params;
     const { status, approvedBy, notes, sentVia } = req.body;
-    const db = getDb();
-    const docRef = doc(db, 'quotes', id);
-    const snap = await getDoc(docRef);
+    const current: any = await repositories().quotes.get(id);
 
-    if (!snap.exists()) {
+    if (!current) {
       return res.status(404).json({ success: false, error: 'Cotización no encontrada' });
     }
+    const snap = { data: () => current };
 
     const updates: any = {
       status: status || snap.data().status,
@@ -151,7 +156,7 @@ quotesRouter.patch('/:id/status', async (req, res) => {
     };
 
     if (isApprovedStatus(status) && !isApprovedStatus(snap.data().status)) {
-      const { totals, pricingReview } = await reviewQuote(db, snap.data().items);
+      const { totals, pricingReview } = await reviewQuote(firestoreOrNull(), snap.data().items);
       const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
       if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
       Object.assign(updates, { items: totals.items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total, pricingReview });
@@ -169,8 +174,8 @@ quotesRouter.patch('/:id/status', async (req, res) => {
       updates.commercialNotes = notes;
     }
 
-    await updateDoc(docRef, updates);
-    res.json({ success: true, quote: { ...snap.data(), ...updates } });
+    const saved = await repositories().quotes.patch(id, updates, writeContextFrom(req));
+    res.json({ success: true, quote: saved });
   } catch (err: any) {
     console.error('Error updating quote status:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -184,13 +189,11 @@ quotesRouter.post('/:id/approve', async (req, res) => {
     const { approvedBy, items, subtotal, total, paymentTerms, deliveryTime, quote: incomingQuote } = req.body;
     console.log(`Approving quote ${id}`);
     
-    const db = getDb();
-    const quoteRef = doc(db, 'quotes', id);
-    const snap = await getDoc(quoteRef);
+    const stored: any = await repositories().quotes.get(id);
 
     let quoteData: any = {};
-    if (snap.exists()) {
-      quoteData = snap.data() || {};
+    if (stored) {
+      quoteData = stored;
     } else if (incomingQuote) {
       quoteData = incomingQuote;
     } else {
@@ -215,15 +218,15 @@ quotesRouter.post('/:id/approve', async (req, res) => {
     };
 
     // Montos y revisión de precios calculados en el servidor
-    const { totals, pricingReview } = await reviewQuote(db, Array.isArray(items) ? items : quoteData.items);
+    const { totals, pricingReview } = await reviewQuote(firestoreOrNull(), Array.isArray(items) ? items : quoteData.items);
     const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
     if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
     Object.assign(updates, { items: totals.items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total, pricingReview });
     if (paymentTerms) updates.paymentTerms = paymentTerms;
     if (deliveryTime) updates.deliveryTime = deliveryTime;
 
-    await setDoc(quoteRef, updates, { merge: true });
-    console.log(`Quote ${id} updated to Aprobada in Firestore`);
+    await repositories().quotes.upsert(updates, writeContextFrom(req));
+    console.log(`Quote ${id} aprobada`);
 
     // Publicar evento de cotización aprobada en el bus de dominio
     eventBus.publish('QUOTE_APPROVED', {
@@ -234,11 +237,9 @@ quotesRouter.post('/:id/approve', async (req, res) => {
     // --- INTEGRACIÓN CON PRODUCCIÓN: Crear Proyecto/OT ---
     let newProject: any = null;
     try {
-      const projectsCol = collection(db, 'projects');
-      const q = query(projectsCol, where('quoteId', '==', id));
-      const snapProjects = await getDocs(q);
+      const existingProjects = (await repositories().projects.list()).filter((p: any) => p.quoteId === id);
 
-      if (snapProjects.empty) {
+      if (existingProjects.length === 0) {
         const numberParts = (updates.number || quoteData.number || "").split('-');
         const numberPart = numberParts.length > 1 ? numberParts.pop() : (updates.number || Date.now());
         const projectNumber = `OT-${numberPart}`;
@@ -289,8 +290,8 @@ quotesRouter.post('/:id/approve', async (req, res) => {
           updatedAt: new Date().toISOString()
         };
 
-        await setDoc(doc(db, 'projects', newProject.id), newProject);
-        console.log(`Proyecto (OT) creado con éxito en Firestore: ${projectNumber}`);
+        await repositories().projects.upsert(newProject);
+        console.log(`Proyecto (OT) creado: ${projectNumber}`);
 
         // Publicar evento de entrada de proyecto al Kanban de producción
         eventBus.publish('PROJECT_STAGE_CHANGED', {
@@ -299,7 +300,7 @@ quotesRouter.post('/:id/approve', async (req, res) => {
           toStage: 'Por Revisar (Etapa 1)'
         });
       } else {
-        newProject = { id: snapProjects.docs[0].id, ...snapProjects.docs[0].data() };
+        newProject = existingProjects[0];
         console.log(`Project already exists for quote ${id}`);
       }
     } catch (projErr) {
@@ -318,13 +319,12 @@ quotesRouter.post('/:id/send', async (req, res) => {
   try {
     const { id } = req.params;
     const { channel = 'WHATSAPP', destination, sentBy } = req.body;
-    const db = getDb();
-    const docRef = doc(db, 'quotes', id);
-    const snap = await getDoc(docRef);
+    const current: any = await repositories().quotes.get(id);
 
-    if (!snap.exists()) {
+    if (!current) {
       return res.status(404).json({ success: false, error: 'Cotización no encontrada' });
     }
+    const snap = { data: () => current };
 
     const updates: any = {
       status: 'Enviada',
@@ -336,8 +336,8 @@ quotesRouter.post('/:id/send', async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
-    await updateDoc(docRef, updates);
-    res.json({ success: true, quote: { ...snap.data(), ...updates } });
+    const saved = await repositories().quotes.patch(id, updates, writeContextFrom(req));
+    res.json({ success: true, quote: saved });
   } catch (err: any) {
     console.error('Error registering quote send:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -348,8 +348,7 @@ quotesRouter.post('/:id/send', async (req, res) => {
 quotesRouter.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const db = getDb();
-    await deleteDoc(doc(db, 'quotes', id));
+    await repositories().quotes.delete(id);
     res.json({ success: true, message: 'Cotización eliminada correctamente' });
   } catch (err: any) {
     console.error('Error deleting quote:', err);
@@ -619,13 +618,11 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
     updatedAt: new Date().toISOString()
   };
 
-  // Guardar en Firestore
   try {
-    const db = getDb();
-    await setDoc(doc(db, 'quotes', quoteId), preQuoteDoc);
-    console.log(`Pre-cotización guardada con éxito en Firestore: ${preQuoteNumber} (${quoteId})`);
+    await repositories().quotes.upsert(preQuoteDoc as any);
+    console.log(`Pre-cotización guardada: ${preQuoteNumber} (${quoteId})`);
   } catch (dbErr) {
-    console.warn('Aviso: no se pudo persistir en Firestore, devolviendo documento en memoria:', dbErr);
+    console.warn('Aviso: no se pudo guardar la pre-cotización, devolviendo documento en memoria:', dbErr);
   }
 
   return {
@@ -652,9 +649,7 @@ quotesRouter.post('/generate-pre-quote', async (req, res) => {
 // GET /api/quotes/projects-sync - Obtener proyectos de producción sincronizados
 quotesRouter.get('/projects-sync', async (req, res) => {
   try {
-    const db = getDb();
-    const snap = await getDocs(collection(db, 'projects'));
-    const projects = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+    const projects = await repositories().projects.list();
     res.json({ success: true, projects });
   } catch (err: any) {
     console.error('Error syncing projects:', err);
@@ -666,45 +661,16 @@ quotesRouter.get('/projects-sync', async (req, res) => {
 quotesRouter.delete('/projects/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { quoteId, quoteNumber, number } = req.body || {};
-    const db = getDb();
-    
-    // Direct delete by ID
-    try {
-      await deleteDoc(doc(db, 'projects', id));
-      console.log(`Deleted project doc: ${id}`);
-    } catch (e) {
-      console.warn(`Could not delete project doc ${id}:`, e);
-    }
+    const { quoteId, quoteNumber } = req.body || {};
+    const projects = repositories().projects;
 
-    // Delete any project where quoteId == id or id == `proj-${id}`
+    // Se elimina el proyecto y los que pertenezcan a la misma cotización (por id o número)
     const targetQuoteId = quoteId || (id.startsWith('proj-') ? id.replace('proj-', '') : null);
-    if (targetQuoteId) {
-      try {
-        const projectsCol = collection(db, 'projects');
-        const q = query(projectsCol, where('quoteId', '==', targetQuoteId));
-        const snap = await getDocs(q);
-        for (const d of snap.docs) {
-          await deleteDoc(doc(db, 'projects', d.id)).catch(() => {});
-        }
-      } catch (e) {
-        console.warn('Error querying projects by quoteId:', e);
-      }
-    }
-
-    // Also delete any project where quoteNumber == quoteNumber
-    if (quoteNumber) {
-      try {
-        const projectsCol = collection(db, 'projects');
-        const q = query(projectsCol, where('quoteNumber', '==', quoteNumber));
-        const snap = await getDocs(q);
-        for (const d of snap.docs) {
-          await deleteDoc(doc(db, 'projects', d.id)).catch(() => {});
-        }
-      } catch (e) {
-        console.warn('Error querying projects by quoteNumber:', e);
-      }
-    }
+    const related = (await projects.list()).filter(
+      (p: any) => p.id === id || (targetQuoteId && p.quoteId === targetQuoteId) || (quoteNumber && p.quoteNumber === quoteNumber)
+    );
+    const ids = new Set([id, ...related.map((p: any) => p.id)]);
+    for (const projectId of ids) await projects.delete(projectId);
 
     res.json({ success: true, message: `Proyecto ${id} eliminado con éxito` });
   } catch (err: any) {
@@ -724,29 +690,11 @@ quotesRouter.patch('/projects/:id/stage', async (req, res) => {
       return res.status(400).json({ error: 'La etapa destino (stage o stageId) es obligatoria' });
     }
 
-    const db = getDb();
-    const projRef = doc(db, 'projects', id);
-    const snap = await getDoc(projRef);
-
-    let fromStage = 'Sin Etapa';
-    if (snap.exists()) {
-      const data = snap.data();
-      fromStage = String(data.stage || data.stageId || 'Etapa Previa');
-      await updateDoc(projRef, {
-        stageId: toStage,
-        stage: toStage,
-        stageEnteredAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-    } else {
-      await setDoc(projRef, {
-        id,
-        stageId: toStage,
-        stage: toStage,
-        stageEnteredAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    }
+    const projects = repositories().projects;
+    const current: any = await projects.get(id);
+    const fromStage = current ? String(current.stage || current.stageId || 'Etapa Previa') : 'Sin Etapa';
+    const now = new Date().toISOString();
+    await projects.upsert({ ...(current || { id }), id, stageId: toStage, stage: toStage, stageEnteredAt: now, updatedAt: now });
 
     // Publicar evento en el Domain Event Bus
     eventBus.publish('PROJECT_STAGE_CHANGED', {

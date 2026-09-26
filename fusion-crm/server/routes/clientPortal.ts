@@ -18,6 +18,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { loadFirebaseConfig } from '../auth/firebaseConfig';
 import { getAdminApp } from '../auth/firebaseAdmin';
 import { eventBus } from '../events/DomainEventBus';
+import { repositories } from '../repositories';
 import {
   toClientProjectView,
   projectBelongsToClient,
@@ -202,19 +203,15 @@ portalPublicRouter.get('/:token', async (req: Request, res: Response) => {
     const link = await findActiveLink(db, req.params.token);
     if (!link) return res.status(404).json(NOT_FOUND);
 
-    const [projectsSnap, quotesSnap, requestsSnap] = await Promise.all([
-      getDocs(collection(db, 'projects')),
-      getDocs(collection(db, 'quotes')),
+    const [projectDocs, quoteDocs, requestsSnap] = await Promise.all([
+      repositories().projects.list(),
+      repositories().quotes.list(),
       getDocs(query(collection(db, REQUESTS), where('linkId', '==', link.id))),
     ]);
 
     updateDoc(doc(db, LINKS, link.id), { lastAccessAt: new Date().toISOString() }).catch(() => {});
 
-    const projects = buildClientProjects(
-      link,
-      projectsSnap.docs.map((d) => ({ ...d.data(), id: d.id })),
-      quotesSnap.docs.map((d) => ({ ...d.data(), id: d.id }))
-    );
+    const projects = buildClientProjects(link, projectDocs, quoteDocs);
     const requests = requestsSnap.docs
       .map((d) => ({ ...(d.data() as ClientRequest), id: d.id }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
@@ -347,13 +344,9 @@ function requireDb(res: Response): Firestore | null {
 
 /** Clientes conocidos (a partir de las cotizaciones) para sugerirlos al crear un enlace. */
 clientPortalRouter.get('/clients', async (_req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
   try {
-    const snap = await getDocs(collection(db, 'quotes'));
     const byKey = new Map<string, { name: string; nit: string }>();
-    for (const d of snap.docs) {
-      const q = d.data();
+    for (const q of await repositories().quotes.list()) {
       const name = String(q.clientName || q.client || '').trim();
       if (!name) continue;
       const nit = String(q.clientNit || '').trim();

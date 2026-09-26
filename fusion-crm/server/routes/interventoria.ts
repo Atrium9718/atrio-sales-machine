@@ -1,3 +1,4 @@
+import { repositories } from '../repositories';
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -848,19 +849,18 @@ export async function executeRealSystemRepair(accion: string, target?: string, s
           auditLog.appliedChanges.push("Regla en Firestore 'system_rules/quoting_rules' blindada con estado ACTIVE_ENFORCED.");
 
           // 3. Auditar cotizaciones existentes en Firestore en paralelo
-          const quotesSnap = await getDocs(collection(db, 'quotes'));
-          const targetDocs = quotesSnap.docs.filter(qDoc => {
-            const data = qDoc.data();
-            return data.status === 'Borrador' || data.status === 'Enviada' || data.status === 'Aprobada';
-          }).slice(0, 15);
+          const quotesRepo = repositories().quotes;
+          const targetDocs = (await quotesRepo.list()).filter((data: any) =>
+            data.status === 'Borrador' || data.status === 'Enviada' || data.status === 'Aprobada'
+          ).slice(0, 15);
 
-          await Promise.all(targetDocs.map(qDoc =>
-            setDoc(doc(db, 'quotes', qDoc.id), {
+          await Promise.all(targetDocs.map((q: any) =>
+            quotesRepo.patch(q.id, {
               enforceStrictScale: true,
               scaleValidation: 'STRICT_SCALE_LOCKED',
               interventoriaCertified: true,
               interventoriaCertifiedAt: new Date().toISOString()
-            }, { merge: true })
+            })
           ));
 
           const updatedQuotesCount = targetDocs.length;

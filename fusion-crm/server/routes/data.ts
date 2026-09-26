@@ -1,7 +1,6 @@
 import { Router, type Request, type Response } from 'express';
-import { getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, writeBatch, type Firestore } from 'firebase/firestore';
-import { loadFirebaseConfig } from '../auth/firebaseConfig';
+import { repositories, writeContextFrom, type DocumentRepository } from '../repositories';
+import { createFirestoreRepository } from '../repositories/firestoreRepository';
 
 /**
  * API genérica de colecciones de negocio que antes vivían solo en el localStorage del
@@ -19,11 +18,10 @@ export const DATA_COLLECTIONS: Record<string, string> = {
 };
 
 const MAX_BULK_ITEMS = 2000;
-const FIRESTORE_BATCH_LIMIT = 500;
 
-function getDb(): Firestore | null {
-  if (!getApps().length) return null;
-  return getFirestore(getApps()[0], loadFirebaseConfig().firestoreDatabaseId as string | undefined);
+/** Los proyectos pasan por el repositorio (Firestore o Postgres); el resto sigue en Firestore. */
+function repoFor(name: string): DocumentRepository {
+  return name === 'projects' ? repositories().projects : createFirestoreRepository(DATA_COLLECTIONS[name]);
 }
 
 /** Firestore rechaza `undefined`; se normaliza el documento a JSON plano. */
@@ -36,50 +34,43 @@ export function isValidDocId(id: unknown): id is string {
   return typeof id === 'string' && id.length > 0 && id.length <= 700 && !id.includes('/') && id !== '.' && id !== '..';
 }
 
-function resolveCollection(req: Request, res: Response): { db: Firestore; name: string } | null {
-  const name = DATA_COLLECTIONS[req.params.collection];
-  if (!name) {
+function resolveRepo(req: Request, res: Response): DocumentRepository | null {
+  const collection = req.params.collection;
+  if (!DATA_COLLECTIONS[collection]) {
     res.status(404).json({ success: false, error: 'Colección desconocida' });
     return null;
   }
-  const db = getDb();
-  if (!db) {
-    res.status(503).json({ success: false, error: 'Firestore no configurado' });
-    return null;
-  }
-  return { db, name };
+  return repoFor(collection);
 }
 
 dataRouter.get('/:collection', async (req, res) => {
-  const target = resolveCollection(req, res);
-  if (!target) return;
+  const repo = resolveRepo(req, res);
+  if (!repo) return;
   try {
-    const snap = await getDocs(collection(target.db, target.name));
-    res.json({ success: true, items: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
+    res.json({ success: true, items: await repo.list() });
   } catch (err: any) {
-    console.error(`[data] Error listando ${target.name}:`, err);
+    console.error(`[data] Error listando ${req.params.collection}:`, err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 dataRouter.put('/:collection/:id', async (req, res) => {
-  const target = resolveCollection(req, res);
-  if (!target) return;
+  const repo = resolveRepo(req, res);
+  if (!repo) return;
   const { id } = req.params;
   if (!isValidDocId(id)) return res.status(400).json({ success: false, error: 'ID inválido' });
   try {
-    const item = toStorableDoc(req.body, id);
-    await setDoc(doc(target.db, target.name, id), item);
+    const item = await repo.upsert(toStorableDoc(req.body, id), writeContextFrom(req));
     res.json({ success: true, item });
   } catch (err: any) {
-    console.error(`[data] Error guardando ${target.name}/${id}:`, err);
+    console.error(`[data] Error guardando ${req.params.collection}/${id}:`, err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 dataRouter.post('/:collection/bulk', async (req, res) => {
-  const target = resolveCollection(req, res);
-  if (!target) return;
+  const repo = resolveRepo(req, res);
+  if (!repo) return;
   const items = req.body?.items;
   if (!Array.isArray(items)) return res.status(400).json({ success: false, error: 'items debe ser un arreglo' });
   if (items.length > MAX_BULK_ITEMS) {
@@ -91,30 +82,24 @@ dataRouter.post('/:collection/bulk', async (req, res) => {
   try {
     const now = new Date().toISOString();
     const saved = items.map((it: any) => toStorableDoc(it, it.id, now));
-    for (let i = 0; i < saved.length; i += FIRESTORE_BATCH_LIMIT) {
-      const batch = writeBatch(target.db);
-      for (const item of saved.slice(i, i + FIRESTORE_BATCH_LIMIT)) {
-        batch.set(doc(target.db, target.name, item.id), item);
-      }
-      await batch.commit();
-    }
+    await repo.upsertMany(saved, writeContextFrom(req));
     res.json({ success: true, count: saved.length, items: saved });
   } catch (err: any) {
-    console.error(`[data] Error en carga masiva de ${target.name}:`, err);
+    console.error(`[data] Error en carga masiva de ${req.params.collection}:`, err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 dataRouter.delete('/:collection/:id', async (req, res) => {
-  const target = resolveCollection(req, res);
-  if (!target) return;
+  const repo = resolveRepo(req, res);
+  if (!repo) return;
   const { id } = req.params;
   if (!isValidDocId(id)) return res.status(400).json({ success: false, error: 'ID inválido' });
   try {
-    await deleteDoc(doc(target.db, target.name, id));
+    await repo.delete(id);
     res.json({ success: true });
   } catch (err: any) {
-    console.error(`[data] Error eliminando ${target.name}/${id}:`, err);
+    console.error(`[data] Error eliminando ${req.params.collection}/${id}:`, err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

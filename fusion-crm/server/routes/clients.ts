@@ -4,7 +4,22 @@ import { getFirestore, collection, getDocs, doc, setDoc, writeBatch } from 'fire
 import fs from 'fs';
 import path from 'path';
 
+import { repositories, writeContextFrom } from '../repositories';
+
 export const clientsRouter = Router();
+
+/** Guarda clientes conservando los campos que ya tenían (como el antiguo merge de Firestore). */
+async function mergeClients(items: any[], ctx?: ReturnType<typeof writeContextFrom>) {
+  const repo = repositories().clients;
+  const current = new Map((await repo.list()).map((c) => [c.id, c]));
+  const now = new Date().toISOString();
+  const docs = items.map((item: any) => {
+    const id = item.id || `cli-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    return { ...(current.get(id) || {}), ...item, id, updatedAt: now, createdAt: item.createdAt || current.get(id)?.createdAt || now };
+  });
+  await repo.upsertMany(docs, ctx);
+  return docs.length;
+}
 
 // Retrieve Firebase configuration
 let firebaseConfig: any = {};
@@ -33,11 +48,7 @@ function getDb() {
 // GET /api/clients - Obtener todos los clientes de Firestore
 clientsRouter.get('/', async (req, res) => {
   try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ success: false, error: 'Firebase not configured' });
-    
-    const snap = await getDocs(collection(db, 'customers'));
-    const clients = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const clients = await repositories().clients.list();
     res.json({ success: true, clients });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -50,27 +61,7 @@ clientsRouter.post('/bulk', async (req, res) => {
     const { items } = req.body;
     if (!Array.isArray(items)) return res.status(400).json({ success: false, error: 'Items must be an array' });
 
-    const db = getDb();
-    if (!db) return res.status(503).json({ success: false, error: 'Firebase not configured' });
-
-    const batchSize = 500;
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = writeBatch(db);
-      const chunk = items.slice(i, i + batchSize);
-      
-      chunk.forEach((item: any) => {
-        const id = item.id || `cli-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-        const docRef = doc(db, 'customers', id);
-        batch.set(docRef, {
-          ...item,
-          id,
-          updatedAt: new Date().toISOString(),
-          createdAt: item.createdAt || new Date().toISOString()
-        }, { merge: true });
-      });
-      
-      await batch.commit();
-    }
+    await mergeClients(items, writeContextFrom(req));
 
     res.json({ success: true, count: items.length });
   } catch (err: any) {
@@ -81,8 +72,6 @@ clientsRouter.post('/bulk', async (req, res) => {
 // POST /api/clients/seed - Cargar base de datos inicial con clientes reales de ejemplo
 clientsRouter.post('/seed', async (req, res) => {
   try {
-    const db = getDb();
-    if (!db) return res.status(503).json({ success: false, error: 'Firebase not configured' });
 
     const SEED_CLIENTS = [
       {
@@ -178,22 +167,7 @@ clientsRouter.post('/seed', async (req, res) => {
       }
     ];
 
-    const batch = writeBatch(db);
-    const timestamp = new Date().toISOString();
-
-    SEED_CLIENTS.forEach((c, i) => {
-      const id = `seed-cli-${i + 1}`;
-      const docRef = doc(db, 'customers', id);
-      batch.set(docRef, {
-        ...c,
-        id,
-        code: `CLI-SEED-00${i + 1}`,
-        createdAt: timestamp,
-        updatedAt: timestamp
-      }, { merge: true });
-    });
-
-    await batch.commit();
+    await mergeClients(SEED_CLIENTS.map((c, i) => ({ ...c, id: `seed-cli-${i + 1}`, code: `CLI-SEED-00${i + 1}` })), writeContextFrom(req));
 
     res.json({ success: true, message: 'Base de datos de clientes (8 registros reales) cargada exitosamente en la nube.', count: SEED_CLIENTS.length });
   } catch (err: any) {

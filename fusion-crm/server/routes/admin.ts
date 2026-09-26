@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { setImpersonation } from '../auth/session';
+import { dataBackend, repositories } from '../repositories';
 import fs from 'fs';
 import path from 'path';
 import { getApps, initializeApp } from 'firebase/app';
@@ -473,6 +474,14 @@ adminRouter.post('/system/purge-transient-data', async (req, res) => {
       assertNotWhitelisted(colName);
 
       try {
+        // Cotizaciones y proyectos pueden vivir en Postgres (fase 1 de la migración)
+        if (dataBackend() === 'postgres' && (colName === 'quotes' || colName === 'projects')) {
+          const deleted = await repositories()[colName].deleteAll();
+          purgedCollectionsReport[colName] = deleted;
+          totalRecordsDeleted += deleted;
+          continue;
+        }
+
         const colRef = collection(db, colName);
         const snap = await getDocs(colRef);
 
