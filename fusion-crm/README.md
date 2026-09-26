@@ -54,6 +54,10 @@ bun run build
 bun run start       # node dist/server.cjs en el puerto 3000
 ```
 
+### Integración continua
+
+`.github/workflows/fusion-crm-ci.yml` se ejecuta en cada pull request y en cada push a `main` que toque `fusion-crm/`: instala con Bun, verifica tipos (`tsc`), corre las pruebas (`vitest`), compila y construye la imagen Docker. Conviene exigirlo en GitHub (*Settings → Branches → Branch protection → Require status checks*) para que nada entre a `main` con errores.
+
 ### Autenticación
 
 - Los colaboradores ingresan con **Google**. El correo de la cuenta debe coincidir con el de un empleado **activo** (Administración → Usuarios).
