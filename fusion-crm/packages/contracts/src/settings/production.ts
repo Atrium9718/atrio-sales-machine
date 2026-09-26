@@ -26,6 +26,16 @@ export const productionSettings = {
     defaultValue: 75,
     group: 'Nómina Extra'
   }),
+  'production.labor.hourlyRate': defineSetting({
+    key: 'production.labor.hourlyRate',
+    domain: "PRODUCTION",
+    label: 'Costo de mano de obra por hora (COP)',
+    description: 'Valor con el que se costea cada hora registrada con el cronómetro de producción.',
+    valueType: "NUMBER",
+    schema: z.number().min(0).max(1_000_000),
+    defaultValue: 20000,
+    group: 'Costos'
+  }),
   'production.waste.standardPercent': defineSetting({
     key: 'production.waste.standardPercent',
     domain: "PRODUCTION",

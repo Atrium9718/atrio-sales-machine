@@ -1,3 +1,4 @@
+import { getCurrentUserName } from '@/lib/currentUser';
 import React, { useState, useEffect } from 'react';
 import { AssistFormState } from './types';
 import { PressQuoteResult, PressTechnique } from '../../../../../packages/core/src/pricing/press/types';
@@ -98,7 +99,7 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
       channel: 'STORE',
       status: 'IN_PRODUCTION', // 'Trabajando en ello'
       paymentStatus: 'PENDING',
-      responsible: 'Carlos M. / Fusion',
+      responsible: getCurrentUserName(),
       subtotal: subtotalVal,
       vat: vatVal,
       total: Math.round(chosenRun.totalPrice),
@@ -760,7 +761,7 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Responsable:</span>
-                <span className="text-xs font-semibold text-foreground">Carlos M. / Fusion</span>
+                <span className="text-xs font-semibold text-foreground">{getCurrentUserName('—')}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-xs text-muted-foreground">Estado inicial:</span>

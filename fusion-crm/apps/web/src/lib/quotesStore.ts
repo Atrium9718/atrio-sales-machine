@@ -1,5 +1,6 @@
 import { createOrEnsureProjectForQuote, addProject, syncProjectsFromApi } from './projectsStore';
 import { createServerCollection } from '@/lib/serverCollection';
+import { getCurrentUserName } from '@/lib/currentUser';
 
 export const INITIAL_QUOTES: any[] = [];
 
@@ -135,7 +136,7 @@ export const approveQuote = async (quoteId: string, approvalData?: any) => {
   const quote = quotes.find((q: any) => q.id === quoteId);
   if (quote) {
     quote.status = approvalData?.status || 'Aprobada';
-    quote.approvedBy = approvalData?.approvedBy || 'Jorge Enrique Escobar G. (Gerencia Comercial)';
+    quote.approvedBy = getCurrentUserName(approvalData?.approvedBy || '');
     quote.approvedAt = new Date().toISOString();
     if (approvalData?.items) quote.items = approvalData.items;
     if (approvalData?.subtotal !== undefined) quote.subtotal = approvalData.subtotal;
@@ -196,7 +197,7 @@ export const markQuoteAsSent = async (quoteId: string, sendData: {
     quote.sentAt = new Date().toISOString();
     quote.sentVia = sendData.channel;
     quote.sentDestination = sendData.destination || quote.clientPhone || quote.clientEmail;
-    quote.sentBy = sendData.sentBy || 'Asesor Comercial';
+    quote.sentBy = getCurrentUserName(sendData.sentBy || '');
     quote.updatedAt = new Date().toISOString();
 
     quotesCollection.replaceLocal(quotes);

@@ -1,4 +1,5 @@
 "use client";
+import { getCurrentUserName } from '@/lib/currentUser';
 
 import Decimal from "decimal.js";
 import { parseNumericInput, formatCurrencyDisplay } from "../../../../../../../packages/core/src/utils/format";
@@ -491,7 +492,7 @@ function QuoteEditor({
   const [internalNotes, setInternalNotes] = React.useState(editingQuote?.internalNotes || "");
 
   // Asesor Comercial que elabora la propuesta
-  const [advisorName, setAdvisorName] = React.useState(editingQuote?.advisorName || "Jorge Enrique Escobar G.");
+  const [advisorName, setAdvisorName] = React.useState(editingQuote?.advisorName || getCurrentUserName());
   const [advisorRole, setAdvisorRole] = React.useState(editingQuote?.advisorRole || "Gerente de Mercadeo y Ventas");
   const [advisorPhone, setAdvisorPhone] = React.useState(editingQuote?.advisorPhone || "+57 315 474 4830 | +57 316 010 3047");
   const [advisorEmail, setAdvisorEmail] = React.useState(editingQuote?.advisorEmail || "fusioncg.gerencia@gmail.com");

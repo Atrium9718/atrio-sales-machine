@@ -57,13 +57,9 @@ export function buildProjectFromQuote(quote: any, additional?: any) {
     dueDate: additional?.deliveryTime || quote.deliveryTime || null,
     progress: 0,
     hasPO: false,
-    assignments: [
-      {
-        role: 'REVISION',
-        user: { id: 'me', name: 'Andres Admin', initial: 'AA', color: 'bg-indigo-500' }
-      }
-    ],
-    daysLeft: 5,
+    // Sin responsable hasta que producción lo asigne
+    assignments: [],
+    daysLeft: 0,
     stageEnteredAt: new Date().toISOString(),
     totalRealHours: 0,
     timeEntries: [],

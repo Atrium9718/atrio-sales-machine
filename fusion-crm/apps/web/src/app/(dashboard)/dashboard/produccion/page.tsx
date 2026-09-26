@@ -19,6 +19,9 @@ import { getInventory, deductInventory, InventoryItem } from '../../../../lib/in
 import { getProjects, updateProjectsList, syncProjectsFromApi, deleteProject } from '../../../../lib/projectsStore';
 import { getQuotes } from '../../../../lib/quotesStore';
 import { useProjectsQuery } from '@/hooks/useDomainQueries';
+import { useSettingValue } from '@/hooks/useSettingValue';
+import { getCurrentUser } from '@/lib/currentUser';
+import { EditProjectForm } from './components/EditProjectForm';
 
 // --- TYPES ---
 interface ProductionStage {
@@ -168,11 +171,11 @@ const TASK_TEMPLATES: TaskTemplate[] = [
   { productType: 'Gran Formato', defaultTasks: [{ title: 'Tensado de prueba', assignedRole: 'ACABADOS' }] }
 ];
 
-const QUOTES: Quote[] = [
-  { id: 'q1', number: 'COT-8910', client: 'Acme Corp', total: 250000, status: 'APROBADA', items: [{ id: 'i1', name: 'Volantes Media Carta', quantity: 1000, material: 'Propalcote 115g', size: 'Media Carta', finishings: 'Ninguno', inks: '4x0' }] }
-];
-
-const CURRENT_USER = { id: 'me', name: 'Andres Admin', initial: 'AA', color: 'bg-indigo-500' };
+/** Persona que registra tiempos, aprobaciones y entregas: el usuario con sesión. */
+const currentProductionUser = () => {
+  const u = getCurrentUser();
+  return { id: u?.id || 'desconocido', name: u?.name || 'Usuario', initial: u?.initials || '?', color: 'bg-indigo-500' };
+};
 
 
 
@@ -188,6 +191,7 @@ const formatRelativeTime = (dateStr: string) => {
 
 
 export default function ProduccionKanbanPage() {
+  const laborHourlyRate = useSettingValue<number>('production.labor.hourlyRate', 20000);
   const [view, setView] = React.useState<'kanban' | 'list' | 'remisiones' | 'archivados' | 'gantt'>('kanban');
   const { data: queryProjects } = useProjectsQuery();
   const [projects, setProjects] = React.useState<ProductionProject[]>([]);
@@ -217,7 +221,7 @@ export default function ProduccionKanbanPage() {
           items: q.items || []
         })));
       } else {
-        setQuotesList(QUOTES);
+        setQuotesList([]);
       }
     };
     refreshQuotes();
@@ -255,9 +259,9 @@ export default function ProduccionKanbanPage() {
       if (!currentTimer || currentTimer.projectId !== projectId || currentTimer.stageId !== stageId) return currentTimer;
       
       const now = manualCurrentTime || Date.now();
-      // Si fue menos de 1 minuto, forzamos al menos 0.1h para simular el test
-      let elapsedHours = (now - currentTimer.startTime) / 3600000;
-      if (elapsedHours < 0.1) elapsedHours = 1.5; // MOCK PARA VER RESULTADOS RAPIDO EN DEMO
+      const elapsedHours = Math.max(0, (now - currentTimer.startTime) / 3600000);
+      // Menos de 36 segundos no alcanza a registrarse (0,01 h)
+      if (elapsedHours < 0.01) return null;
       
       const stageKey = stages.find(s => s.id === stageId)?.key || '';
       const expected = EXPECTED_HOURS_PER_STAGE[stageKey] || 2;
@@ -276,8 +280,8 @@ export default function ProduccionKanbanPage() {
                {
                   id: `te-${Math.random()}`, source: 'MANUAL',
                   description: `[Desempeño ${rating}] Tiempo trabajado en etapa ${stages.find(s=>s.id===stageId)?.name} (Esperado: ${expected}h)`,
-                  hours: Number(elapsedHours.toFixed(2)), costType: 'LABOR', costAmount: elapsedHours * 20000,
-                  taskId: null, createdAt: new Date(now).toISOString(), registeredByName: CURRENT_USER.name
+                  hours: Number(elapsedHours.toFixed(2)), costType: 'LABOR', costAmount: Math.round(elapsedHours * laborHourlyRate),
+                  taskId: null, createdAt: new Date(now).toISOString(), registeredByName: currentProductionUser().name
                }
             ]
           };
@@ -458,7 +462,7 @@ export default function ProduccionKanbanPage() {
 
   // Filtered Projects for Kanban/List
   const filteredProjects = projects.filter(p => {
-    if (filterMine && !p.assignments.some(a => a.user.id === CURRENT_USER.id)) return false;
+    if (filterMine && !p.assignments.some(a => a.user.id === currentProductionUser().id)) return false;
     if (filterProductType && p.productType !== filterProductType) return false;
     if (filterPriority && p.priority !== filterPriority) return false;
     if (filterBilled === 'BILLED' && !p.isBilled) return false;
@@ -567,7 +571,7 @@ export default function ProduccionKanbanPage() {
     const stage = stages.find(s => s.id === stageId);
     if (!project || !stage) return;
 
-    const newApproval: QualityApproval = { id: `qa-${Math.random()}`, stageId, approvedById: CURRENT_USER.id, approvedByName: CURRENT_USER.name, approvedAt: new Date().toISOString() };
+    const newApproval: QualityApproval = { id: `qa-${Math.random()}`, stageId, approvedById: currentProductionUser().id, approvedByName: currentProductionUser().name, approvedAt: new Date().toISOString() };
 
     setProjectsWithSync(prev => prev.map(p => {
       if (p.id === projectId) {
@@ -597,7 +601,7 @@ export default function ProduccionKanbanPage() {
   };
 
   const handleRegisterDelivery = (projectId: string, qty: number, notes: string) => {
-    const newDelivery: ProjectPartialDelivery = { id: `pd-${Math.random()}`, quantity: qty, notes, registeredById: CURRENT_USER.id, registeredByName: CURRENT_USER.name, registeredAt: new Date().toISOString() };
+    const newDelivery: ProjectPartialDelivery = { id: `pd-${Math.random()}`, quantity: qty, notes, registeredById: currentProductionUser().id, registeredByName: currentProductionUser().name, registeredAt: new Date().toISOString() };
     setProjectsWithSync(prev => prev.map(p => p.id === projectId ? { ...p, partialDeliveries: [...p.partialDeliveries, newDelivery] } : p));
   };
 
@@ -670,7 +674,7 @@ export default function ProduccionKanbanPage() {
       dueDate: dueDate ? new Date(dueDate).toISOString() : null,
       progress: 0,
       hasPO: false,
-      assignments: [{ role: stages[0].roleNeeded, user: CURRENT_USER }],
+      assignments: [{ role: stages[0].roleNeeded, user: currentProductionUser() }],
       daysLeft: dueDate ? Math.ceil((new Date(dueDate).getTime() - Date.now()) / 86400000) : 0,
       stageEnteredAt: new Date().toISOString(),
       totalRealHours: 0,
@@ -772,7 +776,7 @@ export default function ProduccionKanbanPage() {
     const newEntry: TimeEntry = {
       id: `te-${Math.random()}`, source: 'MANUAL', description: fd.get('description') as string,
       hours: actualHours, costType, costAmount, taskId: (fd.get('taskId') as string) || null,
-      createdAt: new Date().toISOString(), registeredByName: CURRENT_USER.name
+      createdAt: new Date().toISOString(), registeredByName: currentProductionUser().name
     };
 
     setProjectsWithSync(prev => prev.map(p => {
@@ -1819,14 +1823,7 @@ export default function ProduccionKanbanPage() {
                                  <tr><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Insumo</th><th className="px-4 py-3">Cant.</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Responsable</th><th className="px-4 py-3">Fecha</th></tr>
                               </thead>
                               <tbody className="divide-y divide-border">
-                                 <tr>
-                                    <td className="px-4 py-3"><span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-bold">SALIDA</span></td>
-                                    <td className="px-4 py-3">Lona Front 13oz</td>
-                                    <td className="px-4 py-3">15 m2</td>
-                                    <td className="px-4 py-3">{formatCOP(120000)}</td>
-                                    <td className="px-4 py-3">Juan P.</td>
-                                    <td className="px-4 py-3 text-muted-foreground">10 Sep 14:30</td>
-                                 </tr>
+                                 <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos de inventario registrados para este proyecto</td></tr>
                               </tbody>
                            </table>
                          </div>
@@ -2146,110 +2143,21 @@ export default function ProduccionKanbanPage() {
                   <button onClick={() => setIsEditOpen(false)} className="text-muted-foreground hover:bg-muted p-2 rounded-md"><X className="w-5 h-5" /></button>
                </div>
                
-               <form onSubmit={(e) => {
-                  e.preventDefault();
-                  // Simulate Server Action 
-                  alert('Proyecto actualizado mediante Server Action (Bloque E)');
-                  setIsEditOpen(false);
-               }} className="p-6 space-y-6">
-                  {/* DATOS GENERALES */}
-                  <div className="space-y-4">
-                     <h3 className="text-sm font-bold border-b border-border pb-1">Datos Generales</h3>
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-muted-foreground">Nombre del Proyecto</label>
-                        <input type="text" defaultValue={activeProject.name} required className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" />
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-muted-foreground">Descripción</label>
-                        <textarea defaultValue={(activeProject as any).description} rows={2} className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" />
-                     </div>
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                           <label className="text-xs font-bold text-muted-foreground">Tipo de Producto</label>
-                           <select defaultValue={activeProject.productType} className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background">
-                              <option value="Gran Formato">Gran Formato</option>
-                              <option value="Impresión Digital">Impresión Digital</option>
-                              <option value="Offset">Offset</option>
-                              <option value="Corte Láser">Corte Láser</option>
-                           </select>
-                        </div>
-                        <div className="space-y-1">
-                           <label className="text-xs font-bold text-muted-foreground">Prioridad</label>
-                           <select defaultValue={activeProject.priority} className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background">
-                              <option value="LOW">Baja</option>
-                              <option value="MEDIUM">Media</option>
-                              <option value="HIGH">Alta</option>
-                              <option value="URGENT">Urgente</option>
-                           </select>
-                        </div>
-                     </div>
-                  </div>
-
-                  {/* RESPONSABLES POR ROL */}
-                  <div className="space-y-4">
-                     <h3 className="text-sm font-bold border-b border-border pb-1 text-primary">Responsables por Rol</h3>
-                     <p className="text-[10px] text-muted-foreground leading-tight -mt-3 mb-2">Asigna una o más personas a cada rol. Esto actualiza directamente la tabla ProjectAssignment.</p>
-                     
-                     <div className="space-y-3">
-                        {['Comercial', 'Producción', 'Montaje', 'Impresión', 'Acabados', 'Revisión'].map(role => {
-                           // This represents a multi-select simulation
-                           return (
-                              <div key={role} className="flex items-start gap-3">
-                                 <div className="w-24 shrink-0 pt-2"><label className="text-xs font-bold text-foreground">{role}</label></div>
-                                 <div className="flex-1 space-y-1.5">
-                                    <select className="w-full px-3 py-1.5 border border-input rounded-md text-sm bg-background text-muted-foreground">
-                                       <option value="">+ Añadir persona...</option>
-                                       <option value="u1">Admin (A)</option>
-                                       <option value="u2">Juan P. (J)</option>
-                                       <option value="u3">Ana P. (A)</option>
-                                    </select>
-                                    {/* Mock selected chips */}
-                                    {role === 'Acabados' && (
-                                       <div className="flex flex-wrap gap-1.5">
-                                          <div className="flex items-center gap-1 text-[10px] font-bold bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full">Juan P. <button type="button" className="hover:text-red-500"><X className="w-3 h-3"/></button></div>
-                                          <div className="flex items-center gap-1 text-[10px] font-bold bg-emerald-50 border border-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">Ana P. <button type="button" className="hover:text-red-500"><X className="w-3 h-3"/></button></div>
-                                       </div>
-                                    )}
-                                    {role === 'Producción' && (
-                                       <div className="flex flex-wrap gap-1.5">
-                                          <div className="flex items-center gap-1 text-[10px] font-bold bg-slate-100 border border-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full">Admin <button type="button" className="hover:text-red-500"><X className="w-3 h-3"/></button></div>
-                                       </div>
-                                    )}
-                                 </div>
-                              </div>
-                           )
-                        })}
-                     </div>
-                  </div>
-
-                  {/* CAMPOS ADICIONALES */}
-                  <div className="space-y-4">
-                     <h3 className="text-sm font-bold border-b border-border pb-1">Campos Adicionales</h3>
-                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                           <label className="text-xs font-bold text-muted-foreground">Fecha Límite</label>
-                           <input type="date" defaultValue={activeProject.dueDate ? activeProject.dueDate.split('T')[0] : ''} className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" />
-                        </div>
-                        <div className="space-y-1">
-                           <label className="text-xs font-bold text-muted-foreground">Remisión Manual</label>
-                           <input type="text" placeholder="REM-..." className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" />
-                        </div>
-                        <div className="space-y-1">
-                           <label className="text-xs font-bold text-muted-foreground">Presupuesto (COP)</label>
-                           <input type="number" defaultValue={activeProject.quoteTotal} className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" />
-                        </div>
-                        <div className="space-y-1">
-                           <label className="text-xs font-bold text-muted-foreground">Costo Total Ajustado</label>
-                           <input type="number" placeholder="Opcional" className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" />
-                        </div>
-                     </div>
-                  </div>
-
-                  <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                     <button type="button" onClick={() => setIsEditOpen(false)} className="px-4 py-2 bg-background border border-border text-foreground font-bold rounded-md hover:bg-muted text-sm">Cancelar</button>
-                     <button type="submit" className="px-4 py-2 bg-primary text-primary-foreground font-bold rounded-md hover:bg-primary/90 text-sm">Guardar Cambios</button>
-                  </div>
-               </form>
+               <EditProjectForm
+                  project={activeProject}
+                  onCancel={() => setIsEditOpen(false)}
+                  onSave={(fields) => {
+                     const editedBy = currentProductionUser().name;
+                     setProjectsWithSync(prev => prev.map(p => p.id === activeProject.id ? {
+                        ...p,
+                        ...fields,
+                        daysLeft: fields.dueDate ? Math.ceil((new Date(fields.dueDate).getTime() - Date.now()) / 86400000) : 0,
+                        systemComments: [...(p.systemComments || []), `Proyecto editado por ${editedBy} (${new Date().toLocaleString('es-CO')})`],
+                        updatedAt: new Date().toISOString(),
+                     } : p));
+                     setIsEditOpen(false);
+                  }}
+               />
             </div>
          </div>
       )}

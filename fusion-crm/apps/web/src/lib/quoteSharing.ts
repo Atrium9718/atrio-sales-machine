@@ -1,3 +1,4 @@
+import { getCurrentUserName } from '@/lib/currentUser';
 import jsPDF from "jspdf";
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import autoTable from "jspdf-autotable";
@@ -249,7 +250,7 @@ export async function sendQuoteWhatsApp(quoteData: any) {
   const rawPhone = quoteData.clientData?.phone || quoteData.clientPhone || '';
   const cleanPhone = rawPhone.replace(/[^0-9]/g, '');
   const phoneFormatted = cleanPhone.length === 10 && cleanPhone.startsWith('3') ? `57${cleanPhone}` : cleanPhone;
-  const advisor = quoteData.advisorName || 'Jorge Enrique Escobar G.';
+  const advisor = quoteData.advisorName || getCurrentUserName('Equipo comercial');
 
   let pdfUrl = '';
   const pdfRes = await generateQuotePDF(quoteData, { skipDownload: true, returnBase64: true });
@@ -280,7 +281,7 @@ export async function sendQuoteEmail(quoteData: any) {
   const name = quoteData.clientData?.name || quoteData.clientName || 'Cliente';
   const toEmail = quoteData.clientData?.email || quoteData.clientEmail || '';
   const subject = `Cotización ${quoteData.number} - Fusión Comunicación Gráfica S.A.S. - ${name}`;
-  const advisor = quoteData.advisorName || 'Jorge Enrique Escobar G.';
+  const advisor = quoteData.advisorName || getCurrentUserName('Equipo comercial');
 
   let pdfUrl = '';
   const pdfRes = await generateQuotePDF(quoteData, { skipDownload: true, returnBase64: true });

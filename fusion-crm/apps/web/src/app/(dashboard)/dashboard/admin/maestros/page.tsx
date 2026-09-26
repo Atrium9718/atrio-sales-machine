@@ -29,10 +29,9 @@ export default function MaestrosPage() {
     setLoading(true);
     fetch(`/api/maestros/${activeCatalog}`)
       .then(r => r.json())
-      .then(data => {
-        setRecords(data);
-        setLoading(false);
-      });
+      .then(data => setRecords(Array.isArray(data) ? data : []))
+      .catch(() => setRecords([]))
+      .finally(() => setLoading(false));
   }, [activeCatalog]);
 
   const handleToggleActive = async (id: string, current: boolean, usageCount: number) => {
@@ -62,7 +61,12 @@ export default function MaestrosPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, name, description: '' })
-    }).then(r => r.json()).then(data => {
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) {
+        alert(data.error || 'No se pudo crear el registro');
+        return;
+      }
       setRecords([...records, data]);
     });
   };

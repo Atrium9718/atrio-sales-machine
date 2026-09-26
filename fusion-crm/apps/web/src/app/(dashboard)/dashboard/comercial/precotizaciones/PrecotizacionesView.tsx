@@ -1,4 +1,5 @@
 "use client";
+import { getCurrentUserName } from '@/lib/currentUser';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -185,7 +186,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
       paymentTerms: reviewPaymentTerms,
       notes: reviewCommercialNotes,
       status: asApproved ? 'Aprobada' : selectedForReview.status,
-      approvedBy: asApproved ? 'Jorge Enrique Escobar G. (Gerencia Comercial)' : selectedForReview.approvedBy,
+      approvedBy: asApproved ? getCurrentUserName() : selectedForReview.approvedBy,
       approvedAt: asApproved ? new Date().toISOString() : selectedForReview.approvedAt
     };
 
@@ -205,7 +206,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
     }
 
     await approveQuote(quote.id, {
-      approvedBy: 'Jorge Enrique Escobar G. (Gerencia Comercial)',
+      approvedBy: getCurrentUserName(),
       items: quote.items,
       subtotal: quote.subtotal,
       total: quote.total,

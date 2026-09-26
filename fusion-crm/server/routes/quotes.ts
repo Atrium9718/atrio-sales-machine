@@ -11,6 +11,14 @@ import path from 'path';
 
 export const quotesRouter = Router();
 
+/**
+ * Quién hace la acción: la identidad verificada por la sesión (server/auth/session.ts
+ * sobrescribe x-user-*). No se acepta el nombre que envíe el navegador.
+ */
+function actor(req: { headers: Record<string, any> }) {
+  return { id: String(req.headers['x-user-id'] || ''), name: String(req.headers['x-user-name'] || '') };
+}
+
 // Retrieve Firebase configuration
 let firebaseConfig: any = {};
 try {
@@ -119,7 +127,8 @@ quotesRouter.patch('/:id/status', async (req, res) => {
     };
 
     if (status === 'Aprobada') {
-      updates.approvedBy = approvedBy || 'Asesor Comercial';
+      updates.approvedBy = actor(req).name;
+      updates.approvedById = actor(req).id;
       updates.approvedAt = new Date().toISOString();
     }
 
@@ -171,7 +180,8 @@ quotesRouter.post('/:id/approve', async (req, res) => {
       ...quoteData,
       id,
       status: 'Aprobada',
-      approvedBy: approvedBy || 'Jorge Enrique Escobar G. (Gerencia Comercial)',
+      approvedBy: actor(req).name,
+      approvedById: actor(req).id,
       approvedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -215,13 +225,9 @@ quotesRouter.post('/:id/approve', async (req, res) => {
           dueDate: updates.deliveryTime || quoteData.deliveryTime || null,
           progress: 0,
           hasPO: false,
-          assignments: [
-            {
-              role: 'REVISION',
-              user: { id: 'me', name: 'Andres Admin', initial: 'AA', color: 'bg-indigo-500' }
-            }
-          ],
-          daysLeft: 5,
+          // Sin responsable hasta que producción lo asigne
+          assignments: [],
+          daysLeft: 0,
           stageEnteredAt: new Date().toISOString(),
           totalRealHours: 0,
           timeEntries: [],
@@ -295,7 +301,8 @@ quotesRouter.post('/:id/send', async (req, res) => {
       sentAt: new Date().toISOString(),
       sentVia: channel,
       sentDestination: destination || snap.data().clientPhone || snap.data().clientEmail,
-      sentBy: sentBy || 'Asesor Comercial',
+      sentBy: actor(req).name,
+      sentById: actor(req).id,
       updatedAt: new Date().toISOString()
     };
 
@@ -561,8 +568,8 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
       address: parsed.clientAddress || customer?.address || ''
     },
     date: new Date().toISOString(),
-    advisorName: 'Álvaro (Agente IA) / Jorge Enrique Escobar G.',
-    advisorRole: 'Especialista Técnico / Gerencia Comercial',
+    advisorName: 'Álvaro (Agente IA)',
+    advisorRole: 'Precotización automática, pendiente de revisión por un asesor',
     advisorPhone: '+57 315 474 4830',
     advisorEmail: 'fusioncg.gerencia@gmail.com',
     items: formattedItems,

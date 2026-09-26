@@ -18,7 +18,7 @@ const PUBLIC_API_PREFIXES = ['/api/health', '/api/auth/', '/api/webhooks/meta', 
 /** Módulos que solo pueden usar administradores (cualquier método). */
 const ADMIN_ONLY_PREFIXES = ['/api/ops', '/api/interventoria'];
 /** Módulos cuyas escrituras solo pueden hacer administradores. */
-const ADMIN_WRITE_PREFIXES = ['/api/admin', '/api/settings'];
+const ADMIN_WRITE_PREFIXES = ['/api/admin', '/api/settings', '/api/maestros'];
 
 export function isAdminRole(roleKey: string | undefined): boolean {
   return roleKey === 'super_admin' || roleKey === 'admin';

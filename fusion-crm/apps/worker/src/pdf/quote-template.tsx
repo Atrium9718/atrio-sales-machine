@@ -166,8 +166,8 @@ export const QuotePDF = ({ quote }: QuotePDFProps) => (
         </View>
         <View style={[styles.clientBox, { alignItems: 'flex-end' }]}>
           <Text style={styles.label}>Ejecutivo de Cuenta</Text>
-          <Text style={styles.valueBold}>{quote.ownerName || 'Carlos Gómez'}</Text>
-          <Text>carlos@fusion.com</Text>
+          <Text style={styles.valueBold}>{quote.ownerName || quote.advisorName || ''}</Text>
+          {(quote.ownerEmail || quote.advisorEmail) ? <Text>{quote.ownerEmail || quote.advisorEmail}</Text> : null}
         </View>
       </View>
 
