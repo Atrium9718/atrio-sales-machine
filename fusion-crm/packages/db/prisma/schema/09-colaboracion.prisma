@@ -1,0 +1,766 @@
+// 09-colaboracion.prisma — Cimiento de Colaboración (Etapa 15.1)
+
+// ==========================================
+// ENUMS DE COLABORACIÓN
+// ==========================================
+
+enum DashboardLayoutScope {
+  ROLE
+  USER
+}
+
+enum DashboardLayoutWidgetSize {
+  SMALL
+  MEDIUM
+  LARGE
+  FULL
+}
+
+enum HomeDensity {
+  COMFORTABLE
+  COMPACT
+}
+
+enum PinnedEntityType {
+  CLIENT
+  OPPORTUNITY
+  QUOTE
+  PRODUCTION_PROJECT
+  TASK
+  CHAT_CHANNEL
+  ANNOUNCEMENT
+  REPORT
+}
+
+enum GoalScope {
+  ORGANIZATION
+  AREA
+  TEAM
+  USER
+  MACHINE
+}
+
+enum GoalPeriod {
+  WEEK
+  MONTH
+  QUARTER
+  YEAR
+}
+
+enum GoalDirection {
+  HIGHER_IS_BETTER
+  LOWER_IS_BETTER
+}
+
+enum GoalPaceStatus {
+  AHEAD
+  ON_TRACK
+  AT_RISK
+  BEHIND
+}
+
+enum CapacitySubjectType {
+  EMPLOYEE
+  MACHINE
+  AREA
+}
+
+enum EmployeeAbsenceType {
+  VACATION
+  SICK_LEAVE
+  PERMIT
+  HOLIDAY
+  TRAINING
+  OTHER
+}
+
+enum AnnouncementType {
+  ANNOUNCEMENT
+  DIRECTIVE
+  RECOGNITION
+  ALERT
+  EVENT
+  POLICY
+}
+
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AnnouncementTargetType {
+  EVERYONE
+  ROLE
+  AREA
+  TEAM
+  USER
+}
+
+enum ChatChannelType {
+  PUBLIC
+  PRIVATE
+  DIRECT
+  GROUP
+  ENTITY
+}
+
+enum ChatEntityType {
+  CLIENT
+  OPPORTUNITY
+  QUOTE
+  PRODUCTION_PROJECT
+  PRINT_ORDER
+  VEA_MEETING
+}
+
+enum ChatMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ChatNotificationLevel {
+  ALL
+  MENTIONS
+  NONE
+}
+
+enum ChatMessageType {
+  TEXT
+  FILE
+  IMAGE
+  SYSTEM
+  CALL_SUMMARY
+  ENTITY_LINK
+}
+
+enum CallSessionType {
+  DIRECT
+  GROUP
+  CHANNEL
+  MEETING
+}
+
+enum CallSessionStatus {
+  RINGING
+  ONGOING
+  ENDED
+  MISSED
+  CANCELLED
+  FAILED
+}
+
+enum CallParticipantRole {
+  HOST
+  PARTICIPANT
+  VIEWER
+}
+
+enum CallQuality {
+  GOOD
+  FAIR
+  POOR
+  UNKNOWN
+}
+
+enum CallInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  MISSED
+}
+
+enum PresenceStatus {
+  ONLINE
+  AWAY
+  BUSY
+  IN_CALL
+  DO_NOT_DISTURB
+  OFFLINE
+}
+
+enum PresenceDevice {
+  WEB
+  MOBILE
+  KIOSK
+}
+
+// ==========================================
+// HOME Y WIDGETS
+// ==========================================
+
+model DashboardLayout {
+  id             String               @id @default(cuid())
+  organizationId String
+  scope          DashboardLayoutScope
+  roleId         String?
+  userId         String?
+  name           String
+  widgets        Json                 @default("[]") @db.JsonB
+  isDefault      Boolean              @default(false)
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([organizationId, scope, roleId])
+  @@unique([organizationId, scope, userId])
+  @@index([organizationId, scope])
+  @@map("dashboard_layouts")
+}
+
+model UserHomePreference {
+  id               String      @id @default(cuid())
+  organizationId   String
+  userId           String      @unique
+  greetingName     String?
+  startPage        String      @default("home") // "home" | "pipeline" | "produccion" | "bandeja"
+  density          HomeDensity @default(COMFORTABLE)
+  showWelcomeTour  Boolean     @default(true)
+  defaultDateRange String?
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, userId])
+  @@map("user_home_preferences")
+}
+
+model PinnedItem {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  entityType     PinnedEntityType
+  entityId       String
+  label          String
+  order          Int              @default(0)
+  pinnedAt       DateTime         @default(now())
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([userId, entityType, entityId])
+  @@index([organizationId, userId])
+  @@map("pinned_items")
+}
+
+// ==========================================
+// METAS Y CUMPLIMIENTO
+// ==========================================
+
+model Goal {
+  id             String        @id @default(cuid())
+  organizationId String
+  scope          GoalScope
+  ownerUserId    String?
+  areaKey        String?
+  machineId      String?
+  metricKey      String // "ventas_valor", "cotizaciones_enviadas", "visitas", "tasa_conversion", "horas_productivas", "utilizacion_maquina", "proyectos_entregados_a_tiempo", "desperdicio_porcentaje", "tareas_a_tiempo"
+  period         GoalPeriod
+  periodStart    DateTime      @db.Date
+  periodEnd      DateTime      @db.Date
+  targetValue    Decimal       @db.Decimal(15, 2)
+  minimumValue   Decimal       @default(0) @db.Decimal(15, 2)
+  stretchValue   Decimal       @default(0) @db.Decimal(15, 2)
+  direction      GoalDirection @default(HIGHER_IS_BETTER)
+  isActive       Boolean       @default(true)
+  notes          String?       @db.Text
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  progressEntries GoalProgress[]
+
+  @@unique([organizationId, scope, ownerUserId, machineId, metricKey, periodStart])
+  @@index([organizationId, isActive])
+  @@map("goals")
+}
+
+model GoalProgress {
+  id                String         @id @default(cuid())
+  goalId            String
+  asOfDate          DateTime       @db.Date
+  actualValue       Decimal        @db.Decimal(15, 2)
+  expectedValue     Decimal        @db.Decimal(15, 2)
+  attainmentPercent Decimal        @db.Decimal(5, 2)
+  paceStatus        GoalPaceStatus
+  computedAt        DateTime       @default(now())
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, asOfDate])
+  @@index([goalId, asOfDate])
+  @@map("goal_progress")
+}
+
+model TaskComplianceDaily {
+  id                   String   @id @default(cuid())
+  organizationId       String
+  userId               String
+  date                 DateTime @db.Date
+  tasksDue             Int      @default(0)
+  tasksCompleted       Int      @default(0)
+  tasksCompletedOnTime Int      @default(0)
+  tasksCompletedLate   Int      @default(0)
+  tasksOverdueOpen     Int      @default(0)
+  tasksSnoozed         Int      @default(0)
+  averageDaysLate      Decimal  @default(0) @db.Decimal(5, 2)
+  compliancePercent    Decimal  @default(0) @db.Decimal(5, 2)
+  computedAt           DateTime @default(now())
+
+  @@unique([organizationId, userId, date])
+  @@index([organizationId, date])
+  @@map("task_compliance_daily")
+}
+
+model CapacityDaily {
+  id                  String              @id @default(cuid())
+  organizationId      String
+  date                DateTime            @db.Date
+  subjectType         CapacitySubjectType
+  employeeId          String?
+  machineId           String?
+  areaKey             String?
+  availableHours      Decimal             @default(0) @db.Decimal(10, 2)
+  committedHours      Decimal             @default(0) @db.Decimal(10, 2)
+  loggedHours         Decimal             @default(0) @db.Decimal(10, 2)
+  productiveHours     Decimal             @default(0) @db.Decimal(10, 2)
+  setupHours          Decimal             @default(0) @db.Decimal(10, 2)
+  downtimeHours       Decimal             @default(0) @db.Decimal(10, 2)
+  standardHoursEarned Decimal             @default(0) @db.Decimal(10, 2)
+  unregisteredHours   Decimal             @default(0) @db.Decimal(10, 2)
+  utilizationPercent  Decimal             @default(0) @db.Decimal(5, 2)
+  efficiencyPercent   Decimal             @default(0) @db.Decimal(5, 2)
+  computedAt          DateTime            @default(now())
+
+  @@unique([organizationId, subjectType, employeeId, machineId, areaKey, date])
+  @@index([organizationId, date])
+  @@map("capacity_daily")
+}
+
+model EmployeeAbsence {
+  id             String              @id @default(cuid())
+  organizationId String
+  employeeId     String
+  type           EmployeeAbsenceType
+  startAt        DateTime
+  endAt          DateTime
+  hours          Decimal             @db.Decimal(10, 2)
+  approvedById   String?
+  notes          String?             @db.Text
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, employeeId, startAt])
+  @@map("employee_absences")
+}
+
+// ==========================================
+// TABLERO DE ANUNCIOS
+// ==========================================
+
+model Announcement {
+  id                      String               @id @default(cuid())
+  organizationId          String
+  authorId                String
+  type                    AnnouncementType
+  priority                AnnouncementPriority
+  title                   String
+  body                    String               @db.Text
+  summary                 String?              @db.Text
+  attachments             Json                 @default("[]") @db.JsonB
+  coverImageKey           String?
+  status                  AnnouncementStatus   @default(DRAFT)
+  publishAt               DateTime?
+  expiresAt               DateTime?
+  isPinned                Boolean              @default(false)
+  pinnedUntil             DateTime?
+  requiresAcknowledgement Boolean              @default(false)
+  allowsComments          Boolean              @default(true)
+  allowsReactions         Boolean              @default(true)
+  publishedAt             DateTime?
+  archivedAt              DateTime?
+  viewCount               Int                  @default(0)
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  audiences AnnouncementAudience[]
+  receipts  AnnouncementReceipt[]
+  comments  AnnouncementComment[]
+  reactions AnnouncementReaction[]
+
+  @@index([organizationId, status, publishAt])
+  @@map("announcements")
+}
+
+model AnnouncementAudience {
+  id             String                 @id @default(cuid())
+  announcementId String
+  targetType     AnnouncementTargetType
+  roleId         String?
+  areaKey        String?
+  userId         String?
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@index([announcementId])
+  @@map("announcement_audiences")
+}
+
+model AnnouncementReceipt {
+  id             String    @id @default(cuid())
+  announcementId String
+  userId         String
+  deliveredAt    DateTime?
+  seenAt         DateTime?
+  readAt         DateTime?
+  acknowledgedAt DateTime?
+  acknowledgedIp String?
+  dismissedAt    DateTime?
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([userId])
+  @@map("announcement_receipts")
+}
+
+model AnnouncementComment {
+  id               String    @id @default(cuid())
+  announcementId   String
+  userId           String
+  body             String    @db.Text
+  parentCommentId  String?
+  mentionedUserIds String[]  @default([])
+  createdAt        DateTime  @default(now())
+  editedAt         DateTime?
+  deletedAt        DateTime?
+
+  announcement  Announcement          @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  parentComment AnnouncementComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies       AnnouncementComment[] @relation("CommentReplies")
+
+  @@index([announcementId, createdAt])
+  @@map("announcement_comments")
+}
+
+model AnnouncementReaction {
+  announcementId String
+  userId         String
+  emoji          String
+  createdAt      DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@id([announcementId, userId, emoji])
+  @@map("announcement_reactions")
+}
+
+// ==========================================
+// CHAT INTERNO
+// ==========================================
+
+model ChatChannel {
+  id             String          @id @default(cuid())
+  organizationId String
+  type           ChatChannelType
+  key            String?
+  name           String
+  topic          String?
+  description    String?
+  icon           String?
+  color          String?
+  entityType     ChatEntityType?
+  entityId       String?
+  directKey      String?
+  isArchived     Boolean         @default(false)
+  isReadOnly     Boolean         @default(false)
+  lastMessageAt  DateTime?
+  messageCount   Int             @default(0)
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  members  ChatMember[]
+  messages ChatMessage[]
+  pins     ChatPin[]
+
+  @@unique([organizationId, key])
+  @@unique([organizationId, entityType, entityId])
+  @@unique([organizationId, directKey])
+  @@index([organizationId, type])
+  @@map("chat_channels")
+}
+
+model ChatMember {
+  id                 String                @id @default(cuid())
+  channelId          String
+  userId             String
+  role               ChatMemberRole        @default(MEMBER)
+  joinedAt           DateTime              @default(now())
+  leftAt             DateTime?
+  isMuted            Boolean               @default(false)
+  mutedUntil         DateTime?
+  notificationLevel  ChatNotificationLevel @default(ALL)
+  lastReadMessageId  String?
+  lastReadAt         DateTime?
+  unreadCount        Int                   @default(0)
+  unreadMentionCount Int                   @default(0)
+
+  channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([userId])
+  @@map("chat_members")
+}
+
+model ChatMessage {
+  id                String          @id @default(cuid())
+  organizationId    String
+  channelId         String
+  authorId          String
+  type              ChatMessageType @default(TEXT)
+  body              String          @db.Text
+  bodyPlain         String          @db.Text
+  parentMessageId   String?
+  threadReplyCount  Int             @default(0)
+  threadLastReplyAt DateTime?
+  attachments       Json            @default("[]") @db.JsonB
+  mentionedUserIds  String[]        @default([])
+  mentionsEveryone  Boolean         @default(false)
+  linkedEntityType  String?
+  linkedEntityId    String?
+  callSessionId     String?
+  editedAt          DateTime?
+  deletedById       String?
+  clientMessageId   String?
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  channel       ChatChannel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  parentMessage ChatMessage?   @relation("ThreadReplies", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  threadReplies ChatMessage[]  @relation("ThreadReplies")
+  reactions     ChatReaction[]
+  pins          ChatPin[]
+
+  @@unique([channelId, clientMessageId])
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([organizationId, authorId, createdAt])
+  // NOTA: Para búsqueda de texto completo en español sobre bodyPlain en PostgreSQL:
+  // CREATE INDEX idx_chat_messages_body_plain_gin ON chat_messages USING gin(to_tsvector('spanish', "bodyPlain"));
+  @@map("chat_messages")
+}
+
+model ChatReaction {
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId, emoji])
+  @@map("chat_reactions")
+}
+
+model ChatPin {
+  id         String   @id @default(cuid())
+  channelId  String
+  messageId  String
+  pinnedById String
+  pinnedAt   DateTime @default(now())
+
+  channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, pinnedAt])
+  @@map("chat_pins")
+}
+
+model SavedReply {
+  id             String  @id @default(cuid())
+  organizationId String
+  userId         String? // nulo = de la organización
+  shortcut       String
+  title          String
+  body           String  @db.Text
+  usageCount     Int     @default(0)
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, shortcut])
+  @@map("saved_replies")
+}
+
+// ==========================================
+// LLAMADAS
+// ==========================================
+
+model CallSession {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  roomName           String            @unique
+  title              String?
+  type               CallSessionType   @default(DIRECT)
+  channelId          String?
+  linkedEntityType   String?
+  linkedEntityId     String?
+  startedById        String
+  startedAt          DateTime          @default(now())
+  endedAt            DateTime?
+  durationSeconds    Int               @default(0)
+  status             CallSessionStatus @default(RINGING)
+  maxParticipants    Int               @default(2)
+  hadScreenShare     Boolean           @default(false)
+  isRecorded         Boolean           @default(false)
+  recordingKey       String?
+  recordingConsentBy String[]          @default([])
+  summary            String?           @db.Text
+  activityId         String?
+
+  // Convención base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  participants CallParticipant[]
+  invitations  CallInvitation[]
+
+  @@index([organizationId, status])
+  @@map("call_sessions")
+}
+
+model CallParticipant {
+  id                String              @id @default(cuid())
+  callSessionId     String
+  userId            String?
+  employeeId        String?
+  externalName      String?
+  externalEmail     String?
+  joinedAt          DateTime            @default(now())
+  leftAt            DateTime?
+  durationSeconds   Int                 @default(0)
+  role              CallParticipantRole @default(PARTICIPANT)
+  connectionQuality CallQuality         @default(UNKNOWN)
+  device            String?
+  leftReason        String?
+
+  callSession CallSession @relation(fields: [callSessionId], references: [id], onDelete: Cascade)
+
+  @@index([callSessionId])
+  @@map("call_participants")
+}
+
+model CallInvitation {
+  id            String               @id @default(cuid())
+  callSessionId String
+  invitedUserId String
+  invitedById   String
+  sentAt        DateTime             @default(now())
+  status        CallInvitationStatus @default(PENDING)
+  respondedAt   DateTime?
+
+  callSession CallSession @relation(fields: [callSessionId], references: [id], onDelete: Cascade)
+
+  @@index([callSessionId, invitedUserId])
+  @@map("call_invitations")
+}
+
+// ==========================================
+// PRESENCIA Y RECONOCIMIENTO
+// ==========================================
+
+model UserPresence {
+  userId                String         @id // Clave primaria
+  organizationId        String
+  status                PresenceStatus @default(OFFLINE)
+  customStatusEmoji     String?
+  customStatusText      String?
+  customStatusExpiresAt DateTime?
+  lastActiveAt          DateTime       @default(now())
+  currentDevice         PresenceDevice @default(WEB)
+  activeCallSessionId   String?
+  updatedAt             DateTime       @updatedAt
+
+  // EXCEPCIÓN OBLIGATORIA: este modelo se escribe muchas veces por minuto.
+  // Excluido de la extensión de auditoría (no escribe AuditLog) y sin borrado lógico ni version.
+  @@index([organizationId, status])
+  @@map("user_presence")
+}
+
+model Shoutout {
+  id               String   @id @default(cuid())
+  organizationId   String
+  fromUserId       String
+  toUserIds        String[] @default([])
+  message          String   @db.Text
+  valueKey         String // "calidad", "cumplimiento", "servicio", "equipo", "iniciativa"
+  linkedEntityType String?
+  linkedEntityId   String?
+  isPublic         Boolean  @default(true)
+  announcementId   String?
+  createdAt        DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("shoutouts")
+}

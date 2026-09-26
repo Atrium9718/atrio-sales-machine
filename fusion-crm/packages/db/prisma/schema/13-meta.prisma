@@ -1,0 +1,31 @@
+model MetaChannelConfig {
+  id              String    @id @default(cuid())
+  organizationId  String
+  channelId       String    @unique
+  pageId          String?
+  instagramId     String?
+  accessToken     String
+  tokenExpiresAt  DateTime?
+  lastHealthCheck DateTime?
+  healthStatus    String    @default("HEALTHY") // HEALTHY, WARNING, INVALID
+  webhookSecret   String?
+
+  // Settings
+  replyToComments  Boolean @default(false)
+  commentReplyText String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MetaEventLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  channelId      String?
+  platform       String // instagram, page
+  eventType      String
+  payload        Json     @db.JsonB
+  status         String   @default("PROCESSED") // PROCESSED, ERROR, IGNORED
+  error          String?
+  createdAt      DateTime @default(now())
+}

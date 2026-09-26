@@ -1,0 +1,13 @@
+{
+  "name": "@fusion/ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "lucide-react": "^0.546.0",
+    "framer-motion": "^13.2.0"
+  }
+}

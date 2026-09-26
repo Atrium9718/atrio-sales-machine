@@ -1,0 +1,827 @@
+// ============================================================================
+// 10-voz.prisma — Cimiento de Telefonía y Voz (Etapa 17.1)
+// Convención obligatoria: id (cuid), organizationId, createdAt, updatedAt,
+// createdById, updatedById, deletedAt, version.
+// Decimal(18,2) para montos, jsonb para objetos JSON, enums de Prisma para estados.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// ENUMS DE VOZ
+// ----------------------------------------------------------------------------
+
+enum VoiceExtensionType {
+  USER
+  DESK
+  VIRTUAL
+  EXTERNAL_MEDIA
+}
+
+enum VoiceExtensionStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum VoiceRingStrategy {
+  BROWSER_ONLY
+  BROWSER_THEN_MOBILE
+  BROWSER_AND_MOBILE
+  MOBILE_ONLY
+}
+
+enum VoiceRecordingPolicy {
+  ALWAYS
+  NEVER
+  INBOUND_ONLY
+  OUTBOUND_ONLY
+}
+
+enum VoiceTransport {
+  UDP
+  TCP
+  TLS
+}
+
+enum VoiceTrunkAuth {
+  REGISTER
+  IP_AUTH
+}
+
+enum VoiceTrunkStatus {
+  UNKNOWN
+  REGISTERED
+  UNREGISTERED
+  FAILED
+}
+
+enum VoiceNumberDirection {
+  INBOUND
+  OUTBOUND
+  BOTH
+}
+
+enum VoiceNumberTarget {
+  IVR_FLOW
+  QUEUE
+  EXTENSION
+  AI_AGENT
+  VOICEMAIL
+}
+
+enum VoicePortingStatus {
+  NOT_APPLICABLE
+  REQUESTED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+enum VoiceCallDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum VoiceCallStatus {
+  RINGING
+  IN_IVR
+  IN_QUEUE
+  IN_AI
+  CONNECTED
+  ON_HOLD
+  TRANSFERRING
+  VOICEMAIL
+  COMPLETED
+  ABANDONED
+  FAILED
+  REJECTED
+  NO_ANSWER
+  BUSY
+}
+
+enum VoiceDisposition {
+  ANSWERED
+  MISSED
+  ABANDONED_IN_QUEUE
+  VOICEMAIL_LEFT
+  HANDLED_BY_AI
+  FAILED
+  CANCELLED
+}
+
+enum VoiceHangupBy {
+  CALLER
+  AGENT
+  SYSTEM
+  UNKNOWN
+}
+
+enum VoiceCallEventType {
+  CREATED
+  RINGING
+  ANSWERED
+  IVR_ENTERED
+  IVR_OPTION
+  QUEUE_ENTERED
+  QUEUE_ANNOUNCE
+  AGENT_RINGING
+  AGENT_ANSWERED
+  AGENT_NO_ANSWER
+  BRIDGED
+  HOLD
+  UNHOLD
+  TRANSFER_BLIND
+  TRANSFER_ATTENDED
+  AI_STARTED
+  AI_INTENT
+  AI_HANDOFF
+  RECORDING_STARTED
+  RECORDING_STOPPED
+  DTMF
+  VOICEMAIL_STARTED
+  HANGUP
+  ERROR
+}
+
+enum VoiceQueueStrategy {
+  RINGALL
+  ROUND_ROBIN
+  LEAST_RECENT
+  FEWEST_CALLS
+  LONGEST_IDLE
+  SKILL_BASED
+}
+
+enum VoiceQueueOverflow {
+  VOICEMAIL
+  ANOTHER_QUEUE
+  EXTERNAL_NUMBER
+  AI_AGENT
+  HANGUP_WITH_MESSAGE
+}
+
+enum VoiceAgentState {
+  AVAILABLE
+  ON_CALL
+  WRAP_UP
+  BREAK
+  OFFLINE
+}
+
+enum VoicePromptCategory {
+  GREETING
+  MENU
+  QUEUE
+  VOICEMAIL
+  ANNOUNCEMENT
+  ERROR
+  CLOSED
+  LEGAL
+}
+
+enum VoicePromptSource {
+  RECORDED_BROWSER
+  RECORDED_PHONE
+  UPLOADED
+  TTS
+}
+
+enum VoiceFlowStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum VoiceRecordingChannels {
+  MONO_MIXED
+  DUAL_STEREO
+}
+
+enum VoiceSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  MIXED
+}
+
+enum VoiceTranscriptStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum VoiceAiOutcome {
+  RESOLVED
+  TRANSFERRED
+  ABANDONED
+  FAILED
+  ESCALATED_BY_RULE
+}
+
+enum VoiceCampaignMode {
+  PREVIEW
+  PROGRESSIVE
+}
+
+enum VoiceCampaignStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum VoiceCampaignContactStatus {
+  PENDING
+  CALLING
+  ANSWERED
+  NO_ANSWER
+  BUSY
+  FAILED
+  DO_NOT_CALL
+  COMPLETED
+  EXCLUDED_BY_LAW
+}
+
+enum VoiceDncReason {
+  CUSTOMER_REQUEST
+  LEGAL
+  INVALID_NUMBER
+  COMPLAINT
+}
+
+enum VoiceVoicemailStatus {
+  NEW
+  HEARD
+  RETURNED
+  ARCHIVED
+}
+
+// ----------------------------------------------------------------------------
+// MODELOS DE VOZ
+// ----------------------------------------------------------------------------
+
+/// VoiceExtension — la extensión telefónica de un usuario o estación
+model VoiceExtension {
+  id                  String               @id @default(cuid())
+  organizationId      String
+  userId              String?
+  extension           String               // número interno, 3 o 4 dígitos (ej: 101)
+  label               String               // ej: "Cristian — Comercial"
+  sipUsername         String               @unique
+  sipPasswordSecretId String               // Referencia a Secret de la Etapa 2. NUNCA en texto plano.
+  type                VoiceExtensionType   @default(USER)
+  status              VoiceExtensionStatus @default(ACTIVE)
+  callerIdName        String?
+  callerIdNumber      String?
+  mobileNumber        String?              // Para desvío al celular
+  ringStrategy        VoiceRingStrategy    @default(BROWSER_ONLY)
+  ringTimeoutSeconds  Int                  @default(25)
+  voicemailEnabled    Boolean              @default(true)
+  dndUntil            DateTime?
+  forwardToExtension  String?
+  recordingPolicy     VoiceRecordingPolicy @default(ALWAYS)
+  lastRegisteredAt    DateTime?
+  lastUserAgent       String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@unique([organizationId, extension])
+  @@index([organizationId, userId])
+  @@index([organizationId, status])
+}
+
+/// VoiceTrunk — la troncal del operador (SIP Trunk)
+model VoiceTrunk {
+  id                 String           @id @default(cuid())
+  organizationId     String
+  name               String           // ej: "Claro", "Twilio", "ETB"
+  provider           String
+  sipHost            String
+  sipPort            Int              @default(5060)
+  transport          VoiceTransport   @default(UDP)
+  authMode           VoiceTrunkAuth   @default(REGISTER)
+  usernameSecretId   String?          // Referencia a Secret
+  passwordSecretId   String?          // Referencia a Secret
+  fromUser           String?
+  fromDomain         String?
+  outboundProxy      String?
+  codecs             String[]         @default(["alaw", "ulaw"])
+  maxChannels        Int              @default(10)
+  dialPrefix         String?          // Prefijo exigido por el operador
+  status             VoiceTrunkStatus @default(UNKNOWN)
+  lastStatusAt       DateTime?
+  lastStatusDetail   String?
+  isDefault          Boolean          @default(false)
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  numbers VoiceNumber[]
+
+  @@index([organizationId, status])
+}
+
+/// VoiceNumber — un DID: número entrante/saliente en formato E.164
+model VoiceNumber {
+  id                  String               @id @default(cuid())
+  organizationId      String
+  number              String               @unique // E.164 ej: +5768XXXXXXX
+  label               String               // "Fijo principal", "IVR", "Campañas"
+  trunkId             String
+  direction           VoiceNumberDirection @default(BOTH)
+  inboundTarget       VoiceNumberTarget    @default(IVR_FLOW)
+  inboundTargetId     String?              // id del flujo, cola, extensión o agente
+  isPorted            Boolean              @default(false)
+  portingStatus       VoicePortingStatus   @default(NOT_APPLICABLE)
+  portingNotes        String?
+  outboundCallerIdFor String[]             // IDs de colas o campañas que salen con este número
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  trunk VoiceTrunk @relation(fields: [trunkId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, direction])
+}
+
+/// VoiceCall — EL MODELO CENTRAL. Una llamada entrante o saliente.
+model VoiceCall {
+  id              String             @id @default(cuid())
+  organizationId  String
+  channelId       String             @unique // ID de canal de Asterisk
+  linkedChannelId String?
+  bridgeId        String?
+  direction       VoiceCallDirection
+  fromNumber      String             // E.164 cuando sea externo
+  toNumber        String             // E.164 cuando sea externo
+  didId           String?            // Referencia a VoiceNumber
+  trunkId         String?            // Referencia a VoiceTrunk
+
+  // Vínculos opcionales con el CRM (resueltos en caliente)
+  customerId String?
+  contactId  String?
+  quoteId    String?
+  projectId  String?
+
+  extensionId     String?
+  handledByUserId String?
+  queueId         String?
+  ivrFlowId       String?
+  aiSessionId     String?
+
+  status      VoiceCallStatus  @default(RINGING)
+  disposition VoiceDisposition?
+
+  startedAt  DateTime  @default(now())
+  answeredAt DateTime?
+  endedAt    DateTime?
+
+  waitSeconds  Int           @default(0)
+  talkSeconds  Int           @default(0)
+  holdSeconds  Int           @default(0)
+  totalSeconds Int           @default(0)
+  hangupCause  String?
+  hangupBy     VoiceHangupBy @default(UNKNOWN)
+
+  recordingId  String?
+  transcriptId String?
+  activityId   String?       // Activity de Etapa 6
+  sipCallId    String?
+  cost         Decimal?      @db.Decimal(18, 2)
+  notes        String?       @db.Text
+  tags         String[]      @default([])
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  events VoiceCallEvent[]
+
+  // Índices obligatorios para paginación por cursor y análisis
+  @@index([organizationId, startedAt(sort: Desc)])
+  @@index([customerId, startedAt(sort: Desc)])
+  @@index([handledByUserId, startedAt(sort: Desc)])
+  @@index([status])
+  @@index([channelId])
+  @@index([direction, startedAt(sort: Desc)])
+}
+
+/// VoiceCallEvent — la línea de tiempo de eventos de una llamada
+model VoiceCallEvent {
+  id             String             @id @default(cuid())
+  organizationId String
+  callId         String
+  at             DateTime           @default(now())
+  type           VoiceCallEventType
+  actorUserId    String?
+  payload        Json               @db.JsonB
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  call VoiceCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId, at])
+  @@index([organizationId, type])
+}
+
+/// VoiceQueue — una cola de atención ACD
+model VoiceQueue {
+  id                           String             @id @default(cuid())
+  organizationId               String
+  name                         String
+  extension                    String?            // Número interno para entrar directo
+  strategy                     VoiceQueueStrategy @default(RINGALL)
+  ringSeconds                  Int                @default(20)
+  wrapUpSeconds                Int                @default(10)
+  maxWaitSeconds               Int                @default(180)
+  maxCallers                   Int                @default(20)
+  announcePositionEverySeconds Int                @default(45)
+  announceHoldTime             Boolean            @default(true)
+  musicOnHold                  String             @default("default")
+  greetingPromptId             String?            // VoicePrompt
+  periodicPromptId             String?            // VoicePrompt
+  overflowTarget               VoiceQueueOverflow @default(VOICEMAIL)
+  overflowTargetId             String?
+  scheduleId                   String?            // VoiceSchedule
+  isActive                     Boolean            @default(true)
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  members VoiceQueueMember[]
+
+  @@index([organizationId, isActive])
+}
+
+/// VoiceQueueMember — un agente asignado a una cola
+model VoiceQueueMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  queueId        String
+  userId         String
+  penalty        Int      @default(0) // Menor penalidad = timbra primero
+  isActive       Boolean  @default(true)
+  skills         String[] @default([])
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  queue VoiceQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  @@unique([queueId, userId])
+  @@index([organizationId, userId])
+}
+
+/// VoiceAgentStatus — el estado de un agente en tiempo real
+model VoiceAgentStatus {
+  id             String          @id @default(cuid())
+  organizationId String
+  userId         String          @unique
+  status         VoiceAgentState @default(OFFLINE)
+  since          DateTime        @default(now())
+  reason         String?
+  currentCallId  String?
+  deviceState    String?         // Lo que reporta Asterisk del dispositivo
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, status])
+}
+
+/// VoicePrompt — una locución de audio
+model VoicePrompt {
+  id               String              @id @default(cuid())
+  organizationId   String
+  name             String
+  description      String?
+  category         VoicePromptCategory @default(ANNOUNCEMENT)
+  source           VoicePromptSource   @default(UPLOADED)
+  text             String?             @db.Text // Guion obligatorio para búsqueda y revisión
+  ttsVoice         String?
+  ttsLanguage      String              @default("es-CO")
+  storageKey       String              // Ruta en MinIO del archivo WAV maestro
+  asteriskFilename String              // Nombre en el servidor de voz
+  durationSeconds  Decimal             @db.Decimal(18, 2)
+  format           String              @default("wav") // 16 bits, 8 kHz, mono nativo
+  isActive         Boolean             @default(true)
+  version          Int                 @default(1)
+  previousPromptId String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  versionLock Int       @default(1)
+
+  @@index([organizationId, category, isActive])
+}
+
+/// VoiceIvrFlow — un árbol de opciones IVR
+model VoiceIvrFlow {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  didIds         String[]        @default([])
+  version        Int             @default(1)
+  status         VoiceFlowStatus @default(DRAFT)
+  publishedAt    DateTime?
+  publishedById  String?
+  definition     Json            @db.JsonB // Grafo completo de nodos
+  scheduleId     String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  flowVersion Int       @default(1)
+
+  @@index([organizationId, status])
+}
+
+/// VoiceSchedule — horario de atención y festivos
+model VoiceSchedule {
+  id                     String    @id @default(cuid())
+  organizationId         String
+  name                   String
+  timezone               String    @default("America/Bogota")
+  rules                  Json      @db.JsonB // [{ days: [1..7], from: "07:30", to: "17:30" }]
+  holidaysFollowColombia Boolean   @default(true) // Reutiliza calendario de festivos de Etapa 15.3
+  closedPromptId         String?
+  holidayPromptId        String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId])
+}
+
+/// VoiceRecording — grabación de audio de una llamada
+model VoiceRecording {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  callId           String                 @unique
+  storageKey       String
+  durationSeconds  Decimal                @db.Decimal(18, 2)
+  sizeBytes        BigInt?
+  format           String                 @default("wav")
+  channels         VoiceRecordingChannels @default(MONO_MIXED)
+  consentAnnounced Boolean                @default(true)
+  retentionUntil   DateTime
+  deletedReason    String?
+  deletedById      String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, retentionUntil])
+}
+
+/// VoiceTranscript — transcripción de audio con análisis semántico
+model VoiceTranscript {
+  id              String                @id @default(cuid())
+  organizationId  String
+  callId          String                @unique
+  recordingId     String?
+  provider        String                @default("gemini")
+  language        String                @default("es-CO")
+  segments        Json                  @db.JsonB // [{ start, end, speaker: "AGENT"|"CALLER", text, confidence }]
+  fullText        String                @db.Text
+  summary         String?               @db.Text
+  sentiment       VoiceSentiment?
+  detectedIntents String[]              @default([])
+  actionItems     Json?                 @db.JsonB
+  embedding       Unsupported("vector(768)")?
+  status          VoiceTranscriptStatus @default(PENDING)
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, status])
+}
+
+/// VoiceAiSession — una conversación telefónica atendida por el agente de IA
+model VoiceAiSession {
+  id             String          @id @default(cuid())
+  organizationId String
+  callId         String          @unique
+  agentConfigId  String?
+  turns          Json            @db.JsonB // [{ role, text, at, latencyMs, toolCalls }]
+  resolvedIntent String?
+  outcome        VoiceAiOutcome?
+  handoffReason  String?
+  toolCallCount  Int             @default(0)
+  totalTokens    Int?
+  costEstimate   Decimal?        @db.Decimal(18, 2)
+  barginCount    Int             @default(0)
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, outcome])
+}
+
+/// VoiceAiAgentConfig — configuración de comportamiento del agente de IA
+model VoiceAiAgentConfig {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  name               String
+  isActive           Boolean  @default(true)
+  systemPrompt       String   @db.Text
+  voice              String   @default("es-CO-Standard-A")
+  language           String   @default("es-CO")
+  greetingPromptId   String?
+  maxTurns           Int      @default(20)
+  maxDurationSeconds Int      @default(300)
+  handoffQueueId     String?
+  allowedTools       String[] @default([])
+  temperature        Decimal  @default(0.3) @db.Decimal(18, 2)
+  interruptible      Boolean  @default(true)
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, isActive])
+}
+
+/// VoiceCampaign — campaña de marcación saliente (Preview o Progresiva)
+model VoiceCampaign {
+  id                    String              @id @default(cuid())
+  organizationId        String
+  name                  String
+  description           String?
+  numberId              String?             // DID de salida
+  queueId               String?             // Cola de agentes para llamadas contestadas
+  mode                  VoiceCampaignMode   @default(PREVIEW) // NUNCA predictiva
+  scriptText            String              @db.Text
+  status                VoiceCampaignStatus @default(DRAFT)
+  scheduleId            String?             // Respeta horarios legales
+  maxAttemptsPerContact Int                 @default(3)
+  retryAfterHours       Int                 @default(24)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  consentRequired       Boolean             @default(true)
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  contacts VoiceCampaignContact[]
+
+  @@index([organizationId, status])
+}
+
+/// VoiceCampaignContact — contacto en la lista de marcación de una campaña
+model VoiceCampaignContact {
+  id             String                     @id @default(cuid())
+  organizationId String
+  campaignId     String
+  customerId     String?
+  contactId      String?
+  phone          String                     // E.164
+  status         VoiceCampaignContactStatus @default(PENDING)
+  attempts       Int                        @default(0)
+  lastAttemptAt  DateTime?
+  nextAttemptAt  DateTime?
+  callId         String?
+  outcome        String?
+  notes          String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  campaign VoiceCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, status])
+  @@index([organizationId, phone])
+}
+
+/// VoiceDoNotCall — lista Robinson / DNC (No llamar)
+model VoiceDoNotCall {
+  id                String         @id @default(cuid())
+  organizationId    String
+  phone             String         @unique // E.164
+  customerId        String?
+  reason            VoiceDncReason @default(CUSTOMER_REQUEST)
+  requestedAt       DateTime       @default(now())
+  requestedVia      String         // llamada, correo, tecla IVR, etc.
+  requestedByUserId String?
+  evidence          String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, phone])
+}
+
+/// VoiceVoicemail — mensaje en buzón de voz
+model VoiceVoicemail {
+  id              String               @id @default(cuid())
+  organizationId  String
+  callId          String               @unique
+  extensionId     String?
+  queueId         String?
+  storageKey      String
+  durationSeconds Decimal              @db.Decimal(18, 2)
+  transcriptText  String?              @db.Text
+  status          VoiceVoicemailStatus @default(NEW)
+  heardAt         DateTime?
+  heardById       String?
+  returnedCallId  String?
+
+  // Auditoría y Convención Maestra
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  @@index([organizationId, status])
+}

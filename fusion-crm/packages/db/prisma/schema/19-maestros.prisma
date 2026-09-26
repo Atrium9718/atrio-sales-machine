@@ -1,0 +1,63 @@
+model MasterRecord {
+  id             String  @id @default(cuid())
+  organizationId String
+  catalog        String // e.g. "Sector", "ClientType", "Origin", "Unit", "Material", "Finish", "Ink"
+  code           String
+  name           String
+  description    String?
+  isActive       Boolean @default(true)
+  order          Int     @default(0)
+  usageCount     Int     @default(0)
+
+  @@unique([organizationId, catalog, code])
+}
+
+model DocumentSeries {
+  id             String  @id @default(cuid())
+  organizationId String
+  documentType   String // e.g. "QUOTE", "PROJECT", "PRODUCTION_ORDER"
+  prefix         String
+  currentValue   Int     @default(0)
+  padding        Int     @default(4)
+  resetYearly    Boolean @default(false)
+  yearFormat     String? // e.g. "YYYY", "YY"
+
+  @@unique([organizationId, documentType])
+}
+
+model CalendarException {
+  id             String                @id @default(cuid())
+  organizationId String
+  date           DateTime              @db.Date
+  type           CalendarExceptionType
+  name           String
+  isWorkingDay   Boolean               @default(false)
+
+  @@unique([organizationId, date])
+}
+
+enum CalendarExceptionType {
+  HOLIDAY
+  COMPANY_HOLIDAY
+  CUSTOM
+}
+
+model Template {
+  id             String       @id @default(cuid())
+  organizationId String
+  type           TemplateType
+  name           String
+  subject        String?
+  content        String       @db.Text
+  version        Int          @default(1)
+  isActive       Boolean      @default(true)
+
+  @@unique([organizationId, type, name])
+}
+
+enum TemplateType {
+  QUOTE_PDF
+  EMAIL
+  WHATSAPP
+  SYSTEM_PROMPT
+}

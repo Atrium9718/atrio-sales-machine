@@ -1,0 +1,6 @@
+{
+  "name": "Fusion CRM & ERP - Colaboración",
+  "description": "Sistema integral ERP y CRM con telefonía SIP.js/WebRTC, agentes IA con Gemini 3.8 Flash, y Agente Maestro de Interventoría Técnica con escáner forense en vivo y rectificación integral para Super Admin.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

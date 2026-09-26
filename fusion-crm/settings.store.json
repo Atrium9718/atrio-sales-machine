@@ -1,0 +1,16 @@
+{
+  "organization.business.name": "Fusión Comunicación Gráfica S.A.S.",
+  "quoting.enforceScaleApproval": true,
+  "quoting.lockScaleConversion": true,
+  "quoting.scaleValidationMode": "STRICT",
+  "quoting.scaleTierValidation": "MANDATORY",
+  "quoting.interventoriaProtectedAt": "2026-09-19T19:51:09.350Z",
+  "production.rounding.paperSheets": "MATH_CEIL",
+  "production.forceCeilSheets": true,
+  "production.waste.standardPercent": 7.5,
+  "production.safetyMarginPercent": 8,
+  "quoting.rounding.to": 100,
+  "production.interventoriaProtectedAt": "2026-09-19T19:51:10.622Z",
+  "voice.sipCleaned": true,
+  "voice.sipCleanedAt": "2026-09-19T19:51:10.911Z"
+}

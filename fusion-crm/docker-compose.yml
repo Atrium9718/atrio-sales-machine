@@ -1,0 +1,257 @@
+version: '3.8'
+
+networks:
+  fusion-internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  traefik_certificates:
+  asterisk_sounds:
+  asterisk_recordings:
+  asterisk_logs:
+
+services:
+  # ── Reverse Proxy & SSL (Traefik v3) ─────────────────────────
+  traefik:
+    image: traefik:v3.1
+    container_name: fusion-traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=sistemas@fusioncg.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certificates:/letsencrypt
+    networks:
+      - fusion-internal
+
+  # ── Aplicación Principal (Web / API) ─────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fusion-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@postgres:5432/fusion_crm?schema=public
+      # firestore (por defecto) o postgres: dónde viven clientes, cotizaciones y proyectos
+      DATA_BACKEND: ${DATA_BACKEND:-firestore}
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      LIVEKIT_URL: http://livekit:7880
+      NEXT_PUBLIC_LIVEKIT_URL: https://meet.fusioncg.com
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      LIVEKIT_TOKEN_TTL_MINUTES: ${LIVEKIT_TOKEN_TTL_MINUTES:-60}
+      LIVEKIT_MAX_PARTICIPANTS: ${LIVEKIT_MAX_PARTICIPANTS:-20}
+      LIVEKIT_RECORDING_ENABLED: ${LIVEKIT_RECORDING_ENABLED:-false}
+      # Cuenta de servicio de Firebase: verifica sesiones y autentica al servidor ante Firestore
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/firebase-service-account.json
+    volumes:
+      - ./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+      livekit:
+        condition: service_started
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`app.fusioncg.com`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+    networks:
+      - fusion-internal
+
+  # ── Base de Datos Relacional ──────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: fusion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fusion_crm
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fusion_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - fusion-internal
+
+  # ── Cache & Pub/Sub Redis ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: fusion-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - fusion-internal
+
+  # ── Almacenamiento de Objetos MinIO ──────────────────────────
+  minio:
+    image: minio/minio:RELEASE.2024-05-10T01-41-38Z
+    container_name: fusion-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-fusion_minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-fusion_minio_secret_2026}
+    volumes:
+      - minio_data:/data
+    networks:
+      - fusion-internal
+
+  # ── LiveKit Server (Señalización y SFU WebRTC) ───────────────
+  livekit:
+    image: livekit/livekit-server:v1.8
+    container_name: fusion-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecret_long_key_123456789}"
+      LIVEKIT_RTC_TCP_PORT: 7881
+      LIVEKIT_RTC_PORT_RANGE_START: 50000
+      LIVEKIT_RTC_PORT_RANGE_END: 50100
+      LIVEKIT_RTC_USE_EXTERNAL_IP: "true"
+      LIVEKIT_TURN_REALM: "${TURN_REALM:-meet.fusioncg.com}"
+      LIVEKIT_TURN_KEY: "${TURN_SECRET}"
+    ports:
+      # Puerto de señalización HTTP / WebSocket expuesto a Traefik internamente
+      - "7880:7880"
+      # TCP fallback para redes restrictivas
+      - "7881:7881"
+      # Rango de puertos UDP para media RTC (audio/video/screen)
+      - "50000-50100:50000-50100/udp"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.livekit.rule=Host(`meet.fusioncg.com`)"
+      - "traefik.http.routers.livekit.entrypoints=websecure"
+      - "traefik.http.routers.livekit.tls.certresolver=letsencrypt"
+      - "traefik.http.services.livekit.loadbalancer.server.port=7880"
+    networks:
+      - fusion-internal
+
+  # ── Coturn (Servidor STUN / TURN para NAT Traversal) ─────────
+  coturn:
+    image: coturn/coturn:latest
+    container_name: fusion-coturn
+    restart: unless-stopped
+    environment:
+      TURN_REALM: "${TURN_REALM:-meet.fusioncg.com}"
+      TURN_SECRET: "${TURN_SECRET:-coturn_super_secret_auth_2026}"
+    command:
+      - "-n"
+      - "--log-file=stdout"
+      - "--realm=${TURN_REALM:-meet.fusioncg.com}"
+      - "--static-auth-secret=${TURN_SECRET:-coturn_super_secret_auth_2026}"
+      - "--min-port=49152"
+      - "--max-port=49252"
+      - "--lt-cred-mech"
+      - "--fingerprint"
+      - "--no-cli"
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      - "49152-49252:49152-49252/udp"
+    networks:
+      - fusion-internal
+
+  # ── Asterisk 22 LTS (Servidor PBX, ARI y Troncal SIP - Etapa 17.2) ──
+  asterisk:
+    build:
+      context: ./infra/asterisk
+      dockerfile: Dockerfile
+    container_name: fusion-asterisk
+    restart: unless-stopped
+    # Opción A (Implementada): network_mode host para eliminar problemas de NAT con RTP.
+    # Asterisk ve las interfaces reales del host. Ver docs/VOZ-INFRA.md para Opción B (bridge).
+    network_mode: host
+    environment:
+      ASTERISK_ARI_USERNAME: "${ASTERISK_ARI_USERNAME:-fusion}"
+      ASTERISK_ARI_PASSWORD: "${ASTERISK_ARI_PASSWORD:-fusion_secret_ari_2026}"
+      ASTERISK_ARI_PASSWORD_CRYPT: "${ASTERISK_ARI_PASSWORD_CRYPT:-}"
+      PUBLIC_IP: "${PUBLIC_IP:-127.0.0.1}"
+      DOCKER_SUBNET: "${DOCKER_SUBNET:-172.18.0.0/16}"
+      ASTERISK_RTP_START: "${ASTERISK_RTP_START:-10000}"
+      ASTERISK_RTP_END: "${ASTERISK_RTP_END:-10200}"
+      COTURN_TURN_ADDR: "${COTURN_TURN_ADDR:-}"
+      TRUNK_SIP_HOST: "${TRUNK_SIP_HOST:-}"
+      TRUNK_SIP_PORT: "${TRUNK_SIP_PORT:-5060}"
+      TRUNK_USERNAME: "${TRUNK_USERNAME:-}"
+      TRUNK_PASSWORD: "${TRUNK_PASSWORD:-}"
+      TRUNK_MAX_CHANNELS: "${TRUNK_MAX_CHANNELS:-10}"
+    volumes:
+      - ./infra/asterisk/etc:/etc/asterisk.templates:ro
+      - asterisk_sounds:/var/lib/asterisk/sounds/fusion
+      - asterisk_recordings:/var/spool/asterisk/recording
+      - asterisk_logs:/var/log/asterisk
+    healthcheck:
+      test: ["CMD-SHELL", "asterisk -rx 'core show uptime' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      - postgres
+      - redis
+
+  # ── Puente de Voz: Servicio ARI en Node/TypeScript (Etapa 17.3) ──
+  voice:
+    build:
+      context: .
+      dockerfile: apps/voice/Dockerfile
+    container_name: fusion-voice
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@postgres:5432/fusion_crm?schema=public
+      REDIS_URL: redis://redis:6379
+      ASTERISK_ARI_URL: ${ASTERISK_ARI_URL:-http://127.0.0.1:8088}
+      ASTERISK_ARI_WS_URL: ${ASTERISK_ARI_WS_URL:-ws://127.0.0.1:8088/ari/events?app=fusion-voz&subscribeAll=false}
+      ASTERISK_ARI_USERNAME: ${ASTERISK_ARI_USERNAME:-fusion}
+      ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-fusion_secret_ari_2026}
+      ASTERISK_APP_NAME: fusion-voz
+      ASTERISK_RECORDINGS_PATH: /var/spool/asterisk/recording
+    volumes:
+      - asterisk_recordings:/var/spool/asterisk/recording
+    depends_on:
+      - postgres
+      - redis
+      - asterisk
+    networks:
+      - fusion-internal
+
+

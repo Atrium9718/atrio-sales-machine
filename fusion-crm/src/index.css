@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #1d4ed8;
+  --color-primary-foreground: #ffffff;
+  
+  --color-neutral-bg: #f8fafc;
+  --color-neutral-text: #0f172a;
+  
+  --color-success: #16a34a;
+  --color-success-foreground: #ffffff;
+  
+  --color-alert: #d97706;
+  --color-alert-foreground: #ffffff;
+  
+  --color-danger: #dc2626;
+  --color-danger-foreground: #ffffff;
+  
+  --color-info: #0284c7;
+  --color-info-foreground: #ffffff;
+
+  --color-background: var(--color-neutral-bg);
+  --color-foreground: var(--color-neutral-text);
+  
+  --color-card: #ffffff;
+  --color-card-foreground: var(--color-neutral-text);
+  
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #1d4ed8;
+
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+  
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  
+  /* Accesibilidad y Transiciones Base */
+  button, a, input, select, textarea {
+    @apply transition-all duration-200;
+  }
+  
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
