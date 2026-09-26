@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayLabel, isContinuation } from './ChatPage';
+import { dayLabel, isContinuation } from './chatFormat';
 
 describe('chat interno: agrupación de mensajes', () => {
   const now = new Date(2026, 8, 26, 15, 0);
