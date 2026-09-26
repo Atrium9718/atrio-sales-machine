@@ -36,11 +36,21 @@ interface DomAuditResult {
   observations: string;
 }
 
-export function InterventorFloatingButton() {
+interface InterventorFloatingButtonProps {
+  /** Si se pasa, el panel se controla desde fuera (p. ej. el dock de accesos rápidos). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Oculta el botón flotante propio; el panel se abre desde otro lugar. */
+  hideLauncher?: boolean;
+}
+
+export function InterventorFloatingButton({ open, onOpenChange, hideLauncher = false }: InterventorFloatingButtonProps = {}) {
   const { currentUser, isSuperAdmin } = useFusionAuth();
   const location = useLocation();
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
+  const setIsOpen = (v: boolean) => (onOpenChange ? onOpenChange(v) : setInternalOpen(v));
   const [activeTab, setActiveTab] = useState<'ESCANER' | 'CHAT'>('ESCANER');
 
   // Scanner states
@@ -457,6 +467,7 @@ export function InterventorFloatingButton() {
       )}
 
       {/* Floating Trigger Button with Badge */}
+      {!hideLauncher && (
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-slate-950 text-white border-2 border-amber-500 shadow-2xl hover:scale-105 active:scale-95 transition-all group ml-auto"
@@ -470,6 +481,7 @@ export function InterventorFloatingButton() {
           Interventor
         </span>
       </button>
+      )}
     </div>
   );
 }

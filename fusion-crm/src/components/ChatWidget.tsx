@@ -5,9 +5,19 @@ import { useFusionAuth } from '@/context/FusionAuthContext';
 import { getProjects } from '../../apps/web/src/lib/projectsStore';
 import { getInventory } from '../../apps/web/src/lib/inventoryStore';
 
-export default function ChatWidget() {
+interface ChatWidgetProps {
+  /** Si se pasa, el panel se controla desde fuera (p. ej. el dock de accesos rápidos). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Oculta el botón flotante propio; el panel se abre desde otro lugar. */
+  hideLauncher?: boolean;
+}
+
+export default function ChatWidget({ open, onOpenChange, hideLauncher = false }: ChatWidgetProps = {}) {
   const { isSuperAdmin } = useFusionAuth();
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
+  const setIsOpen = (v: boolean) => (onOpenChange ? onOpenChange(v) : setInternalOpen(v));
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -122,6 +132,7 @@ export default function ChatWidget() {
   return (
     <>
       {/* Floating Button */}
+      {!hideLauncher && (
       <button 
         onClick={() => setIsOpen(true)}
         className={`fixed bottom-20 sm:bottom-6 right-36 sm:right-40 w-11 h-11 sm:w-14 sm:h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:bg-indigo-700 hover:scale-105 transition-all z-40 ${isOpen ? 'hidden' : 'flex'}`}
@@ -129,6 +140,7 @@ export default function ChatWidget() {
       >
         <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6" />
       </button>
+      )}
 
       {/* Chat Window */}
       {isOpen && (

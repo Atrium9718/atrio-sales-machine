@@ -1,4 +1,4 @@
-import ChatWidget from './components/ChatWidget';
+import { QuickActionsDock } from './components/QuickActionsDock';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -127,7 +127,6 @@ const ArquitecturaIAPage = React.lazy(() => import('../apps/web/src/app/(dashboa
 const IATestingPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/ia/testing/page'));
 const KioskoPlantaPage = React.lazy(() => import('../apps/web/src/app/kiosko-planta/page'));
 import { InterventoriaPage } from './pages/admin/InterventoriaPage';
-import { InterventorFloatingButton } from './components/interventoria/InterventorFloatingButton';
 import { ClientRequestToasts, useNewClientRequestsCount } from './components/portal/ClientRequestAlerts';
 
 function useCompanyIdentity() {
@@ -549,20 +548,7 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
 
         {/* FLOATING ACTION BUTTONS GLOBALLY (EXCLUSIVOS PARA SUPER ADMIN) */}
         {isSuperAdmin && !isChatRoute && (
-          <>
-            <button 
-              onClick={() => setIsNewModalOpen(true)}
-              className="fixed bottom-20 md:bottom-6 right-6 w-14 h-14 bg-primary text-primary-foreground rounded-full shadow-lg flex items-center justify-center hover:bg-primary/90 hover:scale-105 transition-all z-40 focus:outline-none focus:ring-4 focus:ring-primary/30 group"
-              title="Nueva Oportunidad (Atajo: N)"
-            >
-              <Plus className="w-6 h-6" />
-              <span className="absolute right-full mr-4 bg-foreground text-background text-xs font-bold px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none hidden md:block">
-                Nueva Oportunidad (N)
-              </span>
-            </button>
-            <ChatWidget />
-            <InterventorFloatingButton />
-          </>
+          <QuickActionsDock onNewOpportunity={() => setIsNewModalOpen(true)} />
         )}
         {isSuperAdmin && <ClientRequestToasts />}
 
