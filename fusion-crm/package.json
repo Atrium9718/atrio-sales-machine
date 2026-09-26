@@ -16,7 +16,8 @@
     "postinstall": "npx --yes prisma generate --schema=packages/db/prisma",
     "start": "node dist/server.cjs",
     "db:migrate": "prisma migrate deploy --schema packages/db/prisma/schema",
-    "db:status": "prisma migrate status --schema packages/db/prisma/schema"
+    "db:status": "prisma migrate status --schema packages/db/prisma/schema",
+    "db:migrate-data": "tsx scripts/migrateFirestoreToPostgres.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
