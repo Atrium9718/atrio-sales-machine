@@ -231,6 +231,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
       { name: 'Chat del equipo', path: '/chat', icon: MessageSquare, permission: 'chat:read' },
     ]),
     group('Comercial', 'comercial', [
+      { name: 'Dashboard comercial', path: '/dashboard/comercial/dashboard', icon: LayoutDashboard },
       { name: 'Clientes', path: '/dashboard/clientes', icon: Users },
       { name: 'Pipeline', path: '/dashboard/oportunidades', icon: TrendingUp },
       { name: 'Agenda', path: '/dashboard/comercial/agenda', icon: Calendar },
@@ -243,6 +244,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     group('Producción', 'produccion', [
       { name: 'Tablero de producción', path: '/dashboard/produccion', icon: Play },
       { name: 'Inventario', path: '/dashboard/inventario', icon: Package },
+      { name: 'Rentabilidad por orden', path: '/dashboard/produccion/costos', icon: DollarSign, sensitiveModuleKey: 'costos' },
     ]),
     group('Comunicaciones', 'comunicaciones', [
       { name: 'Bandeja de entrada', path: '/dashboard/inbox', icon: MessageCircle },
@@ -281,8 +283,6 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     ]),
     ...(isAdmin ? [
       group('En construcción', 'configuracion', [
-        { name: 'Dashboard comercial', path: '/dashboard/comercial/dashboard', icon: LayoutDashboard },
-        { name: 'Rentabilidad y costos', path: '/dashboard/produccion/costos', icon: DollarSign },
         { name: 'Catálogo de productos', path: '/dashboard/catalogo', icon: Package },
         { name: 'Salud de canales', path: '/dashboard/canales-config/meta', icon: Activity },
         { name: 'Costos de mensajería', path: '/dashboard/costos-omnicanal', icon: DollarSign },
