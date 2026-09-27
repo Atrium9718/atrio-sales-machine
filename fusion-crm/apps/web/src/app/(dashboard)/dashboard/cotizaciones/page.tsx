@@ -23,6 +23,7 @@ import {
   Edit, Trash2, ExternalLink, Eye, ArrowRight, Check, Sparkles, RefreshCw, Lock, Trophy
 } from "lucide-react";
 import { notify } from '@/lib/notify';
+import { catalogCollection, newProductId, searchProducts, withPriceHistory, type CatalogProduct } from '@/lib/catalogStore';
 
 // --- PRICING LOGIC ---
 function calcularCostoInterno(input: {
@@ -412,6 +413,14 @@ function QuoteEditor({
   const [catalogOpen, setCatalogOpen] = React.useState(false);
   const [catalogTargetId, setCatalogTargetId] = React.useState<string | null>(null);
   const [catalogSearch, setCatalogSearch] = React.useState("");
+  const [catalogProducts, setCatalogProducts] = React.useState<CatalogProduct[]>(catalogCollection.getAll());
+  React.useEffect(() => {
+    const refresh = () => setCatalogProducts([...catalogCollection.getAll()]);
+    window.addEventListener('fusion_catalog_updated', refresh);
+    if (!catalogCollection.isHydrated()) catalogCollection.hydrate().then(refresh).catch(() => undefined);
+    return () => window.removeEventListener('fusion_catalog_updated', refresh);
+  }, []);
+  const catalogResults = React.useMemo(() => searchProducts(catalogProducts, catalogSearch), [catalogProducts, catalogSearch]);
   const [items, setItems] = React.useState<QuoteItem[]>([
     {
       id: '1',
@@ -598,42 +607,82 @@ function QuoteEditor({
     setTimeout(() => setSaveSuccessMsg(null), 4500);
   };
 
-  // Guardar ítem como producto de catálogo (Bloque C)
+  // Guardar ítem como producto de catálogo (en el servidor, con historial de precios)
   const handleSaveItemToCatalog = (item: QuoteItem) => {
-    try {
-      const productName = item.description?.split('\n')[0] || `Producto Ítem #${item.order}`;
-      const catalogKey = 'fusion_custom_catalog';
-      const existingRaw = localStorage.getItem(catalogKey);
-      const existing = existingRaw ? JSON.parse(existingRaw) : [];
-
-      const newProduct = {
-        id: `cat_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    const productName = item.description?.split('\n')[0] || `Producto Ítem #${item.order}`;
+    const quantity = Number(item.quantity) || 1;
+    const product = withPriceHistory(
+      {
+        id: newProductId(),
         name: productName,
         description: item.description,
         defaultPrice: item.unitPrice,
-        cost: item.internalCost || item.rawMaterialCost || 0,
+        // Costo unitario de referencia (el del motor es por toda la línea)
+        cost: item.internalCost ? Math.round((item.internalCost / quantity) * 100) / 100 : item.rawMaterialCost || 0,
         unit: item.unit || 'Unidades',
         size: item.size,
         inks: item.inks,
         materials: item.material || item.materials,
         finishes: item.finishes,
-        specSheet: item.assistInput || {
-          productionSpec: item.productionSpec,
-          assistRunId: item.assistRunId,
-          impositionPerSheet: item.impositionPerSheet,
-          plateCount: item.plateCount,
-          sheetsNeeded: item.sheetsNeeded,
+        specSheet: (item as any).assistInput || {
+          productionSpec: (item as any).productionSpec,
+          assistRunId: (item as any).assistRunId,
+          impositionPerSheet: (item as any).impositionPerSheet,
+          plateCount: (item as any).plateCount,
+          sheetsNeeded: (item as any).sheetsNeeded,
         },
-        createdAt: new Date().toISOString(),
-      };
+        active: true,
+      },
+      undefined,
+      getCurrentUserName()
+    );
+    catalogCollection
+      .save(product)
+      .then(() => {
+        setCatalogSaveNotice(`✅ "${productName}" guardado en el catálogo con su ficha técnica.`);
+        setTimeout(() => setCatalogSaveNotice(null), 4000);
+      })
+      .catch((e: any) => notify('No se pudo guardar en el catálogo: ' + (e?.message || e), 'error'));
+  };
 
-      localStorage.setItem(catalogKey, JSON.stringify([newProduct, ...existing]));
-      setCatalogSaveNotice(`✅ "${productName}" guardado en el catálogo con su ficha técnica completa.`);
-      setTimeout(() => setCatalogSaveNotice(null), 4000);
-    } catch (e: any) {
-      console.error('Error saving to catalog:', e);
-      notify('Error guardando en catálogo: ' + e.message);
+  /** Pone un producto del catálogo en la línea elegida, o en una nueva arriba. */
+  const applyCatalogProduct = (product: CatalogProduct) => {
+    const fields = {
+      description: product.description || product.name,
+      size: product.size || '',
+      inks: product.inks || '',
+      material: product.materials || '',
+      finishes: product.finishes || '',
+      unit: product.unit || 'Unidades',
+    };
+    const priced = (base: QuoteItem): QuoteItem => {
+      const res = resolverDesdeCampoEditado(
+        { quantity: base.quantity || 1, unitPrice: product.defaultPrice || 0, subtotal: base.subtotal, total: base.total },
+        'unitPrice', base.vatRate ?? CONFIG.vatRate, base.applyVat
+      );
+      return { ...base, ...fields, quantity: res.quantity, unitPrice: res.unitPrice, subtotal: res.subtotal, vatAmount: res.vatAmount, total: res.total, lastEditedField: 'unitPrice' };
+    };
+    if (catalogTargetId) {
+      setItems(items.map((it) => (it.id === catalogTargetId ? priced(it) : it)));
+    } else {
+      const blank: QuoteItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        order: 1,
+        description: '',
+        productionMode: 'IN_HOUSE',
+        size: '', inks: '', material: '', finishes: '',
+        quantity: 1, unitPrice: 0, subtotal: 0, applyVat: applyGlobalVat, vatAmount: 0, total: 0,
+        showCalcPanel: false, laborHours: 0, rawMaterialCost: 0, marginPercent: CONFIG.margins.IN_HOUSE,
+        isManuallyAdjusted: false, lastEditedField: 'quantity'
+      };
+      // Si la única línea está vacía, se reemplaza
+      const onlyEmpty = items.length === 1 && !items[0].description && !items[0].unitPrice;
+      const next = onlyEmpty ? [priced(blank)] : [priced(blank), ...items];
+      setItems(next.map((it, idx) => ({ ...it, order: idx + 1 })));
     }
+    setCatalogOpen(false);
+    setCatalogTargetId(null);
+    setCatalogSearch('');
   };
 
   // Synchronize when an existing quote is selected to edit
@@ -2035,7 +2084,7 @@ function QuoteEditor({
               )}
               <button 
                 type="button"
-                onClick={() => setCatalogOpen(true)}
+                onClick={() => { setCatalogTargetId(null); setCatalogOpen(true); }}
                 className="inline-flex items-center text-sm font-bold text-muted-foreground hover:bg-muted px-3 py-1.5 rounded-md border border-input transition-colors"
               >
                 <Search className="w-4 h-4 mr-2" /> Catálogo
@@ -2763,21 +2812,36 @@ function QuoteEditor({
               />
             </div>
             <div className="flex-1 overflow-y-auto p-2">
-              <div className="p-3 text-center text-muted-foreground text-sm space-y-3">
-                <p>No se encontraron resultados para "{catalogSearch || '...'}"</p>
-                {catalogTargetId && (
-                  <button 
-                    onClick={() => {
-                      updateItem(catalogTargetId, { description: catalogSearch || 'Nuevo Producto' });
-                      setCatalogOpen(false);
-                      notify(`Mock: Se ha creado el producto en el catálogo y asignado a la línea.`);
-                    }}
-                    className="inline-flex items-center gap-2 text-primary font-bold hover:underline"
+              {catalogResults.length === 0 ? (
+                <div className="p-3 text-center text-muted-foreground text-sm space-y-2">
+                  <p>{catalogProducts.length === 0 ? 'El catálogo está vacío.' : `Sin resultados para "${catalogSearch}".`}</p>
+                  <p className="text-xs">Guarda un ítem con el botón «Guardar en catálogo» o créalo en Producción → Catálogo.</p>
+                </div>
+              ) : (
+                catalogResults.slice(0, 50).map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => applyCatalogProduct(p)}
+                    className="w-full text-left p-3 rounded-md hover:bg-muted flex items-start justify-between gap-3"
                   >
-                    <Plus className="w-4 h-4" /> Crear "{catalogSearch || 'Nuevo'}" en el Catálogo
+                    <div className="min-w-0">
+                      <div className="font-bold text-sm truncate">
+                        {p.code ? <span className="text-muted-foreground font-mono mr-2">{p.code}</span> : null}
+                        {p.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">{[p.size, p.materials, p.inks, p.finishes].filter(Boolean).join(' · ')}</div>
+                    </div>
+                    <div className="text-sm font-bold shrink-0">
+                      {new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(p.defaultPrice || 0)}
+                      <span className="text-[10px] text-muted-foreground font-normal"> /{p.unit || 'und'}</span>
+                    </div>
                   </button>
-                )}
-              </div>
+                ))
+              )}
+            </div>
+            <div className="p-3 border-t border-border text-xs text-muted-foreground">
+              {catalogTargetId ? 'Reemplaza la descripción y el precio de la línea elegida.' : 'Se agrega como una línea nueva arriba.'}
             </div>
           </div>
         </div>

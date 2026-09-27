@@ -1,6 +1,7 @@
 import { doc, getDoc, type Firestore } from 'firebase/firestore';
 import { memoryAssistRuns } from '../routes/tariff';
-import { calculatePressQuote, buildPressQuoteInput, DEFAULT_OFFICIAL_TARIFF } from '../../packages/core/src/pricing/press';
+import { calculatePressQuote, buildPressQuoteInput } from '../../packages/core/src/pricing/press';
+import { getTariffVersion } from './tariffStore';
 import type { PressQuoteResult } from '../../packages/core/src/pricing/press/types';
 import {
   recalculateQuoteTotals,
@@ -11,7 +12,7 @@ import {
 
 /**
  * Recalcula en el servidor el resultado del motor de cada corrida del asistente usada en la
- * cotización, a partir de la entrada guardada y del tarifario oficial (no del resultado que
+ * cotización, a partir de la entrada guardada y de la versión del tarifario con que se hizo (no del resultado que
  * haya enviado el navegador).
  */
 async function loadEngineResults(db: Firestore | null, runIds: string[]): Promise<Record<string, PressQuoteResult | null>> {
@@ -24,7 +25,7 @@ async function loadEngineResults(db: Firestore | null, runIds: string[]): Promis
           const snap = await getDoc(doc(db, 'quote_assist_runs', runId));
           run = snap.exists() ? snap.data() : null;
         }
-        const input = run?.input ? buildPressQuoteInput(run.input, DEFAULT_OFFICIAL_TARIFF) : null;
+        const input = run?.input ? buildPressQuoteInput(run.input, getTariffVersion(run.tariffVersionId).snapshot) : null;
         results[runId] = input ? calculatePressQuote(input) : null;
       } catch (err) {
         console.warn(`[quoteReview] No se pudo recalcular la corrida ${runId}:`, err);

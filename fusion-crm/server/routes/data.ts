@@ -20,10 +20,11 @@ export const DATA_COLLECTIONS: Record<string, string> = {
   'project-tombstones': 'project_tombstones',
   appointments: 'appointments',
   opportunities: 'opportunities',
+  products: 'catalog_products',
 };
 
 /** Colecciones nuevas: van al backend configurado (Postgres o Firestore) desde el principio. */
-const DOCUMENT_COLLECTIONS = new Set(['appointments', 'opportunities']);
+const DOCUMENT_COLLECTIONS = new Set(['appointments', 'opportunities', 'products']);
 
 const MAX_BULK_ITEMS = 2000;
 

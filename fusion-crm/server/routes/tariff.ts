@@ -3,7 +3,9 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, getDoc, query, orderBy, limit } from 'firebase/firestore';
 import fs from 'fs';
 import path from 'path';
-import { DEFAULT_OFFICIAL_TARIFF } from '../../packages/core/src/pricing/press/defaultTariff';
+import { isAdminRole } from '../auth/session';
+import { SEED_ROLE_TARIFF_PERMISSIONS } from '../../packages/core/src/auth/permissions';
+import { activateTariffVersion, getActiveTariff, getTariffVersion, listTariffVersions, publishTariffVersion } from '../services/tariffStore';
 
 export const tariffRouter = Router();
 
@@ -138,23 +140,47 @@ const memoryTemplates: any[] = [
   },
 ];
 
-// GET /api/tariff/snapshot
+// GET /api/tariff/snapshot — versión vigente (o la pedida con ?version=)
 tariffRouter.get('/snapshot', (req, res) => {
   try {
-    res.json({
-      success: true,
-      version: {
-        id: 'tar-2026-01',
-        code: 'TAR-2026-01',
-        name: 'Tarifario Oficial 2026 (Vigente)',
-        validFrom: '2026-01-01T00:00:00.000Z',
-        isActive: true,
-      },
-      snapshot: DEFAULT_OFFICIAL_TARIFF,
-    });
+    const { snapshot, ...version } = getTariffVersion(typeof req.query.version === 'string' ? req.query.version : null);
+    res.json({ success: true, version, snapshot });
   } catch (err: any) {
     console.error('Error serving tariff snapshot:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+const canPublishTariff = (req: any) => {
+  const role = String(req.headers['x-user-role'] || '');
+  return isAdminRole(role) || (SEED_ROLE_TARIFF_PERMISSIONS[role] ?? []).includes('tariff:publish');
+};
+
+// GET /api/tariff/versions — historial (sin el detalle)
+tariffRouter.get('/versions', (_req, res) => {
+  res.json({ success: true, versions: listTariffVersions() });
+});
+
+// POST /api/tariff/versions — publica una versión nueva con los cambios
+tariffRouter.post('/versions', async (req, res) => {
+  if (!canPublishTariff(req)) return res.status(403).json({ success: false, error: 'No tienes permiso para modificar el tarifario' });
+  try {
+    const version = await publishTariffVersion(req.body?.snapshot, { by: String(req.headers['x-user-name'] || req.headers['x-user-id'] || ''), note: req.body?.note });
+    const { snapshot: _s, ...meta } = version;
+    res.json({ success: true, version: meta });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/tariff/versions/:id/activate — volver a una versión anterior
+tariffRouter.post('/versions/:id/activate', async (req, res) => {
+  if (!canPublishTariff(req)) return res.status(403).json({ success: false, error: 'No tienes permiso para modificar el tarifario' });
+  try {
+    const { snapshot: _s, ...meta } = await activateTariffVersion(req.params.id);
+    res.json({ success: true, version: meta });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ success: false, error: err.message });
   }
 });
 
@@ -166,7 +192,7 @@ tariffRouter.post('/assist-run', async (req, res) => {
     const record = {
       id: runId,
       organizationId: 'org-01',
-      tariffVersionId: 'tar-2026-01',
+      tariffVersionId: getActiveTariff().id,
       engineVersion: result?.engineVersion || 'press-1.0.0',
       quoteId: quoteId || null,
       technique: technique || input?.technique || 'LITHO',

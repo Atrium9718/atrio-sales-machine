@@ -239,6 +239,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
       { name: 'Cotizador', path: '/dashboard/cotizador', icon: FileText },
       { name: 'Cotizaciones', path: '/dashboard/comercial/cotizaciones', icon: FileText },
       { name: 'Portal de clientes', path: '/dashboard/portal-clientes', icon: Link2 },
+      { name: 'Catálogo de productos', path: '/dashboard/catalogo', icon: Package },
       { name: 'Tarifario', path: '/cotizaciones/tarifario', icon: Calculator, permission: 'tariff:read' },
     ]),
     group('Producción', 'produccion', [
@@ -283,7 +284,6 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     ]),
     ...(isAdmin ? [
       group('En construcción', 'configuracion', [
-        { name: 'Catálogo de productos', path: '/dashboard/catalogo', icon: Package },
         { name: 'Salud de canales', path: '/dashboard/canales-config/meta', icon: Activity },
         { name: 'Costos de mensajería', path: '/dashboard/costos-omnicanal', icon: DollarSign },
         { name: 'Identidades (triage)', path: '/dashboard/identidades', icon: Users },
