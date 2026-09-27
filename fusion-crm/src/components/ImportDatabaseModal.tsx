@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UploadCloud, X, FileText, CheckCircle, AlertTriangle, Table, Phone, Mail, MapPin, Building, UserCheck, Trash2, RefreshCw } from 'lucide-react';
 import * as xlsx from 'xlsx';
 import { importCustomers, clearAllCustomers, isQuotaExhaustedToday } from '@/lib/customerService';
+import { notify } from '../lib/notify';
 
 interface Props {
   onClose: () => void;
@@ -219,14 +220,14 @@ export function ImportDatabaseModal({ onClose, onImportComplete }: Props) {
     setClearing(true);
     try {
       const res = await clearAllCustomers();
-      alert(res.message || 'Base de datos limpiada exitosamente.');
+      notify(res.message || 'Base de datos limpiada exitosamente.');
       setFile(null);
       setParsedRows([]);
       onImportComplete();
       onClose();
     } catch (e: any) {
       console.error(e);
-      alert('Error al limpiar la base de datos: ' + (e.message || 'Error desconocido'));
+      notify('Error al limpiar la base de datos: ' + (e.message || 'Error desconocido'));
     } finally {
       setClearing(false);
     }
@@ -535,13 +536,13 @@ export function ImportDatabaseModal({ onClose, onImportComplete }: Props) {
                   try {
                     const { seedCustomerDatabase } = await import('@/lib/customerService');
                     const res = await seedCustomerDatabase();
-                    alert(res.message);
+                    notify(res.message, 'error');
                     if (res.success) {
                       onImportComplete();
                       onClose();
                     }
                   } catch (e: any) {
-                    alert('Error: ' + e.message);
+                    notify('Error: ' + e.message);
                   } finally {
                     setLoading(false);
                   }

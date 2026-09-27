@@ -7,6 +7,7 @@ import {
   Building2, HeartHandshake, Search, PhoneCall, FileText, ExternalLink,
   Mail, Hash, Database, Check, Layers
 } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 interface ChatMessage {
   id: string;
@@ -447,7 +448,7 @@ export default function IATestingPage() {
       }));
 
     if (convoMessages.length === 0) {
-      alert('Debes tener al menos un mensaje en la conversación con requerimientos o cantidades para generar la pre-cotización.');
+      notify('Debes tener al menos un mensaje en la conversación con requerimientos o cantidades para generar la pre-cotización.');
       return;
     }
 
@@ -501,7 +502,7 @@ export default function IATestingPage() {
         ]);
       }
     } catch (err: any) {
-      alert('Error generando pre-cotización con IA: ' + err.message);
+      notify('Error generando pre-cotización con IA: ' + err.message);
     } finally {
       setIsGeneratingPreQuote(false);
     }

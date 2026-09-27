@@ -19,6 +19,7 @@ import {
   AlertCircle,
   MoreVertical
 } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 // --- MOCK SCHEMA & TYPES ---
 type Visibility = 'TEAM' | 'PRIVATE';
@@ -430,7 +431,7 @@ export default function AgendaComercialPage() {
         isOpen={isAppointmentModalOpen} 
         onClose={() => setIsAppointmentModalOpen(false)} 
         onSave={(data) => {
-          alert("Cita guardada en base de datos. Si tiene Meet, se generó el enlace. Invitaciones enviadas.");
+          notify("Cita guardada en base de datos. Si tiene Meet, se generó el enlace. Invitaciones enviadas.");
         }}
       />
       

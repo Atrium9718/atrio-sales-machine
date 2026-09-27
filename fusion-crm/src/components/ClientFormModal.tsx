@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Search, User, FileText, Phone, Mail, Building } from 'lucide-react';
 import { addCustomer, searchCustomers } from '@/lib/customerService';
+import { notify } from '../lib/notify';
 
 interface Props {
   onClose: () => void;
@@ -76,7 +77,7 @@ export function ClientFormModal({ onClose, onSaved }: Props) {
       onSaved();
     } catch (err: any) {
       console.error(err);
-      alert('Error al guardar el cliente: ' + (err.message || 'Error'));
+      notify('Error al guardar el cliente: ' + (err.message || 'Error'));
     } finally {
       setLoading(false);
     }

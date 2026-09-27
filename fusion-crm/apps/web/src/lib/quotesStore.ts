@@ -1,6 +1,7 @@
 import { createOrEnsureProjectForQuote, addProject, syncProjectsFromApi } from './projectsStore';
 import { createServerCollection } from '@/lib/serverCollection';
 import { getCurrentUserName } from '@/lib/currentUser';
+import { notify } from '@/lib/notify';
 
 export const INITIAL_QUOTES: any[] = [];
 
@@ -63,7 +64,7 @@ export const addQuote = (quote: any) => {
   // Aprobar (o finalizar) pasa por el servidor, que revisa precios y puede rechazarlo
   if ((normStatus === 'finalizada' || isApprovedStatus(normStatus)) && !isApprovedStatus(existing?.status)) {
     upsertLocal({ ...merged, status: existing?.status || 'Borrador' });
-    approveQuote(merged.id, merged).catch((err) => alert(err.message));
+    approveQuote(merged.id, merged).catch((err) => notify(err.message, 'error'));
     return;
   }
 
@@ -113,7 +114,7 @@ export const updateQuoteStatus = (quoteId: string, status: string, additionalDat
   if (!quote) return;
 
   if (isApprovedStatus(status) && !isApprovedStatus(quote.status)) {
-    approveQuote(quoteId, { ...(additionalData || {}), status }).catch((err) => alert(err.message));
+    approveQuote(quoteId, { ...(additionalData || {}), status }).catch((err) => notify(err.message, 'error'));
     return;
   }
 

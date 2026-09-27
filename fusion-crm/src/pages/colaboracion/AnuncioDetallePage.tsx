@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 
 import { useFusionAuth } from '../../context/FusionAuthContext';
+import { notify } from '../../lib/notify';
 
 export const AnuncioDetallePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -406,7 +407,7 @@ export const AnuncioDetallePage: React.FC = () => {
                     </div>
                   </div>
                   <button
-                    onClick={() => alert(`Descargando archivo adjunto: ${att.name}`)}
+                    onClick={() => notify(`Descargando archivo adjunto: ${att.name}`)}
                     className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
                     title="Descargar archivo"
                   >

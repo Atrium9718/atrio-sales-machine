@@ -22,6 +22,7 @@ import { useProjectsQuery } from '@/hooks/useDomainQueries';
 import { useSettingValue } from '@/hooks/useSettingValue';
 import { getCurrentUser } from '@/lib/currentUser';
 import { EditProjectForm } from './components/EditProjectForm';
+import { notify } from '@/lib/notify';
 
 // --- TYPES ---
 interface ProductionStage {
@@ -297,7 +298,7 @@ export default function ProduccionKanbanPage() {
        stopAndLogTimer(projectId, stageId);
     } else {
        if (activeWorkTimer) {
-         alert("Se pausó el trabajo anterior.");
+         notify("Se pausó el trabajo anterior.");
          stopAndLogTimer(activeWorkTimer.projectId, activeWorkTimer.stageId);
        }
        setActiveWorkTimer({ projectId, stageId, startTime: Date.now() });
@@ -353,7 +354,7 @@ export default function ProduccionKanbanPage() {
     
     let token = await getAccessToken();
     if (!token) {
-      alert('Por favor, conecta Google Drive primero.');
+      notify('Por favor, conecta Google Drive primero.');
       return;
     }
     
@@ -382,7 +383,7 @@ export default function ProduccionKanbanPage() {
       }));
     } catch (err: any) {
       console.error(err);
-      alert('Error subiendo a Drive: ' + err.message);
+      notify('Error subiendo a Drive: ' + err.message);
     } finally {
       setUploadingFiles(false);
       setUploadProgressMsg('');
@@ -516,7 +517,7 @@ export default function ProduccionKanbanPage() {
     if (!project || !newStage || !currentStage) return;
 
     if (currentStage.requiresArtworkToAdvance && project.artworkKeys.length === 0) {
-      alert(`Debes adjuntar un archivo de diseño o enlace antes de avanzar de ${currentStage.name}`);
+      notify(`Debes adjuntar un archivo de diseño o enlace antes de avanzar de ${currentStage.name}`);
       return;
     }
 
@@ -1331,7 +1332,7 @@ export default function ProduccionKanbanPage() {
                               <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground">Soporte de pago</span>
                                 {needsAuth ? (
-                                  <button type="button" onClick={async (e) => { e.preventDefault(); e.stopPropagation(); try { const r = await googleSignIn(); if(r?.accessToken) setNeedsAuth(false); } catch(err:any) { if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') alert(err.message); } }} className="text-xs font-bold text-blue-600 hover:underline">Conectar Drive</button>
+                                  <button type="button" onClick={async (e) => { e.preventDefault(); e.stopPropagation(); try { const r = await googleSignIn(); if(r?.accessToken) setNeedsAuth(false); } catch(err:any) { if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') notify(err.message, 'error'); } }} className="text-xs font-bold text-blue-600 hover:underline">Conectar Drive</button>
                                 ) : (
                                   <>
                                     <input type="file" multiple className="hidden" ref={paymentInputRef} onChange={(e) => handleGenericUpload(e, 'paymentKeys')} />
@@ -1360,7 +1361,7 @@ export default function ProduccionKanbanPage() {
                               <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground">Orden de compra (PO)</span>
                                 {needsAuth ? (
-                                  <button type="button" onClick={async (e) => { e.preventDefault(); e.stopPropagation(); try { const r = await googleSignIn(); if(r?.accessToken) setNeedsAuth(false); } catch(err:any) { if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') alert(err.message); } }} className="text-xs font-bold text-blue-600 hover:underline">Conectar Drive</button>
+                                  <button type="button" onClick={async (e) => { e.preventDefault(); e.stopPropagation(); try { const r = await googleSignIn(); if(r?.accessToken) setNeedsAuth(false); } catch(err:any) { if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') notify(err.message, 'error'); } }} className="text-xs font-bold text-blue-600 hover:underline">Conectar Drive</button>
                                 ) : (
                                   <>
                                     <input type="file" multiple className="hidden" ref={poInputRef} onChange={(e) => handleGenericUpload(e, 'poKeys')} />
@@ -1409,7 +1410,7 @@ export default function ProduccionKanbanPage() {
                                     }
                                   } catch (err: any) {
                                     if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') {
-                                      alert('Error al conectar: ' + err.message);
+                                      notify('Error al conectar: ' + err.message);
                                     }
                                   }
                                 }}
@@ -2214,11 +2215,11 @@ export default function ProduccionKanbanPage() {
                </div>
                <form onSubmit={(e) => {
                   e.preventDefault();
-                  if (!consumeItemId) { alert('Selecciona un insumo'); return; }
+                  if (!consumeItemId) { notify('Selecciona un insumo'); return; }
                   const item = inventoryList.find(i => i.id === consumeItemId);
                   if (!item) return;
                   if (consumeQuantity > item.available) {
-                    alert('Inventario insuficiente. Stock disponible: ' + item.available);
+                    notify('Inventario insuficiente. Stock disponible: ' + item.available);
                     return;
                   }
                   

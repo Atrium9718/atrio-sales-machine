@@ -46,6 +46,7 @@ import {
   Check,
   Megaphone,
 } from 'lucide-react';
+import { notify } from '../../lib/notify';
 
 interface Channel {
   id: string;
@@ -275,7 +276,7 @@ export const ChatPage: React.FC = () => {
       });
       if (res.status === 403) {
         setMessages([]);
-        alert('Acceso restringido: no eres miembro de esta conversación privada.');
+        notify('Acceso restringido: no eres miembro de esta conversación privada.');
         return;
       }
       const data = await res.json();
@@ -597,7 +598,7 @@ export const ChatPage: React.FC = () => {
 
     const file = files[0];
     if (file.size > 25 * 1024 * 1024) {
-      alert('El archivo supera el límite máximo permitido de 25 MB.');
+      notify('El archivo supera el límite máximo permitido de 25 MB.');
       return;
     }
     
@@ -607,7 +608,7 @@ export const ChatPage: React.FC = () => {
         await googleSignIn();
         token = await getAccessToken();
       } catch (err) {
-        alert('Necesitas conectar Google Drive para subir archivos.');
+        notify('Necesitas conectar Google Drive para subir archivos.');
         return;
       }
     }
@@ -633,7 +634,7 @@ export const ChatPage: React.FC = () => {
       setPendingAttachments((prev) => [...prev, newAtt]);
     } catch (err: any) {
       console.error('Error subiendo adjunto:', err);
-      alert('Error subiendo a Drive: ' + err.message);
+      notify('Error subiendo a Drive: ' + err.message);
     } finally {
       setIsUploading(false);
       setUploadProgressMsg('');

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Save, RefreshCw, AlertTriangle, Shield, Download, Upload, Info } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 export default function ParametrosPage() {
   const [settings, setSettings] = useState<any[]>([]);
@@ -45,13 +46,13 @@ export default function ParametrosPage() {
         body: JSON.stringify({ updates })
       });
       if (!res.ok) throw new Error(await res.text());
-      alert('Configuración actualizada con éxito.');
+      notify('Configuración actualizada con éxito.');
       setChanges({});
       // Refresh
       const newData = await fetch('/api/settings').then(r => r.json());
       setSettings(newData);
     } catch (e: any) {
-      alert(`Error al guardar: ${e.message}`);
+      notify(`Error al guardar: ${e.message}`);
     } finally {
       setSaving(false);
     }

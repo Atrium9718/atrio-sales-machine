@@ -14,6 +14,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { calculatePressQuote, DEFAULT_OFFICIAL_TARIFF } from '../../../../../packages/core/src/pricing/press';
+import { notify } from '@/lib/notify';
 
 export interface MassRecalcReportItem {
   quoteId: string;
@@ -195,7 +196,7 @@ export const MassRecalculateModal: React.FC<MassRecalculateModalProps> = ({
   const handleApplySelected = () => {
     const toApply = reports.filter((r) => r.selected && !r.isApproved);
     if (toApply.length === 0) {
-      alert('No has seleccionado ninguna cotización para aplicar revisión.');
+      notify('No has seleccionado ninguna cotización para aplicar revisión.');
       return;
     }
 

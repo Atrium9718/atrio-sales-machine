@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Wrench, HardDrive, Thermometer, Boxes, Send, AlertTriangle, BugPlay } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 export default function MantenimientoPage() {
   const [loading, setLoading] = useState<string | null>(null);
@@ -14,9 +15,9 @@ export default function MantenimientoPage() {
         body: JSON.stringify({ action: actionId })
       });
       const data = await res.json();
-      alert(data.message);
+      notify(data.message, 'error');
     } catch(e) {
-      alert('Error ejecutando tarea.');
+      notify('Error ejecutando tarea.');
     } finally {
       setLoading(null);
     }

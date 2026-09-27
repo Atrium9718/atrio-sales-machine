@@ -6,6 +6,7 @@ import { Link, useNavigate } from "react-router-dom";
 import * as xlsx from "xlsx";
 import { parseWorksheet, ParsedCustomerRecord } from "@/components/ImportDatabaseModal";
 import { importCustomers, clearAllCustomers } from "@/lib/customerService";
+import { notify } from '@/lib/notify';
 
 export default function ClientesImportarPage() {
   const navigate = useNavigate();
@@ -53,9 +54,9 @@ export default function ClientesImportarPage() {
     setIsClearing(true);
     try {
       const res = await clearAllCustomers();
-      alert(res.message || "Base de datos vaciada exitosamente.");
+      notify(res.message || "Base de datos vaciada exitosamente.");
     } catch (err: any) {
-      alert("Error al vaciar: " + err.message);
+      notify("Error al vaciar: " + err.message);
     } finally {
       setIsClearing(false);
     }

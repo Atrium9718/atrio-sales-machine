@@ -22,6 +22,7 @@ import {
   FileText, Mail, MessageCircle, PenLine, X, AlertCircle, CheckCircle2,
   Edit, Trash2, ExternalLink, Eye, ArrowRight, Check, Sparkles, RefreshCw, Lock, Trophy
 } from "lucide-react";
+import { notify } from '@/lib/notify';
 
 // --- PRICING LOGIC ---
 function calcularCostoInterno(input: {
@@ -631,7 +632,7 @@ function QuoteEditor({
       setTimeout(() => setCatalogSaveNotice(null), 4000);
     } catch (e: any) {
       console.error('Error saving to catalog:', e);
-      alert('Error guardando en catálogo: ' + e.message);
+      notify('Error guardando en catálogo: ' + e.message);
     }
   };
 
@@ -1174,11 +1175,11 @@ function QuoteEditor({
          approveQuote(quoteId, { status: 'Aprobada', items })
            .then(() => {
              addProject(newProject);
-             alert(`¡Éxito! La Orden de Trabajo (${newProject.number}) fue enviada a Planta/Producción con escala blindada (${totalQuantity.toLocaleString()} uds).`);
+             notify(`¡Éxito! La Orden de Trabajo (${newProject.number}) fue enviada a Planta/Producción con escala blindada (${totalQuantity.toLocaleString()} uds).`);
            })
            .catch((err) => {
              setQuoteStatus(previousStatus);
-             alert(err.message);
+             notify(err.message, 'error');
            });
       }
     } else {
@@ -1249,7 +1250,7 @@ function QuoteEditor({
           lastEditedField: field
         };
       } catch (e: any) {
-        if (e.message === "Ingresa la cantidad primero") alert(e.message);
+        if (e.message === "Ingresa la cantidad primero") notify(e.message, 'error');
         return item;
       }
     }));
@@ -2769,7 +2770,7 @@ function QuoteEditor({
                     onClick={() => {
                       updateItem(catalogTargetId, { description: catalogSearch || 'Nuevo Producto' });
                       setCatalogOpen(false);
-                      alert(`Mock: Se ha creado el producto en el catálogo y asignado a la línea.`);
+                      notify(`Mock: Se ha creado el producto en el catálogo y asignado a la línea.`);
                     }}
                     className="inline-flex items-center gap-2 text-primary font-bold hover:underline"
                   >
@@ -2879,11 +2880,11 @@ function QuoteHistory({
           subtotal: quote.subtotal,
           items: quote.items
         });
-        alert(`¡Cotización ${quote.number} marcada como GANADA! El proyecto ha sido creado en Producción.`);
+        notify(`¡Cotización ${quote.number} marcada como GANADA! El proyecto ha sido creado en Producción.`);
         loadQuotes();
       } catch (err: any) {
         console.error('Error in handleMarkAsWon:', err);
-        alert(`Error al marcar como ganada: ${err.message || 'Error desconocido'}`);
+        notify(`Error al marcar como ganada: ${err.message || 'Error desconocido'}`);
       }
     }
   };

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Building, Upload, MapPin, Phone, Mail, Globe, Save, CheckCircle2, Trash2, Image as ImageIcon } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 export default function OrganizacionPage() {
   const [loading, setLoading] = useState(true);
@@ -57,7 +58,7 @@ export default function OrganizacionPage() {
 
     // Check size limit (max 10MB input before downscaling)
     if (file.size > 10 * 1024 * 1024) {
-      alert('La imagen no debe superar los 10MB');
+      notify('La imagen no debe superar los 10MB');
       return;
     }
 
@@ -158,7 +159,7 @@ export default function OrganizacionPage() {
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (err) {
       console.error('Error guardando identidad:', err);
-      alert('Hubo un inconveniente al guardar. Por favor reintenta.');
+      notify('Hubo un inconveniente al guardar. Por favor reintenta.');
     } finally {
       setSaving(false);
     }

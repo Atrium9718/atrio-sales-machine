@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Download, BarChart2, Calendar as CalendarIcon, Clock, Percent, Filter, Users } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 export function AgendaReportsTab() {
   const [period, setPeriod] = useState('MONTH');
   const [comercial, setComercial] = useState('ALL');
 
   const handleExport = () => {
-    alert("Mock: Exportando reporte a Excel respetando los filtros activos...");
+    notify("Mock: Exportando reporte a Excel respetando los filtros activos...");
   };
 
   return (

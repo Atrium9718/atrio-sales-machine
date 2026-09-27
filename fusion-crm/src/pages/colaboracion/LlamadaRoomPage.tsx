@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Room, RoomEvent, VideoPresets, Track, ConnectionQuality } from 'livekit-client';
 import { callSounds } from '../../utils/callSounds';
+import { notify } from '../../lib/notify';
 
 interface ParticipantView {
   id: string;
@@ -522,7 +523,7 @@ export const LlamadaRoomPage: React.FC = () => {
         setIsRecordingActive(true);
       } else {
         // Avisar que se envió la solicitud a los participantes
-        alert('Solicitud de consentimiento enviada a todos los participantes en la sala.');
+        notify('Solicitud de consentimiento enviada a todos los participantes en la sala.');
       }
     } catch (err) {
       console.error('Error al solicitar grabación:', err);

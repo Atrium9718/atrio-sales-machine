@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useFusionAuth } from '../../context/FusionAuthContext';
 import { SHOUTOUT_VALUES, ShoutoutValueKey } from '../../../packages/core/src/announcements/types';
+import { notify } from '../../lib/notify';
 
 export const AnunciosPage: React.FC = () => {
   const navigate = useNavigate();
@@ -296,7 +297,7 @@ export const AnunciosPage: React.FC = () => {
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/50">
                     <span className="text-[10px] capitalize">Valores: {meta.description}</span>
                     <button
-                      onClick={() => alert('¡Reacción enviada al compañero!')}
+                      onClick={() => notify('¡Reacción enviada al compañero!')}
                       className="inline-flex items-center gap-1 text-primary hover:underline font-semibold"
                     >
                       👏 Felicitaciones

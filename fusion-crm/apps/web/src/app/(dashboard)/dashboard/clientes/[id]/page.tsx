@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Download, Building2, Phone, Mail, MapPin, CheckCircle, Tag, Clock, Calendar, Users, FileText, ArrowRight, AlertCircle } from "lucide-react";
+import { notify } from '@/lib/notify';
 
 export default function ClientProfilePage() {
   return (
@@ -33,7 +34,7 @@ export default function ClientProfilePage() {
                 Editar
               </button>
               <button 
-                onClick={() => alert("MOCK: Abre el modal de la agenda (AppointmentModal) pre-cargado con este cliente.")}
+                onClick={() => notify("MOCK: Abre el modal de la agenda (AppointmentModal) pre-cargado con este cliente.")}
                 className="px-4 py-2 rounded-md bg-muted text-foreground hover:bg-muted/80 font-medium text-sm transition-colors"
               >
                 Agendar Cita

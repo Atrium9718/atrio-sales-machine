@@ -21,6 +21,7 @@ import {
   Sliders,
   Sparkles,
 } from 'lucide-react';
+import { notify } from '../../lib/notify';
 
 interface QueueMember {
   id: string;
@@ -234,10 +235,10 @@ export function VozColasPage() {
         setTimeout(() => setNotification(null), 4000);
         loadData(false);
       } else {
-        alert(data.error || 'No se pudo tomar la llamada');
+        notify(data.error || 'No se pudo tomar la llamada');
       }
     } catch (err) {
-      alert('Error de conexión al tomar la llamada');
+      notify('Error de conexión al tomar la llamada');
     }
   };
 
@@ -273,7 +274,7 @@ export function VozColasPage() {
         loadData(false);
       }
     } catch (err) {
-      alert('Error simulando llamada');
+      notify('Error simulando llamada');
     }
   };
 
@@ -296,10 +297,10 @@ export function VozColasPage() {
         setTimeout(() => setNotification(null), 4000);
         loadData(false);
       } else {
-        alert(data.error || 'Error cambiando estado');
+        notify(data.error || 'Error cambiando estado');
       }
     } catch (e) {
-      alert('Error de conexión');
+      notify('Error de conexión');
     }
   };
 
@@ -360,10 +361,10 @@ export function VozColasPage() {
         setTimeout(() => setNotification(null), 4000);
         loadData(false);
       } else {
-        alert(data.error || 'Error guardando cola');
+        notify(data.error || 'Error guardando cola');
       }
     } catch (e) {
-      alert('Error de conexión al guardar cola');
+      notify('Error de conexión al guardar cola');
     }
   };
 

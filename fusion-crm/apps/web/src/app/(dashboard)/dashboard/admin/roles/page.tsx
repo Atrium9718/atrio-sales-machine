@@ -15,6 +15,7 @@ import {
 import { useFusionAuth, FusionRole } from '@/context/FusionAuthContext';
 import { FUSION_MODULES_CATALOG, FusionModuleKey } from '@fusion/core/src/auth/permissions';
 import { Link } from 'react-router-dom';
+import { notify } from '@/lib/notify';
 
 export default function RolesPage() {
   const { roles = [], employees = [], refreshRoles } = useFusionAuth();
@@ -66,7 +67,7 @@ export default function RolesPage() {
 
   const handleSaveRole = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roleForm.name.trim()) return alert('El nombre es requerido');
+    if (!roleForm.name.trim()) return notify('El nombre es requerido');
 
     try {
       const url = editingRole ? `/api/admin/roles/${editingRole.id}` : '/api/admin/roles';
@@ -83,11 +84,11 @@ export default function RolesPage() {
         setIsModalOpen(false);
         showNotification('Perfil actualizado con éxito');
       } else {
-        alert('Error al guardar el rol');
+        notify('Error al guardar el rol');
       }
     } catch (err) {
       console.error(err);
-      alert('Error de conexión');
+      notify('Error de conexión');
     }
   };
 

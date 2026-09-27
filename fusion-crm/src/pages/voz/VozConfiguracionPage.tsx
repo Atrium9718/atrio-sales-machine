@@ -26,6 +26,7 @@ import {
   Smartphone,
   Laptop,
 } from 'lucide-react';
+import { notify } from '../../lib/notify';
 
 interface TrunkData {
   id: string;
@@ -293,10 +294,10 @@ export function VozConfiguracionPage() {
           pass: data.credentials.password,
         });
       } else {
-        alert('Error: ' + (data.error || 'No se pudieron descifrar las credenciales.'));
+        notify('Error: ' + (data.error || 'No se pudieron descifrar las credenciales.'));
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      notify('Error: ' + err.message);
     }
   };
 
@@ -343,7 +344,7 @@ export function VozConfiguracionPage() {
         await loadData();
       }
     } catch (err: any) {
-      alert('Error aprovisionando: ' + err.message);
+      notify('Error aprovisionando: ' + err.message);
     }
   };
 
@@ -366,7 +367,7 @@ export function VozConfiguracionPage() {
         await loadData();
       }
     } catch (err: any) {
-      alert('Error: ' + err.message);
+      notify('Error: ' + err.message);
     }
   };
 

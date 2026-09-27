@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { PhoneOff, MicOff, Mic, ExternalLink, Minimize2, Maximize2, Pause, Play, CheckSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { notify } from '../lib/notify';
 
 export function CallPanel() {
   const [isActive, setIsActive] = useState(false);
@@ -92,7 +93,7 @@ export function CallPanel() {
                     onClick={() => {
                        setIsActive(false);
                        // Here we would show the 10-second disposition form.
-                       alert("Llamada finalizada. El audio está siendo enviado a Gemini para su transcripción y análisis de compromisos.");
+                       notify("Llamada finalizada. El audio está siendo enviado a Gemini para su transcripción y análisis de compromisos.");
                     }}
                     className="w-14 h-14 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-lg hover:bg-destructive/90 transition-colors animate-pulse"
                  >

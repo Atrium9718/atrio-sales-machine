@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Shield, Flag, AlertTriangle, Play, Pause } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 export default function FlagsPage() {
   const [flags, setFlags] = useState<any[]>([]);
@@ -26,7 +27,7 @@ export default function FlagsPage() {
         setFlags(flags.map(f => f.id === updated.id ? updated : f));
       }
     } catch (e) {
-      alert("Error al actualizar la bandera");
+      notify("Error al actualizar la bandera");
     }
   };
 
@@ -42,7 +43,7 @@ export default function FlagsPage() {
         setFlags(flags.map(f => f.id === updated.id ? updated : f));
       }
     } catch (e) {
-      alert("Error al actualizar kill switch");
+      notify("Error al actualizar kill switch");
     }
   };
 

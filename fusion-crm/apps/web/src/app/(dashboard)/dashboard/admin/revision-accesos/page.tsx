@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FileCheck, Download, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 export default function RevisionAccesosPage() {
   const [reviews, setReviews] = useState<any[]>([]);
@@ -22,7 +23,7 @@ export default function RevisionAccesosPage() {
         setReviews([review, ...reviews]);
       }
     } catch(e) {
-      alert("Error iniciando revisión");
+      notify("Error iniciando revisión");
     }
   };
 

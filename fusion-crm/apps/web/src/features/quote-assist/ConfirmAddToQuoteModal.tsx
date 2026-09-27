@@ -4,6 +4,7 @@ import { AssistFormState } from './types';
 import { PressQuoteResult, PressTechnique } from '../../../../../packages/core/src/pricing/press/types';
 import { getResultRuns, UnifiedRun } from './ResultsPanel';
 import { resolveVatRate } from '../../../../../packages/core/src/pricing/press/digital';
+import { notify } from '@/lib/notify';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -222,7 +223,7 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
       });
 
       if (checkedRuns.length === 0) {
-        alert('Debes seleccionar al menos una cantidad para agregar a la cotización.');
+        notify('Debes seleccionar al menos una cantidad para agregar a la cotización.');
         setIsSubmitting(false);
         return;
       }
@@ -461,7 +462,7 @@ export const ConfirmAddToQuoteModal: React.FC<ConfirmAddToQuoteModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Error volcando cálculo a cotización:', err);
-      alert('Ocurrió un error al preparar los ítems: ' + err.message);
+      notify('Ocurrió un error al preparar los ítems: ' + err.message);
     } finally {
       setIsSubmitting(false);
     }

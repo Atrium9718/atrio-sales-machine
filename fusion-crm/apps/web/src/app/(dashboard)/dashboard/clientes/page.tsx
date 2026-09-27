@@ -8,6 +8,7 @@ import { ClientDetailModal } from "@/components/ClientDetailModal";
 import { getAllCustomers, isQuotaExhaustedToday, clearAllCustomers } from "@/lib/customerService";
 import { useNavigate } from "react-router-dom";
 import { PhoneLink } from "@fusion/ui";
+import { notify } from '@/lib/notify';
 
 export default function ClientsPage() {
   const navigate = useNavigate();
@@ -28,10 +29,10 @@ export default function ClientsPage() {
     setClearing(true);
     try {
       const res = await clearAllCustomers();
-      alert(res.message || 'Base de datos limpiada exitosamente.');
+      notify(res.message || 'Base de datos limpiada exitosamente.');
       await fetchClients();
     } catch (err: any) {
-      alert('Error al vaciar base de datos: ' + err.message);
+      notify('Error al vaciar base de datos: ' + err.message);
     } finally {
       setClearing(false);
     }

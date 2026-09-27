@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DatabaseBackup, Download, ShieldCheck, ShieldAlert, Clock, Info, CheckCircle2 } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 export default function RespaldosPage() {
   const [backups, setBackups] = useState<any[]>([]);
@@ -11,7 +12,7 @@ export default function RespaldosPage() {
   const handleDownload = async (id: string) => {
     const res = await fetch(`/api/ops/backups/${id}/download`, { method: 'POST' });
     const data = await res.json();
-    alert('Descargando: ' + data.url + '\\n(Este evento ha sido registrado en la auditoría)');
+    notify('Descargando: ' + data.url + '\\n(Este evento ha sido registrado en la auditoría)');
   };
 
   return (

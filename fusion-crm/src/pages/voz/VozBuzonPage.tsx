@@ -24,6 +24,7 @@ import {
   FastForward,
   UserCheck,
 } from 'lucide-react';
+import { notify } from '../../lib/notify';
 
 interface VoiceVoicemailItem {
   id: string;
@@ -143,7 +144,7 @@ export function VozBuzonPage() {
         loadMessages(false);
       }
     } catch (e) {
-      alert('Error registrando devolución');
+      notify('Error registrando devolución');
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Plus, Search, Power, Edit, ArrowDownUp, AlertTriangle } from 'lucide-react';
+import { notify } from '@/lib/notify';
 
 const CATALOGS = [
   { id: 'Sector', name: 'Sectores de Cliente' },
@@ -64,7 +65,7 @@ export default function MaestrosPage() {
     }).then(async r => {
       const data = await r.json();
       if (!r.ok) {
-        alert(data.error || 'No se pudo crear el registro');
+        notify(data.error || 'No se pudo crear el registro');
         return;
       }
       setRecords([...records, data]);

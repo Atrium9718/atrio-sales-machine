@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Link2, Copy, Check, Ban, Inbox, MessageCircle, RefreshCw, AlertCircle, Paperclip } from 'lucide-react';
 import { CLIENT_REQUESTS_UPDATED_EVENT, notifyClientRequestsChanged } from '../../../../../../../src/components/portal/ClientRequestAlerts';
+import { notify } from '@/lib/notify';
 
 /**
  * Gestión del portal del cliente: generar/revocar enlaces privados y atender las
@@ -71,7 +72,7 @@ function RequestRow({ request, onSaved }: { request: ClientRequest; onSaved: () 
       notifyClientRequestsChanged();
       onSaved();
     } catch (err: any) {
-      alert(`No se pudo guardar: ${err.message}`);
+      notify(`No se pudo guardar: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -195,7 +196,7 @@ export default function PortalClientesPage() {
       setClientNit('');
       load();
     } catch (err: any) {
-      alert(`No se pudo crear el enlace: ${err.message}`);
+      notify(`No se pudo crear el enlace: ${err.message}`);
     } finally {
       setIsCreating(false);
     }
@@ -207,7 +208,7 @@ export default function PortalClientesPage() {
       await api(`/api/client-portal/links/${encodeURIComponent(link.id)}`, { method: 'DELETE' });
       load();
     } catch (err: any) {
-      alert(`No se pudo revocar: ${err.message}`);
+      notify(`No se pudo revocar: ${err.message}`);
     }
   };
 

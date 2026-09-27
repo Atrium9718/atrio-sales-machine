@@ -29,6 +29,7 @@ import { useFusionAuth, FusionEmployee, FusionRole } from '@/context/FusionAuthC
 import { useEmployeesQuery } from '@/hooks/useDomainQueries';
 import { FUSION_MODULES_CATALOG, FusionModuleKey, canAccessModule } from '@fusion/core/src/auth/permissions';
 import { Link } from 'react-router-dom';
+import { notify } from '@/lib/notify';
 
 export default function UsuariosPage() {
   const { currentUser, employees: authEmployees, roles, refreshEmployees, refreshRoles, impersonateUser } = useFusionAuth();
@@ -152,7 +153,7 @@ export default function UsuariosPage() {
   // Save Employee Form
   const handleSaveEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim()) return alert('El nombre es obligatorio');
+    if (!formData.name.trim()) return notify('El nombre es obligatorio');
 
     try {
       const url = editingEmployee ? `/api/admin/users/${editingEmployee.id}` : '/api/admin/users';
@@ -172,11 +173,11 @@ export default function UsuariosPage() {
         setIsNewEmployeeModalOpen(false);
         showNotification(editingEmployee ? 'Empleado actualizado con éxito' : 'Nuevo empleado registrado con éxito');
       } else {
-        alert('Error al guardar empleado');
+        notify('Error al guardar empleado');
       }
     } catch (err) {
       console.error(err);
-      alert('Error en la comunicación con el servidor');
+      notify('Error en la comunicación con el servidor');
     }
   };
 
@@ -243,11 +244,11 @@ export default function UsuariosPage() {
         setVisibilityModalEmployee(null);
         showNotification(`Permisos de visibilidad actualizados para ${visibilityModalEmployee.name}`);
       } else {
-        alert('Error al guardar permisos de visibilidad');
+        notify('Error al guardar permisos de visibilidad');
       }
     } catch (err) {
       console.error(err);
-      alert('Error en la comunicación con el servidor');
+      notify('Error en la comunicación con el servidor');
     }
   };
 
@@ -261,7 +262,7 @@ export default function UsuariosPage() {
         showNotification('Equipo de Fusión Comunicación Gráfica restaurado con éxito.');
       }
     } catch (err) {
-      alert('Error al restaurar equipo');
+      notify('Error al restaurar equipo');
     }
   };
 
@@ -274,7 +275,7 @@ export default function UsuariosPage() {
         showNotification(`Estado de ${emp.name} actualizado.`);
       }
     } catch (err) {
-      alert('Error al cambiar estado');
+      notify('Error al cambiar estado');
     }
   };
 
