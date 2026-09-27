@@ -6,17 +6,8 @@ import { getResultRuns, UnifiedRun } from './ResultsPanel';
 import { resolveVatRate } from '../../../../../packages/core/src/pricing/press/digital';
 import { notify } from '@/lib/notify';
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-/** Montos de la línea en el modelo del cotizador: cantidad × precio antes de IVA, más IVA. */
-function engineLineAmounts(run: UnifiedRun, vatRate: number) {
-  const unitPrice = round2(run.unitPriceBeforeTax);
-  const lineSubtotal = round2(unitPrice * run.quantity);
-  const vatAmount = round2(lineSubtotal * vatRate);
-  const total = round2(lineSubtotal + vatAmount);
-  return { unitPrice, subtotal: lineSubtotal, lineSubtotal, vatAmount, total, lineTotal: total };
-}
 import { addPrintOrder } from '../../lib/printOrdersStore';
+import { engineLineAmounts } from './recalculate';
 import {
   Check,
   AlertTriangle,

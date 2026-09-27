@@ -17,7 +17,15 @@ export function QuoteHistory({
   const [filter, setFilter] = React.useState('Todos los estados');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [massRecalcOpen, setMassRecalcOpen] = React.useState(false);
-  const currentTariffVersion = { id: 'tar-2026-02', code: 'TAR-2026-02', name: 'Tarifario Oficial Vigente (v2.0)' };
+  // Versión vigente real del tarifario (para marcar las cotizaciones hechas con uno anterior)
+  const [currentTariffVersion, setCurrentTariffVersion] = React.useState<{ id: string; code?: string; name?: string }>({ id: '' });
+  React.useEffect(() => {
+    fetch('/api/tariff/snapshot')
+      .then((r) => r.json())
+      .then((d) => d?.success && d.version && setCurrentTariffVersion(d.version))
+      .catch(() => undefined);
+  }, []);
+  const isOlderTariff = (q: any) => !!currentTariffVersion.id && !!q.tariffVersionId && q.tariffVersionId !== currentTariffVersion.id;
 
   const loadQuotes = async () => {
     const all = getQuotes();
@@ -75,10 +83,7 @@ export function QuoteHistory({
     if (filter === 'Pre-cotizaciones IA') {
       matchesFilter = isPreQuote;
     } else if (filter === 'Calculadas con tarifario anterior') {
-      matchesFilter = Boolean(
-        (q.tariffVersionId && q.tariffVersionId !== currentTariffVersion.id) ||
-        (!q.tariffVersionId && q.items?.some((it: any) => it.assistRunId))
-      );
+      matchesFilter = isOlderTariff(q) || (!q.tariffVersionId && q.items?.some((it: any) => it.assistRunId));
     } else if (filter !== 'Todos los estados') {
       matchesFilter = q.status === filter;
     }
@@ -210,7 +215,7 @@ export function QuoteHistory({
                         )}
                       </div>
                       {/* Badge Tarifario Anterior / Congelado (Bloque D) */}
-                      {q.tariffVersionId && q.tariffVersionId !== currentTariffVersion.id && (
+                      {isOlderTariff(q) && (
                         <div className="flex items-center gap-1">
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border inline-flex items-center gap-1 ${
                             q.status === 'Borrador'
@@ -343,7 +348,6 @@ export function QuoteHistory({
       <MassRecalculateModal
         isOpen={massRecalcOpen}
         onClose={() => setMassRecalcOpen(false)}
-        currentTariffVersion={currentTariffVersion}
         quotes={quotes}
         onApplyRevisions={handleApplyRevisions}
       />
