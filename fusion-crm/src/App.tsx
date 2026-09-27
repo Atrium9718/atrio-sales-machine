@@ -62,7 +62,6 @@ const VozInformesPage = React.lazy(() => import('./pages/voz/VozInformesPage').t
 const VozConfiguracionPage = React.lazy(() => import('./pages/voz/VozConfiguracionPage').then((m) => ({ default: m.VozConfiguracionPage })));
 const InterventoriaPage = React.lazy(() => import('./pages/admin/InterventoriaPage').then((m) => ({ default: m.InterventoriaPage })));
 const WebchatConfigPage = React.lazy(() => import('./app/(dashboard)/dashboard/canales-config/chat-web/page'));
-const SimulatorPage = React.lazy(() => import('./app/(dashboard)/dashboard/simulator/page'));
 
 const IdentidadesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/identidades/page'));
 const TarifarioProduccionPage = React.lazy(() => import('../apps/web/src/app/(app)/cotizaciones/tarifario/page'));
@@ -180,16 +179,14 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const identity = useCompanyIdentity();
 
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>({
-    'Equipo': true,
-    'Comercial y CRM': true,
-    'Producción e Inventario': true,
+    'Inicio': true,
+    'Comercial': true,
+    'Producción': true,
     'Comunicaciones': true,
     'Voz y Telefonía': true,
-    'Configuración': true,
-    'Administración de Agentes': true,
-    'Auditoría y Seguridad': false,
-    'IA y Sistemática': true,
-    'Sistema y Operaciones': false,
+    'Equipo': true,
+    'Administración': false,
+    'En construcción': false,
   });
 
   const toggleGroup = (title: string) => {
@@ -197,7 +194,8 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   };
 
   const voiceStatus = useVoiceStatus();
-  const { canSeeModule, isSuperAdmin } = useFusionAuth();
+  const { canSeeModule, isSuperAdmin, currentUser } = useFusionAuth();
+  const isAdmin = isSuperAdmin || currentUser?.roleKey === 'admin' || currentUser?.roleKey === 'super_admin';
   const newClientRequests = useNewClientRequestsCount(canSeeModule('comercial'));
   const inboxAttention = useInboxAttentionCount(canSeeModule('comunicaciones'));
   const itemBadges: Record<string, number> = { '/dashboard/portal-clientes': newClientRequests, '/dashboard/inbox': inboxAttention };
@@ -206,153 +204,111 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const canSupervise = isSuperAdmin || can(permissions, 'voice:supervise');
   const canManageVoice = isSuperAdmin || can(permissions, 'voice:manage_all');
 
-  const navGroups: Array<{
-    title: string;
-    moduleKey: FusionModuleKey;
-    isOpen: boolean;
-    setIsOpen: () => void;
-    items: Array<{ name: string; path: string; icon: any; permission?: string; sensitiveModuleKey?: FusionModuleKey; isSuperAdminExclusive?: boolean }>;
-  }> = [
-    {
-      title: 'Equipo',
-      moduleKey: 'equipo',
-      isOpen: openGroups['Equipo'],
-      setIsOpen: () => toggleGroup('Equipo'),
-      items: [
-        { name: 'Home', path: '/', icon: HomeIcon, permission: 'home:read' },
-        { name: 'Anuncios', path: '/anuncios', icon: Megaphone, permission: 'announcement:read' },
-        { name: 'Chat', path: '/chat', icon: MessageSquare, permission: 'chat:read' },
-        { name: 'Mi rendimiento', path: '/mi-rendimiento', icon: TrendingUp, permission: 'performance:read_own' },
-        { name: 'Rendimiento del equipo', path: '/equipo/rendimiento', icon: Users, permission: 'performance:read_team' },
-        { name: 'Metas y Objetivos', path: '/metas', icon: Target, permission: 'goal:read' },
-      ]
-    },
-    {
-      title: 'Comercial y CRM',
-      moduleKey: 'comercial',
-      isOpen: openGroups['Comercial y CRM'],
-      setIsOpen: () => toggleGroup('Comercial y CRM'),
-      items: [
-        { name: 'Dashboard Comercial', path: '/dashboard/comercial/dashboard', icon: LayoutDashboard },
-        { name: 'Precotizaciones IA', path: '/dashboard/comercial/precotizaciones', icon: Sparkles },
-        { name: 'Agenda', path: '/dashboard/comercial/agenda', icon: Calendar },
-        { name: 'Identidades (Triage)', path: '/dashboard/identidades', icon: Users },
-        { name: 'Clientes', path: '/dashboard/clientes', icon: Users },
-        { name: 'Portal de clientes', path: '/dashboard/portal-clientes', icon: Link2 },
-        { name: 'Pipeline y Oportunidades', path: '/dashboard/oportunidades', icon: TrendingUp },
-        { name: 'Cotizador', path: '/dashboard/cotizador', icon: FileText },
-        { name: 'Cotizaciones Históricas', path: '/dashboard/comercial/cotizaciones', icon: FileText },
-        { name: 'Tarifario', path: '/cotizaciones/tarifario', icon: Calculator, permission: 'tariff:read' },
-      ]
-    },
-    ...(hasVoiceUse && (voiceStatus.enabled || isSuperAdmin) ? [
-      {
-        title: 'Voz y Telefonía',
-        moduleKey: 'voz' as FusionModuleKey,
-        isOpen: openGroups['Voz y Telefonía'] ?? true,
-        setIsOpen: () => toggleGroup('Voz y Telefonía'),
-        items: [
-          { name: 'Panel de Voz', path: '/voz', icon: Phone, permission: 'voice:use' },
-          { name: 'Historial de Llamadas', path: '/voz/llamadas', icon: PhoneCall, permission: 'voice:use' },
-          { name: 'Colas y Agentes', path: '/voz/colas', icon: Users, permission: 'voice:use' },
-          { name: 'Buzón de Voz', path: '/voz/buzon', icon: MessageSquare, permission: 'voice:use' },
-          { name: 'Flujos de IVR', path: '/voz/ivr', icon: Network, permission: 'voice:use' },
-          { name: 'Biblioteca de Locuciones', path: '/voz/locuciones', icon: FileText, permission: 'voice:use' },
-          { name: 'Agente de IA', path: '/voz/agente-ia', icon: Bot, permission: 'voice:use' },
-          { name: 'Campañas Salientes', path: '/voz/campanas', icon: Megaphone, permission: 'voice:use' },
-          ...(canSupervise ? [{ name: 'Supervisión en Vivo', path: '/voz/supervision', icon: Activity, permission: 'voice:supervise' }] : []),
-          { name: 'Informes de Voz', path: '/voz/informes', icon: TrendingUp, permission: 'voice:use' },
-        ]
-      }
+  type NavItem = {
+    name: string;
+    path: string;
+    icon: any;
+    permission?: string;
+    /** Módulo que controla la visibilidad (por defecto, el del grupo). */
+    moduleKey?: FusionModuleKey;
+    sensitiveModuleKey?: FusionModuleKey;
+    isSuperAdminExclusive?: boolean;
+  };
+  const group = (title: string, moduleKey: FusionModuleKey, items: NavItem[]) => ({
+    title,
+    moduleKey,
+    isOpen: openGroups[title] ?? true,
+    setIsOpen: () => toggleGroup(title),
+    items,
+  });
+
+  // Menú en 6 grupos por tarea. Las pantallas que aún no funcionan con datos reales van a
+  // "En construcción", que solo ven los administradores.
+  const navGroups = [
+    group('Inicio', 'equipo', [
+      { name: 'Inicio', path: '/', icon: HomeIcon, permission: 'home:read' },
+      { name: 'Anuncios', path: '/anuncios', icon: Megaphone, permission: 'announcement:read' },
+      { name: 'Chat del equipo', path: '/chat', icon: MessageSquare, permission: 'chat:read' },
+    ]),
+    group('Comercial', 'comercial', [
+      { name: 'Clientes', path: '/dashboard/clientes', icon: Users },
+      { name: 'Pipeline', path: '/dashboard/oportunidades', icon: TrendingUp },
+      { name: 'Agenda', path: '/dashboard/comercial/agenda', icon: Calendar },
+      { name: 'Precotizaciones IA', path: '/dashboard/comercial/precotizaciones', icon: Sparkles },
+      { name: 'Cotizador', path: '/dashboard/cotizador', icon: FileText },
+      { name: 'Cotizaciones', path: '/dashboard/comercial/cotizaciones', icon: FileText },
+      { name: 'Portal de clientes', path: '/dashboard/portal-clientes', icon: Link2 },
+      { name: 'Tarifario', path: '/cotizaciones/tarifario', icon: Calculator, permission: 'tariff:read' },
+    ]),
+    group('Producción', 'produccion', [
+      { name: 'Tablero de producción', path: '/dashboard/produccion', icon: Play },
+      { name: 'Inventario', path: '/dashboard/inventario', icon: Package },
+    ]),
+    group('Comunicaciones', 'comunicaciones', [
+      { name: 'Bandeja de entrada', path: '/dashboard/inbox', icon: MessageCircle },
+    ]),
+    ...(hasVoiceUse && voiceStatus.enabled ? [
+      group('Voz y Telefonía', 'voz', [
+        { name: 'Panel de Voz', path: '/voz', icon: Phone, permission: 'voice:use' },
+        { name: 'Historial de Llamadas', path: '/voz/llamadas', icon: PhoneCall, permission: 'voice:use' },
+        { name: 'Colas y Agentes', path: '/voz/colas', icon: Users, permission: 'voice:use' },
+        { name: 'Buzón de Voz', path: '/voz/buzon', icon: MessageSquare, permission: 'voice:use' },
+        { name: 'Flujos de IVR', path: '/voz/ivr', icon: Network, permission: 'voice:use' },
+        { name: 'Biblioteca de Locuciones', path: '/voz/locuciones', icon: FileText, permission: 'voice:use' },
+        { name: 'Agente de IA', path: '/voz/agente-ia', icon: Bot, permission: 'voice:use' },
+        { name: 'Campañas Salientes', path: '/voz/campanas', icon: Megaphone, permission: 'voice:use' },
+        ...(canSupervise ? [{ name: 'Supervisión en Vivo', path: '/voz/supervision', icon: Activity, permission: 'voice:supervise' }] : []),
+        { name: 'Informes de Voz', path: '/voz/informes', icon: TrendingUp, permission: 'voice:use' },
+      ]),
     ] : []),
-    {
-      title: 'Producción e Inventario',
-      moduleKey: 'produccion',
-      isOpen: openGroups['Producción e Inventario'],
-      setIsOpen: () => toggleGroup('Producción e Inventario'),
-      items: [
-        { name: 'Dashboard de Producción', path: '/dashboard/produccion', icon: Play },
-        { name: 'Rentabilidad y Costos', path: '/dashboard/produccion/costos', icon: DollarSign, sensitiveModuleKey: 'costos' },
-        { name: 'Inventario', path: '/dashboard/inventario', icon: Package },
-        { name: 'Catálogo de Productos', path: '/dashboard/catalogo', icon: Package },
+    group('Equipo', 'equipo', [
+      { name: 'Mi rendimiento', path: '/mi-rendimiento', icon: TrendingUp, permission: 'performance:read_own' },
+      { name: 'Rendimiento del equipo', path: '/equipo/rendimiento', icon: Users, permission: 'performance:read_team' },
+      { name: 'Metas y objetivos', path: '/metas', icon: Target, permission: 'goal:read' },
+      { name: 'Empleados', path: '/dashboard/admin/usuarios', icon: Users, moduleKey: 'auditoria' },
+      { name: 'Roles y permisos', path: '/dashboard/admin/roles', icon: Shield, moduleKey: 'auditoria' },
+    ]),
+    group('Administración', 'configuracion', [
+      ...(isSuperAdmin ? [{ name: 'Interventor del Sistema', path: '/dashboard/admin/interventoria', icon: Bot, isSuperAdminExclusive: true, moduleKey: 'auditoria' as FusionModuleKey }] : []),
+      { name: 'Identidad de la empresa', path: '/dashboard/admin/organizacion', icon: Building },
+      { name: 'Parámetros generales', path: '/dashboard/admin/parametros', icon: Settings },
+      { name: 'Temperatura comercial', path: '/dashboard/admin/comercial', icon: Target },
+      { name: 'Maestros y catálogos', path: '/dashboard/admin/maestros', icon: Database },
+      { name: 'Plantillas', path: '/dashboard/admin/plantillas', icon: FileText },
+      ...(canManageVoice && voiceStatus.enabled ? [{ name: 'Telefonía y troncales', path: '/configuracion/voz', icon: PhoneCall, permission: 'voice:manage_all' }] : []),
+      { name: 'Registro de actividad', path: '/dashboard/admin/auditoria', icon: History, moduleKey: 'auditoria' },
+      { name: 'Respaldos', path: '/dashboard/admin/respaldos', icon: DatabaseBackup, moduleKey: 'sistema' },
+    ]),
+    ...(isAdmin ? [
+      group('En construcción', 'configuracion', [
+        { name: 'Dashboard comercial', path: '/dashboard/comercial/dashboard', icon: LayoutDashboard },
+        { name: 'Rentabilidad y costos', path: '/dashboard/produccion/costos', icon: DollarSign },
+        { name: 'Catálogo de productos', path: '/dashboard/catalogo', icon: Package },
+        { name: 'Salud de canales', path: '/dashboard/canales-config/meta', icon: Activity },
+        { name: 'Costos de mensajería', path: '/dashboard/costos-omnicanal', icon: DollarSign },
+        { name: 'Identidades (triage)', path: '/dashboard/identidades', icon: Users },
         { name: 'Ritual V.E.A.', path: '/dashboard/vea', icon: Calendar },
-      ]
-    },
-    {
-      title: 'Comunicaciones',
-      moduleKey: 'comunicaciones',
-      isOpen: openGroups['Comunicaciones'],
-      setIsOpen: () => toggleGroup('Comunicaciones'),
-      items: [
-        { name: 'Bandeja de Entrada', path: '/dashboard/inbox', icon: MessageCircle },
-        { name: 'Salud de Canales', path: '/dashboard/canales-config/meta', icon: Activity },
-        { name: 'Control de Costos', path: '/dashboard/costos-omnicanal', icon: DollarSign, sensitiveModuleKey: 'costos' },
-        { name: 'Simulador', path: '/dashboard/simulator', icon: Settings },
-      ]
-    },
-    {
-      title: 'Configuración',
-      moduleKey: 'configuracion',
-      isOpen: openGroups['Configuración'],
-      setIsOpen: () => toggleGroup('Configuración'),
-      items: [
-        { name: 'Identidad de Empresa', path: '/dashboard/admin/organizacion', icon: Building },
-        ...(canManageVoice ? [{ name: 'Telefonía y Troncales', path: '/configuracion/voz', icon: PhoneCall, permission: 'voice:manage_all' }] : []),
-        { name: 'Temperatura y Algoritmo', path: '/dashboard/admin/comercial', icon: Target },
-        { name: 'Parámetros Globales', path: '/dashboard/admin/parametros', icon: Settings },
-        { name: 'Maestros y Catálogos', path: '/dashboard/admin/maestros', icon: Database },
+        ...(!voiceStatus.enabled ? [{ name: 'Voz y telefonía', path: '/voz', icon: Phone }] : []),
         { name: 'Numeración', path: '/dashboard/admin/numeracion', icon: Hash },
-        { name: 'Calendario Laboral', path: '/dashboard/admin/calendario', icon: Calendar },
-        { name: 'Plantillas', path: '/dashboard/admin/plantillas', icon: FileText },
-      ]
-    },
-    {
-      title: 'Auditoría y Seguridad',
-      moduleKey: 'auditoria',
-      isOpen: openGroups['Auditoría y Seguridad'],
-      setIsOpen: () => toggleGroup('Auditoría y Seguridad'),
-      items: [
-        ...(isSuperAdmin ? [
-          { name: 'Interventor del Sistema', path: '/dashboard/admin/interventoria', icon: Bot, isSuperAdminExclusive: true }
-        ] : []),
-        { name: 'Gestión de Empleados', path: '/dashboard/admin/usuarios', icon: Users },
-        { name: 'Roles y Permisos', path: '/dashboard/admin/roles', icon: Shield },
-        { name: 'Política de Seguridad', path: '/dashboard/admin/seguridad', icon: ShieldAlert },
-        { name: 'Revisión de Accesos', path: '/dashboard/admin/revision-accesos', icon: FileCheck },
+        { name: 'Calendario laboral', path: '/dashboard/admin/calendario', icon: Calendar },
+        { name: 'Política de seguridad', path: '/dashboard/admin/seguridad', icon: ShieldAlert },
+        { name: 'Revisión de accesos', path: '/dashboard/admin/revision-accesos', icon: FileCheck },
         { name: 'Cumplimiento', path: '/dashboard/compliance', icon: Shield },
-        { name: 'Registro de Actividad', path: '/dashboard/admin/auditoria', icon: History },
-      ]
-    },
-    {
-      title: 'IA y Sistemática',
-      moduleKey: 'ia',
-      isOpen: openGroups['IA y Sistemática'],
-      setIsOpen: () => toggleGroup('IA y Sistemática'),
-      items: [
-        { name: 'Arquitectura de Agentes', path: '/dashboard/ia/arquitectura', icon: Network },
-        { name: 'Laboratorio de Pruebas', path: '/dashboard/ia/testing', icon: Beaker },
-        { name: 'Diccionario Semántico', path: '/dashboard/admin/semantica', icon: FileText },
-        { name: 'Fuentes de Contexto', path: '/dashboard/admin/contexto', icon: Database },
-        { name: 'Mejora Continua', path: '/dashboard/admin/ia/mejora', icon: Activity },
-        { name: 'Panel de Agentes', path: '/dashboard/agentes', icon: Bot },
-        { name: 'Agente de Capacidad', path: '/dashboard/produccion/capacidad', icon: Bot },
-        { name: 'Agente de Abastecimiento', path: '/dashboard/inventario/abastecimiento', icon: Bot },
-      ]
-    },
-    {
-      title: 'Sistema y Operaciones',
-      moduleKey: 'sistema',
-      isOpen: openGroups['Sistema y Operaciones'],
-      setIsOpen: () => toggleGroup('Sistema y Operaciones'),
-      items: [
-        { name: 'Bóveda de Secretos', path: '/dashboard/admin/secretos', icon: KeyRound },
+        { name: 'Arquitectura de agentes', path: '/dashboard/ia/arquitectura', icon: Network },
+        { name: 'Laboratorio de pruebas IA', path: '/dashboard/ia/testing', icon: Beaker },
+        { name: 'Diccionario semántico', path: '/dashboard/admin/semantica', icon: FileText },
+        { name: 'Fuentes de contexto', path: '/dashboard/admin/contexto', icon: Database },
+        { name: 'Mejora continua IA', path: '/dashboard/admin/ia/mejora', icon: Activity },
+        { name: 'Panel de agentes', path: '/dashboard/agentes', icon: Bot },
+        { name: 'Agente de capacidad', path: '/dashboard/produccion/capacidad', icon: Bot },
+        { name: 'Agente de abastecimiento', path: '/dashboard/inventario/abastecimiento', icon: Bot },
+        { name: 'Bóveda de secretos', path: '/dashboard/admin/secretos', icon: KeyRound },
         { name: 'Integraciones', path: '/dashboard/admin/integraciones', icon: Blocks },
-        { name: 'Eventos y Outbox', path: '/dashboard/admin/outbox', icon: Send },
-        { name: 'Salud del Sistema', path: '/dashboard/admin/salud', icon: Activity },
-        { name: 'Respaldos', path: '/dashboard/admin/respaldos', icon: DatabaseBackup },
+        { name: 'Eventos y outbox', path: '/dashboard/admin/outbox', icon: Send },
+        { name: 'Salud del sistema', path: '/dashboard/admin/salud', icon: Activity },
         { name: 'Mantenimiento', path: '/dashboard/admin/mantenimiento', icon: Wrench },
-      ]
-    }
+      ]),
+    ] : []),
   ];
 
   return (
@@ -389,10 +345,10 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-4">
           {navGroups
-            .filter(group => isSuperAdmin || canSeeModule(group.moduleKey))
             .map((group, groupIdx) => {
-              const visibleItems = group.items.filter((item: any) => {
+              const visibleItems = group.items.filter((item) => {
                 if (isSuperAdmin) return true;
+                if (!canSeeModule(item.moduleKey ?? group.moduleKey)) return false;
                 const passesPermission = !item.permission || can(permissions, item.permission);
                 const passesSensitiveModule = !item.sensitiveModuleKey || canSeeModule(item.sensitiveModuleKey);
                 return passesPermission && passesSensitiveModule;
@@ -406,7 +362,10 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
                     className="w-full flex items-center justify-between px-3 py-1 mb-1 text-xs font-bold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
                     onClick={() => group.setIsOpen()}
                   >
-                    {group.title}
+                    <span>{group.title}</span>
+                    {group.title === 'En construcción' && (
+                      <span className="normal-case font-medium tracking-normal text-[10px] text-amber-600">solo admin</span>
+                    )}
                   </button>
                   
                   {group.isOpen && (
@@ -717,7 +676,7 @@ export default function App() {
                     <Route path="compliance" element={<ComplianceDashboard />} />
                     <Route path="canales-config/chat-web" element={<WebchatConfigPage />} />
                     <Route path="canales-config/meta" element={<MetaConfigPage />} />
-                    <Route path="simulator" element={<SimulatorPage />} />
+                    <Route path="simulator" element={<Navigate to="/dashboard/inbox" replace />} />
                     
                     <Route path="admin/organizacion" element={<OrganizacionPage />} />
                     <Route path="admin/maestros" element={<MaestrosPage />} />
