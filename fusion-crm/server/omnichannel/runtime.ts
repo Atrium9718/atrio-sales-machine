@@ -9,6 +9,10 @@ import { createGeminiClient } from './llm';
 import { createOmnichannelService, type OmnichannelService } from './service';
 import type { AgentDeps } from './agents';
 import { createStageNotifier, type StageNotice, type StageNotifier } from './notifications';
+import { createCorrectionsStore, type Correction, type CorrectionsStore } from './learning';
+import { createBudgetWatcher, type BudgetWatcher } from './budget';
+import { aiUsage, costPrices } from './usage';
+import { computeMonthlyCosts } from './health';
 
 export const CONVERSATIONS_COLLECTION = 'omni_conversations';
 const SETTINGS_COLLECTION = 'omnichannel_settings';
@@ -40,6 +44,7 @@ export async function loadOmnichannelConfig(): Promise<OmnichannelConfig> {
         ...(stored.notifications ?? {}),
         templates: { ...DEFAULT_OMNICHANNEL_CONFIG.notifications.templates, ...(stored.notifications?.templates ?? {}) },
       },
+      budget: { ...DEFAULT_OMNICHANNEL_CONFIG.budget, ...(stored.budget ?? {}) },
     };
   } catch {
     return DEFAULT_OMNICHANNEL_CONFIG;
@@ -53,6 +58,31 @@ export async function saveOmnichannelConfig(config: OmnichannelConfig): Promise<
 
 let service: OmnichannelService | null = null;
 let agentDeps: AgentDeps | null | undefined;
+
+let correctionsStore: CorrectionsStore | null = null;
+/** Correcciones del equipo a las respuestas de la IA (aprendizaje). */
+export function corrections(): CorrectionsStore {
+  if (!correctionsStore) correctionsStore = createCorrectionsStore(documentRepository<Correction>('ai_corrections'));
+  return correctionsStore;
+}
+
+let watcher: BudgetWatcher | null = null;
+/** Tope mensual de gasto: avisos y pausa de la IA. */
+export function budgetWatcher(): BudgetWatcher {
+  if (!watcher) {
+    watcher = createBudgetWatcher({
+      loadConfig: loadOmnichannelConfig,
+      async monthCostCop(month) {
+        const [usage, notices, conversations] = await Promise.all([aiUsage().month(month), stageNotifier().list(), omnichannel().list()]);
+        return computeMonthlyCosts({ month, usage, notices, conversations, prices: costPrices() }).totalCop;
+      },
+      alerts: documentRepository('ai_budget_alerts') as any,
+      publish: (status) => eventBus.publish('AI_BUDGET_ALERT', status),
+      now: () => new Date(),
+    });
+  }
+  return watcher;
+}
 
 function buildAgentDeps(): AgentDeps | null {
   if (!process.env.GEMINI_API_KEY) return null;
@@ -71,6 +101,7 @@ function buildAgentDeps(): AgentDeps | null {
     },
     appUrl: (process.env.APP_URL || '').replace(/\/$/, ''),
     now: () => new Date(),
+    examples: (agent) => corrections().examplesFor(agent),
   };
 }
 
@@ -79,7 +110,16 @@ export function omnichannel(): OmnichannelService {
   if (!service) {
     service = createOmnichannelService({
       conversations: documentRepository<Conversation>(CONVERSATIONS_COLLECTION),
-      loadConfig: cached(15_000, loadOmnichannelConfig),
+      loadConfig: (() => {
+        const load = cached(15_000, loadOmnichannelConfig);
+        return async () => {
+          const config = await load();
+          // Revisión del tope (como mucho cada 5 min, sin frenar la respuesta)
+          budgetWatcher().check().catch(() => undefined);
+          return budgetWatcher().isAiPaused() ? { ...config, aiMode: 'off' as const } : config;
+        };
+      })(),
+      recordCorrection: (c) => corrections().record(c),
       sender: createMetaSender(),
       agentDeps: () => {
         if (agentDeps === undefined) agentDeps = buildAgentDeps();
@@ -139,6 +179,9 @@ export function startStageNotifications() {
       .catch((err) => console.error('[avisos] Error procesando la cola:', err));
   }, 5 * 60 * 1000);
   timer.unref?.();
+  budgetWatcher()
+    .check(true)
+    .catch(() => undefined);
 }
 
 /** Tras cambiar la configuración, el próximo mensaje la lee de nuevo. */
@@ -146,4 +189,5 @@ export function resetOmnichannelRuntime() {
   service = null;
   agentDeps = undefined;
   notifier = null;
+  watcher?.reset();
 }

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { notify } from '../../lib/notify';
+import { useFusionAuth } from '../../context/FusionAuthContext';
 
 /**
  * Lo único que la bandeja le pide al equipo: conversaciones que necesitan a una persona y
@@ -34,8 +35,28 @@ export function useInboxAttentionCount(enabled = true): number {
   return count;
 }
 
+/** Aviso a administradores cuando el gasto del mes llega al 80% o supera el tope. */
+export function useAiBudgetAlerts(isAdmin: boolean) {
+  React.useEffect(() => {
+    if (!isAdmin) return;
+    const onAlert = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      const pct = d.percent ? Math.round(d.percent * 100) : null;
+      if (d.level === 'exceeded') {
+        notify(`Se superó el tope mensual de IA y mensajería (${pct}%).${d.aiPaused ? ' La IA quedó en pausa: todo pasa a tu equipo.' : ''} Revisa Comunicaciones → Costos.`, 'error');
+      } else if (d.level === 'warning') {
+        notify(`El gasto en IA y mensajería va en ${pct}% del tope del mes. Revisa Comunicaciones → Costos.`, 'info');
+      }
+    };
+    window.addEventListener('fusion_ai_budget_alert', onAlert);
+    return () => window.removeEventListener('fusion_ai_budget_alert', onAlert);
+  }, [isAdmin]);
+}
+
 /** Aviso cuando una conversación pasa a una persona (una vez por motivo y conversación). */
 export function InboxAttentionNotifier() {
+  const { isSuperAdmin, currentUser } = useFusionAuth();
+  useAiBudgetAlerts(isSuperAdmin || ['admin', 'super_admin'].includes(currentUser?.roleKey ?? ''));
   const seen = React.useRef(new Set<string>());
   React.useEffect(() => {
     const onUpdate = (e: Event) => {

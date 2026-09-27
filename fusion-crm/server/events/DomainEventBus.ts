@@ -41,6 +41,14 @@ export interface DomainEventPayloadMap {
     handoffReason: string | null;
     preview: string;
   };
+  AI_BUDGET_ALERT: {
+    month: string;
+    level: string;
+    spentCop: number;
+    budgetCop: number | null;
+    percent: number | null;
+    aiPaused: boolean;
+  };
   SYSTEM_TRANSIENT_DATA_PURGED: {
     purgedCollections: string[];
     recordsDeleted: number;

@@ -20,7 +20,8 @@ export function appendMessage(messages: ConversationMessage[], msg: Conversation
 const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 const HUMAN_REQUEST = /\b(asesor|humano|persona|alguien real|hablar con (alguien|una persona|un asesor)|agente real|operador)\b/;
-const COMPLAINT = /\b(queja|reclamo|demanda|pesimo|terrible|inaceptable|estafa|devolucion|reembolso|denuncia|abogado|super ?intendencia)\b/;
+const COMPLAINT =
+  /\b(queja|reclamo|demanda|pesimo|terrible|inaceptable|estafa|devolucion|reembolso|denuncia|abogado|super ?intendencia|garantia|molest[oa]s?|enojad[oa]s?|furios[oa]s?|indignad[oa]s?|disgustad[oa]s?|decepcionad[oa]s?|danad[oa]s?|defectuos[oa]s?|mal hech[oa]s?|nadie (me )?(responde|contesta)|no (me )?(responden|contestan)|cancelar (el |mi )?pedido)\b|lleg[oa]r?o?n? (mal|roto|rota|incomplet)/;
 const PAYMENT = /\b(pague|pago|pagar|consignacion|consigne|transferencia|factura|abono|anticipo|comprobante)\b/;
 
 /**
@@ -59,6 +60,10 @@ export interface OmnichannelConfig {
   escalationEmployeeIds: string[];
   /** Avisos automáticos al cliente cuando su pedido cambia de etapa. */
   notifications: NotificationSettings;
+  /** Tope mensual de gasto en IA y mensajería (pesos). Avisa al 80% y al 100%. */
+  budget: { monthlyCop: number | null; pauseAiAtLimit: boolean };
+  /** Usa las correcciones del equipo como ejemplos para la IA. */
+  learnFromCorrections: boolean;
 }
 
 export interface NotificationSettings {
@@ -97,6 +102,8 @@ export const DEFAULT_OMNICHANNEL_CONFIG: OmnichannelConfig = {
     sendFrom: '07:30',
     sendUntil: '19:30',
   },
+  budget: { monthlyCop: null, pauseAiAtLimit: false },
+  learnFromCorrections: true,
 };
 
 /** ¿Está dentro del horario de atención humana? (zona horaria de Bogotá, UTC-5 sin horario de verano). */

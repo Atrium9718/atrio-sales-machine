@@ -3,6 +3,7 @@ import { DollarSign, Bot, MessageCircle, Info } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface CostsResponse {
+  budget?: { budgetCop: number | null; spentCop: number; percent: number | null; level: string; aiPaused: boolean; month: string };
   prices: { inputPerM: number; outputPerM: number; templateUsd: number; usdCop: number };
   costs: {
     month: string;
@@ -18,7 +19,7 @@ interface CostsResponse {
 
 const cop = (v: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v || 0);
 const usd = (v: number) => `US$ ${v.toFixed(v < 1 ? 4 : 2)}`;
-const SOURCE_NAMES: Record<string, string> = { agentes: 'Agentes de atención', simulador: 'Simulador', precotizaciones: 'Precotizaciones IA', asistente: 'Asistente interno' };
+const SOURCE_NAMES: Record<string, string> = { agentes: 'Agentes de atención', simulador: 'Simulador', precotizaciones: 'Precotizaciones IA', asistente: 'Asistente interno', evaluacion: 'Evaluación de agentes' };
 
 function lastMonths(n: number) {
   const now = new Date();
@@ -99,6 +100,24 @@ export default function CostosOmnicanalPage() {
               <div className="text-xs text-muted-foreground mt-1">{c.aiMessages} respuestas enviadas a clientes</div>
             </div>
           </div>
+
+          {data.budget?.budgetCop && data.budget.month === month ? (
+            <div className={`${card} space-y-2`}>
+              <div className="flex justify-between text-sm font-bold">
+                <span>Tope del mes: {cop(data.budget.budgetCop)}</span>
+                <span>{Math.round((data.budget.percent ?? 0) * 100)}%</span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full ${data.budget.level === 'exceeded' ? 'bg-destructive' : data.budget.level === 'warning' ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${Math.min(100, (data.budget.percent ?? 0) * 100)}%` }}
+                />
+              </div>
+              {data.budget.aiPaused && <p className="text-xs text-destructive font-semibold">La IA está en pausa por superar el tope. Se cambia en Bandeja → Configuración de la IA.</p>}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Sin tope mensual. Puedes fijarlo en Bandeja de entrada → Configuración de la IA.</p>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className={`${card} lg:col-span-2`}>

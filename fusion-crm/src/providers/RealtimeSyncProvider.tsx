@@ -184,6 +184,12 @@ export const RealtimeSyncProvider: React.FC<RealtimeSyncProviderProps> = ({ chil
             break;
           }
 
+          // --- TOPE DE GASTO DE LA IA ---
+          case 'AI_BUDGET_ALERT': {
+            window.dispatchEvent(new CustomEvent('fusion_ai_budget_alert', { detail: payload }));
+            break;
+          }
+
           // --- PORTAL DEL CLIENTE ---
           case 'CLIENT_REQUEST_CREATED': {
             window.dispatchEvent(new CustomEvent('fusion_client_request_created', { detail: payload }));

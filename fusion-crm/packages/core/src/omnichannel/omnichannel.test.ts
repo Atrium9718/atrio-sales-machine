@@ -52,6 +52,24 @@ describe('reglas de atención', () => {
     expect(handoffTrigger('hola, cómo va mi pedido?')).toBeNull();
   });
 
+  it('detecta clientes molestos o pedidos con problemas aunque no digan "queja"', () => {
+    for (const t of [
+      'Estoy muy molesto, el pedido llegó dañado y nadie me responde',
+      'las cajas llegaron rotas',
+      'me llegó incompleto el pedido',
+      'estoy decepcionada con el trabajo',
+      'quiero cancelar mi pedido',
+      'no me contestan hace dos días',
+      'eso quedó mal hecho, necesito la garantía',
+    ]) {
+      expect(handoffTrigger(t)?.intent, t).toBe('queja');
+    }
+    // Sin falsos positivos en consultas normales
+    for (const t of ['¿cuándo llega mi pedido?', 'necesito 500 cajas', 'el diseño me llegó al correo, gracias', 'buenas tardes']) {
+      expect(handoffTrigger(t), t).toBeNull();
+    }
+  });
+
   it('respeta la ventana de 24 h de WhatsApp', () => {
     const now = Date.parse('2026-09-27T12:00:00Z');
     expect(withinCustomerWindow({ channel: 'whatsapp', lastInboundAt: '2026-09-27T01:00:00Z' }, now)).toBe(true);

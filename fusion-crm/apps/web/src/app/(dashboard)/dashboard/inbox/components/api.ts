@@ -55,6 +55,47 @@ export interface ChannelStatus {
   ai: boolean;
 }
 
+export interface AiCorrection {
+  id: string;
+  at: string;
+  agent: string | null;
+  question: string;
+  aiText: string;
+  finalText: string | null;
+  kind: 'editada' | 'descartada' | 'reemplazada';
+  by: string;
+  active: boolean;
+}
+
+export interface EvalResult {
+  id: string;
+  title: string;
+  passed: boolean;
+  failures: string[];
+  reply: string;
+  handoff: boolean;
+  verified: boolean;
+  tools: string[];
+  ms: number;
+}
+
+export interface EvalRun {
+  id: string;
+  at: string;
+  passed: number;
+  total: number;
+  results: EvalResult[];
+}
+
+export interface BudgetStatus {
+  month: string;
+  budgetCop: number | null;
+  spentCop: number;
+  percent: number | null;
+  level: 'none' | 'ok' | 'warning' | 'exceeded';
+  aiPaused: boolean;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api/omnichannel${path}`, {
     method,
@@ -83,6 +124,12 @@ export const inboxApi = {
     request<{ conversation: Conversation }>('POST', '/simulate', { text, session, phone: phone || undefined }).then((d) => d.conversation),
   resetSimulator: () => request('POST', '/simulate/reset', {}),
   notices: () => request<{ notices: StageNotice[] }>('GET', '/notifications').then((d) => d.notices),
+  corrections: () => request<{ corrections: AiCorrection[] }>('GET', '/corrections').then((d) => d.corrections),
+  setCorrectionActive: (id: string, active: boolean) => request('PATCH', `/corrections/${encodeURIComponent(id)}`, { active }),
+  deleteCorrection: (id: string) => request('DELETE', `/corrections/${encodeURIComponent(id)}`),
+  evals: () => request<{ runs: EvalRun[] }>('GET', '/evals').then((d) => d.runs),
+  runEvals: () => request<{ run: EvalRun }>('POST', '/evals', {}).then((d) => d.run),
+  budget: () => request<{ budget: BudgetStatus }>('GET', '/budget').then((d) => d.budget),
   retryNotice: (id: string) => request<{ notice: StageNotice }>('POST', `/notifications/${encodeURIComponent(id)}/retry`, {}).then((d) => d.notice),
 };
 

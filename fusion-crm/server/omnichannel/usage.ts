@@ -31,6 +31,15 @@ export function aiPrices() {
   };
 }
 
+/** Tarifas usadas para estimar costos (IA, plantillas de WhatsApp y dólar). */
+export function costPrices() {
+  return {
+    ...aiPrices(),
+    templateUsd: Number(process.env.WHATSAPP_TEMPLATE_PRICE_USD) || 0.0008,
+    usdCop: Number(process.env.USD_COP) || 4000,
+  };
+}
+
 export const tokensCostUsd = (promptTokens: number, outputTokens: number, prices = aiPrices()) =>
   (promptTokens / 1e6) * prices.inputPerM + (outputTokens / 1e6) * prices.outputPerM;
 

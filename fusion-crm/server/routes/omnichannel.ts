@@ -6,13 +6,14 @@ import {
   type OmnichannelConfig,
 } from '../../packages/core/src/omnichannel';
 import { isAdminRole } from '../auth/session';
-import { createMemoryRepository } from '../repositories/documentStore';
-import { loadOmnichannelConfig, omnichannel, resetOmnichannelRuntime, saveOmnichannelConfig, stageNotifier } from '../omnichannel/runtime';
+import { createMemoryRepository, documentRepository } from '../repositories/documentStore';
+import { budgetWatcher, corrections, loadOmnichannelConfig, omnichannel, resetOmnichannelRuntime, saveOmnichannelConfig, stageNotifier } from '../omnichannel/runtime';
 import { createOmnichannelService, type OmnichannelService } from '../omnichannel/service';
 import { createGeminiClient } from '../omnichannel/llm';
+import { EVAL_CASES, runEvals, type EvalRun } from '../omnichannel/evals';
 import { createMetaSender } from '../omnichannel/senders';
 import { computeChannelHealth, computeMonthlyCosts } from '../omnichannel/health';
-import { aiPrices, aiUsage } from '../omnichannel/usage';
+import { aiUsage, costPrices } from '../omnichannel/usage';
 import { repositories } from '../repositories';
 import type { ChannelSender } from '../omnichannel/senders';
 
@@ -176,6 +177,11 @@ const ConfigSchema = z.object({
     sendFrom: z.string().regex(/^\d{2}:\d{2}$/),
     sendUntil: z.string().regex(/^\d{2}:\d{2}$/),
   }),
+  budget: z.object({
+    monthlyCop: z.number().int().min(0).max(1_000_000_000).nullable(),
+    pauseAiAtLimit: z.boolean(),
+  }),
+  learnFromCorrections: z.boolean(),
 });
 
 omnichannelRouter.get('/config', async (_req, res) => {
@@ -200,12 +206,89 @@ omnichannelRouter.put('/config', async (req, res) => {
     ...DEFAULT_OMNICHANNEL_CONFIG,
     ...req.body,
     notifications: { ...DEFAULT_OMNICHANNEL_CONFIG.notifications, ...(req.body?.notifications ?? {}) },
+    budget: { ...DEFAULT_OMNICHANNEL_CONFIG.budget, ...(req.body?.budget ?? {}) },
   });
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0].message });
   try {
     const saved = await saveOmnichannelConfig(parsed.data as OmnichannelConfig);
     resetOmnichannelRuntime();
     res.json({ success: true, config: saved });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ── Aprendizaje: correcciones del equipo ───────────────────────
+
+const requireAdmin = (req: Request, res: Response) => {
+  if (isAdminRole(String(req.headers['x-user-role'] || ''))) return true;
+  res.status(403).json({ success: false, error: 'Solo un administrador puede hacer este cambio' });
+  return false;
+};
+
+omnichannelRouter.get('/corrections', async (_req, res) => {
+  try {
+    res.json({ success: true, corrections: (await corrections().list()).slice(0, 300) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+omnichannelRouter.patch('/corrections/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (typeof req.body?.active !== 'boolean') return res.status(400).json({ success: false, error: 'Falta active' });
+  try {
+    const updated = await corrections().setActive(req.params.id, req.body.active);
+    if (!updated) return res.status(404).json({ success: false, error: 'Corrección no encontrada' });
+    res.json({ success: true, correction: updated });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+omnichannelRouter.delete('/corrections/:id', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  try {
+    await corrections().remove(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ── Evaluación de los agentes ──────────────────────────────────
+
+const evalsRepo = () => documentRepository<EvalRun>('ai_evals');
+let evalRunning = false;
+
+omnichannelRouter.get('/evals', async (_req, res) => {
+  try {
+    const runs = (await evalsRepo().list()).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10);
+    res.json({ success: true, runs, cases: EVAL_CASES.map((c) => ({ id: c.id, title: c.title })) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+omnichannelRouter.post('/evals', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!process.env.GEMINI_API_KEY) return res.status(503).json({ success: false, error: 'Configura GEMINI_API_KEY para evaluar los agentes' });
+  if (evalRunning) return res.status(409).json({ success: false, error: 'Ya hay una evaluación en curso' });
+  evalRunning = true;
+  try {
+    const run = await runEvals(createGeminiClient(undefined, { source: 'evaluacion' }), await loadOmnichannelConfig());
+    await evalsRepo().upsert(run);
+    res.json({ success: true, run });
+  } catch (err) {
+    fail(res, err);
+  } finally {
+    evalRunning = false;
+  }
+});
+
+omnichannelRouter.get('/budget', async (_req, res) => {
+  try {
+    res.json({ success: true, budget: await budgetWatcher().check() });
   } catch (err) {
     fail(res, err);
   }
@@ -244,12 +327,9 @@ omnichannelRouter.get('/costs', async (req, res) => {
   try {
     const month = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 7);
     const [usage, notices, conversations] = await Promise.all([aiUsage().month(month), stageNotifier().list(), omnichannel().list()]);
-    const prices = {
-      ...aiPrices(),
-      templateUsd: Number(process.env.WHATSAPP_TEMPLATE_PRICE_USD) || 0.0008,
-      usdCop: Number(process.env.USD_COP) || 4000,
-    };
-    res.json({ success: true, prices, costs: computeMonthlyCosts({ month, usage, notices, conversations, prices }) });
+    const prices = costPrices();
+    const budget = await budgetWatcher().check(true);
+    res.json({ success: true, prices, costs: computeMonthlyCosts({ month, usage, notices, conversations, prices }), budget });
   } catch (err) {
     fail(res, err);
   }

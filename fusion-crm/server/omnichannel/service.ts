@@ -1,3 +1,4 @@
+import type { Correction } from './learning';
 import { randomUUID } from 'crypto';
 import {
   appendMessage,
@@ -37,6 +38,8 @@ export interface OmnichannelDeps {
   agentDeps(): AgentDeps | null;
   publish(conv: Conversation, preview: string): void;
   now(): Date;
+  /** Guarda cuando una persona corrige, descarta o reemplaza la respuesta de la IA. */
+  recordCorrection?(c: Omit<Correction, 'id' | 'at' | 'active'>): Promise<unknown>;
 }
 
 /** Id estable por canal + usuario (sin "/" para Firestore). */
@@ -60,6 +63,16 @@ export function createOmnichannelService(deps: OmnichannelDeps) {
   };
 
   const iso = () => deps.now().toISOString();
+
+  /** Registra la corrección sin bloquear ni romper la atención. */
+  const learn = (conv: Conversation, suggestion: ConversationMessage, finalText: string | null, kind: Correction['kind'], actor: Actor) => {
+    if (!deps.recordCorrection) return;
+    const idx = conv.messages.indexOf(suggestion);
+    const question = [...conv.messages.slice(0, idx < 0 ? undefined : idx)].reverse().find((m) => m.author === 'customer')?.text ?? '';
+    deps
+      .recordCorrection({ agent: suggestion.aiAgent ?? null, question, aiText: suggestion.text, finalText, kind, by: actor.name, conversationId: conv.id })
+      .catch((err) => console.warn('[omnicanal] No se pudo guardar la corrección:', err?.message || err));
+  };
 
   const message = (fields: Partial<ConversationMessage> & Pick<ConversationMessage, 'direction' | 'author' | 'text' | 'status'>): ConversationMessage => ({
     id: randomUUID(),
@@ -220,7 +233,10 @@ export function createOmnichannelService(deps: OmnichannelDeps) {
       return mutate(id, async (conv) => {
         const msg = conv.messages.find((m) => m.id === messageId && m.status === 'suggested');
         if (!msg) throw Object.assign(new Error('La sugerencia ya no está pendiente'), { status: 409 });
-        if (editedText?.trim()) msg.text = editedText.trim();
+        if (editedText?.trim() && editedText.trim() !== msg.text) {
+          learn(conv, msg, editedText.trim(), 'editada', actor);
+          msg.text = editedText.trim();
+        }
         msg.agentName = actor.name;
         await deliver(conv, msg);
         conv.awaitingApproval = conv.messages.some((m) => m.status === 'suggested');
@@ -234,6 +250,7 @@ export function createOmnichannelService(deps: OmnichannelDeps) {
         if (msg) {
           msg.status = 'discarded';
           msg.agentName = actor.name;
+          learn(conv, msg, null, 'descartada', actor);
         }
         conv.awaitingApproval = conv.messages.some((m) => m.status === 'suggested');
       });
@@ -242,7 +259,10 @@ export function createOmnichannelService(deps: OmnichannelDeps) {
     /** Respuesta escrita por una persona: toma el control de la conversación. */
     sendAgentMessage(id: string, text: string, actor: Actor) {
       return mutate(id, async (conv) => {
-        for (const m of conv.messages) if (m.status === 'suggested') m.status = 'discarded';
+        const pending = conv.messages.filter((m) => m.status === 'suggested');
+        // La persona escribió su propia respuesta en lugar de la sugerida: es la corrección
+        if (pending.length) learn(conv, pending[pending.length - 1], text.trim(), 'reemplazada', actor);
+        for (const m of pending) m.status = 'discarded';
         const msg = message({ direction: 'out', author: 'agent', text: text.trim(), status: 'sent', agentName: actor.name });
         await deliver(conv, msg);
         conv.messages = appendMessage(conv.messages, msg);

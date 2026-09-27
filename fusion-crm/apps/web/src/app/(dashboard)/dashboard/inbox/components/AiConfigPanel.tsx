@@ -3,6 +3,7 @@ import { CheckCircle2, Loader2, Save, XCircle } from 'lucide-react';
 import { notify } from '@/lib/notify';
 import { useFusionAuth } from '@/context/FusionAuthContext';
 import { inboxApi, type ChannelStatus, type OmnichannelConfig } from './api';
+import { AiQualityPanel } from './AiQualityPanel';
 
 const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const AUTO_INTENTS = [
@@ -203,6 +204,31 @@ export function AiConfigPanel() {
         </section>
 
         <section className="bg-card border border-border rounded-xl p-4 space-y-3">
+          <h3 className="font-bold text-sm">Tope de gasto y aprendizaje</h3>
+          <label className="block text-xs font-semibold">
+            Tope mensual de IA y mensajería (pesos)
+            <input
+              type="number"
+              min={0}
+              step={10000}
+              value={config.budget?.monthlyCop ?? ''}
+              onChange={(e) => set('budget', { ...config.budget, monthlyCop: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })}
+              placeholder="Sin tope"
+              className="mt-1 w-48 bg-background border border-border rounded-lg px-2.5 py-1.5 text-sm font-normal block"
+            />
+          </label>
+          <p className="text-[11px] text-muted-foreground">Avisa a los administradores al llegar al 80% y al 100% del tope.</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={!!config.budget?.pauseAiAtLimit} onChange={(e) => set('budget', { ...config.budget, pauseAiAtLimit: e.target.checked })} />
+            Al superar el tope, pausar la IA (todo pasa a tu equipo hasta el próximo mes)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={config.learnFromCorrections !== false} onChange={(e) => set('learnFromCorrections', e.target.checked)} />
+            Aprender de las correcciones del equipo (usa las más recientes como ejemplos)
+          </label>
+        </section>
+
+        <section className="bg-card border border-border rounded-xl p-4 space-y-3">
           <h3 className="font-bold text-sm">Lo que la IA debe saber</h3>
           <textarea
             value={config.knowledge}
@@ -225,6 +251,8 @@ export function AiConfigPanel() {
           </div>
         )}
       </fieldset>
+
+      <AiQualityPanel canEdit={canEdit} />
     </div>
   );
 }

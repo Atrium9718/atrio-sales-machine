@@ -29,6 +29,9 @@ export const GENERIC_COLLECTIONS = [
   'omnichannel_settings',
   'omni_stage_notices',
   'ai_usage',
+  'ai_corrections',
+  'ai_budget_alerts',
+  'ai_evals',
   'chats',
   // Estado de chat interno, anuncios, llamadas… (ver persistenceService)
   'state_announcements',

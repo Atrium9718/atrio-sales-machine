@@ -15,6 +15,7 @@ import {
   type OmnichannelConfig,
 } from '../../packages/core/src/omnichannel';
 import { projectBelongsToClient, toClientProjectView } from '../../packages/core/src/portal/clientProgress';
+import { examplesBlock } from './learning';
 import type { ChatTurn, LlmClient, ToolCallRecord, ToolDeclaration } from './llm';
 
 /** Datos y acciones del sistema que los agentes pueden usar. */
@@ -28,6 +29,8 @@ export interface AgentDeps {
   createPreQuote(input: { conversation: { sender: string; content: string }[]; customer: any; channel: string }): Promise<{ number: string }>;
   appUrl: string;
   now(): Date;
+  /** Correcciones del equipo para usar como ejemplos (aprendizaje). */
+  examples?(agent: 'servicio' | 'comercial'): Promise<{ question: string; finalText: string | null }[]>;
 }
 
 export type IdentityPatch = Pick<Conversation, 'clientId' | 'clientName' | 'clientNit' | 'verified' | 'verifiedBy'>;
@@ -286,8 +289,9 @@ export async function runAgentTurn(conv: Conversation, text: string, config: Omn
       }
     };
 
+    const examples = config.learnFromCorrections && deps.examples ? await deps.examples(agent).catch(() => []) : [];
     const result = await deps.llm.runWithTools({
-      system: systemPrompt(agent, current, config, withinHours),
+      system: systemPrompt(agent, current, config, withinHours) + examplesBlock(examples),
       history: historyFor(current),
       message: text,
       tools: AGENT_TOOLS[agent],
