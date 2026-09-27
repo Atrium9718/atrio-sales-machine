@@ -32,6 +32,15 @@ export interface DomainEventPayloadMap {
     attachmentCount: number;
     createdAt: string;
   };
+  OMNICHANNEL_CONVERSATION_UPDATED: {
+    conversationId: string;
+    channel: string;
+    contactName: string;
+    needsHuman: boolean;
+    awaitingApproval: boolean;
+    handoffReason: string | null;
+    preview: string;
+  };
   SYSTEM_TRANSIENT_DATA_PURGED: {
     purgedCollections: string[];
     recordsDeleted: number;
