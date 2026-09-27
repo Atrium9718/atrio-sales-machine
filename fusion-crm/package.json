@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "npx --yes prisma generate --schema=packages/db/prisma && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && test -f dist/index.html && test -f dist/server.cjs",
+    "build": "npx --yes prisma generate --schema=packages/db/prisma && vite build && vite build apps/widget --outDir ../../dist/widget --emptyOutDir && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && test -f dist/index.html && test -f dist/widget/widget.js && test -f dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",

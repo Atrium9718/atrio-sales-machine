@@ -66,6 +66,7 @@ widgetRouter.get('/config', async (req, res) => {
     position: process.env.WEBCHAT_POSITION === 'left' ? 'left' : 'right',
     greeting: `¡Hola! Soy el asistente de ${config.businessName}. ¿En qué te ayudo? Puedo contarte cómo va tu pedido o ayudarte a cotizar.`,
     isWithinHours: within,
+    whatsappNumber: (process.env.WHATSAPP_PUBLIC_NUMBER || '').replace(/\D/g, ''),
     outOfHoursMessage: 'Estamos fuera del horario de atención humana, pero puedo ayudarte ahora mismo y dejar tu caso listo para el equipo.',
   });
 });

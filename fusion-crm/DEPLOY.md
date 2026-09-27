@@ -162,12 +162,71 @@ docker compose -f docker-compose.minimal.yml up -d --build
 
 Las migraciones de la base de datos se aplican solas al arrancar.
 
-## 8. WhatsApp / Instagram / Messenger (cuando se activen)
+## 8. Canales: WhatsApp, Instagram, Messenger y chat web
 
-En `.env` define `META_APP_SECRET` (panel de Meta → Configuración → Básica → *Clave secreta de
-la app*) y un `META_WEBHOOK_VERIFY_TOKEN` inventado. En el panel de Meta, el webhook es
-`https://app.tudominio.com/api/webhooks/meta` con ese mismo token. El servidor rechaza todo
-evento que no venga firmado por Meta.
+La **Bandeja de entrada** (menú Comunicaciones) reúne todos los canales. La IA atiende y el equipo
+solo ve lo que necesita a una persona. Antes de conectar clientes reales, prueba en la pestaña
+**Simulador** (usa tus datos y la IA real, pero no envía nada).
+
+### 8.1 Requisitos comunes
+- `GEMINI_API_KEY` en `.env` (sin ella nadie responde automáticamente: todo pasa a personas).
+- `APP_URL` la pone `docker-compose.minimal.yml` (`https://DOMAIN`); con ella la IA arma los
+  enlaces del portal de avance.
+- En **Bandeja → Configuración de la IA**: escribe lo que la IA debe saber (horarios, tiempos de
+  entrega, pagos, envíos, formatos de archivo) y lo que nunca debe prometer.
+
+### 8.2 Aplicación de Meta (una sola para los tres canales)
+1. En [developers.facebook.com](https://developers.facebook.com) crea una app tipo **Empresa**
+   ligada a tu portafolio comercial (Business Manager, idealmente verificado).
+2. **Configuración → Básica**: copia la **Clave secreta de la app** en `META_APP_SECRET`.
+3. Inventa un texto largo para `META_WEBHOOK_VERIFY_TOKEN` (p. ej. `openssl rand -hex 16`).
+4. Reinicia la app: `docker compose -f docker-compose.minimal.yml up -d app`.
+
+### 8.3 WhatsApp (Cloud API)
+1. En la app agrega el producto **WhatsApp** y registra tu número (no puede estar a la vez en la
+   app de WhatsApp Business del celular).
+2. Copia el **Identificador del número de teléfono** en `WHATSAPP_PHONE_NUMBER_ID`.
+3. Crea un token **permanente**: portafolio comercial → Usuarios del sistema → Agregar (rol
+   administrador) → Generar token con permisos `whatsapp_business_messaging` y
+   `whatsapp_business_management`. Cópialo en `WHATSAPP_ACCESS_TOKEN`.
+4. **WhatsApp → Configuración → Webhook**: URL `https://app.tudominio.com/api/webhooks/meta`,
+   token = `META_WEBHOOK_VERIFY_TOKEN`. Suscribe el campo **messages**.
+5. Escríbele al número desde tu celular: la conversación debe aparecer en la Bandeja.
+
+> WhatsApp solo permite responder con texto libre hasta **24 horas** después del último mensaje del
+> cliente. Para escribirle primero (p. ej. avisos de cambio de etapa) se necesitan **plantillas
+> aprobadas** por Meta; eso llega en la siguiente fase.
+
+### 8.4 Messenger e Instagram
+1. En la app agrega **Messenger** (y **Instagram** si la cuenta de Instagram profesional está
+   conectada a tu página de Facebook).
+2. Genera el **token de acceso de la página** y cópialo en `MESSENGER_PAGE_ACCESS_TOKEN`.
+3. Configura el webhook con la misma URL y token del paso 8.3 y suscribe `messages` en la página
+   (y en Instagram).
+4. Para producción, Meta pide **revisión de la app** para los permisos `pages_messaging` e
+   `instagram_manage_messages` (mientras tanto solo funciona con los administradores de la app).
+
+### 8.5 Chat web en tu página
+1. En `.env`: `WEBCHAT_PUBLIC_KEY` (cualquier texto) y en `WEBCHAT_ALLOWED_ORIGINS` el dominio
+   exacto de tu sitio (p. ej. `https://www.tudominio.com`). Reinicia la app.
+2. Pega esto antes de `</body>` en tu sitio web:
+   ```html
+   <script src="https://app.tudominio.com/widget/widget.js"
+           data-key="TU_WEBCHAT_PUBLIC_KEY"
+           data-api="https://app.tudominio.com" defer></script>
+   ```
+
+### 8.6 Arranque recomendado
+1. **Semana 1 — modo Sugerencia:** la IA escribe cada respuesta y alguien la aprueba o corrige
+   con un clic. Así ves cómo responde con clientes reales.
+2. **Cuando confíes — modo Automático por temas:** primero *Estado de pedidos*, luego *Saludos* y
+   *Cotizaciones*. Los temas no marcados siguen como sugerencia.
+3. Revisa a diario la pestaña **Necesitan persona** y el indicador **Resueltas por la IA**.
+
+La IA pasa el caso a una persona (y le avisa al cliente) cuando el cliente lo pide, hay una queja
+o un tema de pagos, no está segura, falla, o un mensaje no se pudo entregar. Solo comparte
+información de pedidos con clientes verificados: por su número de WhatsApp registrado, o con NIT +
+número de pedido.
 
 ## Problemas frecuentes
 
