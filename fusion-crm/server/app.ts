@@ -28,6 +28,7 @@ import { portalPublicRouter, clientPortalRouter } from './routes/clientPortal';
 import { callsService } from './services/callsService';
 import { loadStateFromFirestore, startStateSync, saveStateToFirestore, persistAfterWrites } from './services/persistenceService';
 import { loadTariffStore } from './services/tariffStore';
+import { requestMetrics } from './services/systemHealth';
 import { loadEmployees } from './services/employeeService';
 import { loadSettingsStore } from './services/settingsStore';
 import { registerDomainSubscribers } from './events/subscribers';
@@ -52,6 +53,8 @@ export async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   // Todo cambio en el estado en memoria (chat, anuncios, llamadas…) se guarda al terminar la petición
   app.use(persistAfterWrites);
+  // Métricas propias (Administración → Salud del sistema)
+  app.use(requestMetrics);
 
   // API Routes
   app.get('/api/health', (req, res) => {

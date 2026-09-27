@@ -41,6 +41,11 @@ export interface DomainEventPayloadMap {
     handoffReason: string | null;
     preview: string;
   };
+  INTEGRATION_CHECK_FAILED: {
+    integration: string;
+    name: string;
+    message: string;
+  };
   AI_BUDGET_ALERT: {
     month: string;
     level: string;
@@ -69,6 +74,15 @@ export type DomainEventListener<T extends DomainEventType> = (
   event: DomainEvent<T>
 ) => void | Promise<void>;
 
+export interface RecentEvent {
+  id: string;
+  type: string;
+  timestamp: string;
+  payload: unknown;
+  /** Errores de los suscriptores al procesarlo. */
+  errors: string[];
+}
+
 /**
  * Bus de eventos de dominio en memoria desacoplado (Singleton basado en EventEmitter).
  * Garantiza comunicación asíncrona y reactiva entre módulos sin acoplamiento directo.
@@ -80,6 +94,17 @@ class DomainEventBus {
   private constructor() {
     this.emitter = new EventEmitter();
     this.emitter.setMaxListeners(50); // Permite múltiples suscriptores sin advertencias de memory leak
+  }
+
+  /** Últimos eventos (en memoria, para la consola de eventos). */
+  private recent: RecentEvent[] = [];
+  private seq = 0;
+  private remember(e: RecentEvent) {
+    this.recent.unshift(e);
+    if (this.recent.length > 300) this.recent.length = 300;
+  }
+  public getRecent(): RecentEvent[] {
+    return this.recent;
   }
 
   public static getInstance(): DomainEventBus {
@@ -100,6 +125,7 @@ class DomainEventBus {
     };
 
     console.log(`[DomainEventBus] ⚡ [${type}] @ ${event.timestamp}:`, JSON.stringify(payload));
+    this.remember({ id: `${event.timestamp}-${++this.seq}`, type, timestamp: event.timestamp, payload, errors: [] });
     this.emitter.emit(type, payload, event);
     this.emitter.emit('*', event);
 
@@ -119,6 +145,8 @@ class DomainEventBus {
         await listener(payload, event);
       } catch (error) {
         console.error(`[DomainEventBus] Error procesando evento [${type}]:`, error);
+        const rec = this.recent.find((r) => r.timestamp === event.timestamp && r.type === type);
+        if (rec) rec.errors.push(String((error as Error)?.message || error).slice(0, 300));
       }
     };
 

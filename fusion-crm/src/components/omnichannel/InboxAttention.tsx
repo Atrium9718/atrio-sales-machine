@@ -48,8 +48,16 @@ export function useAiBudgetAlerts(isAdmin: boolean) {
         notify(`El gasto en IA y mensajería va en ${pct}% del tope del mes. Revisa Comunicaciones → Costos.`, 'info');
       }
     };
+    const onIntegration = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      notify(`La conexión con ${d.name || 'un canal'} falló: ${d.message}. Revisa Administración → Integraciones.`, 'error');
+    };
     window.addEventListener('fusion_ai_budget_alert', onAlert);
-    return () => window.removeEventListener('fusion_ai_budget_alert', onAlert);
+    window.addEventListener('fusion_integration_alert', onIntegration);
+    return () => {
+      window.removeEventListener('fusion_ai_budget_alert', onAlert);
+      window.removeEventListener('fusion_integration_alert', onIntegration);
+    };
   }, [isAdmin]);
 }
 

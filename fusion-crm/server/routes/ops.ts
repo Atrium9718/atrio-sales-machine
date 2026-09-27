@@ -2,74 +2,98 @@ import { Router } from 'express';
 import fs from 'fs';
 import { isAdminRole } from '../auth/session';
 import { backupDir, listBackups, readBackupStatus, resolveBackupFile } from '../services/backupsService';
+import { dataBackend } from '../repositories';
+import { documentRepository } from '../repositories/documentStore';
+import { getPrisma } from '../repositories/prisma/client';
+import { getAdminAuth } from '../auth/firebaseAdmin';
+import { eventBus } from '../events/DomainEventBus';
+import { describeIntegrations, testIntegration } from '../services/integrations';
+import { diskInfo, metricsSnapshot, processInfo, versionInfo } from '../services/systemHealth';
+import { uploadsDir } from '../services/fileStorage';
+import { budgetWatcher, stageNotifier } from '../omnichannel/runtime';
+import { saveStateToFirestore } from '../services/persistenceService';
 
 export const opsRouter = Router();
 
-// BLOQUE A: Bóveda de Secretos
-const mockSecrets = [
-  { id: '1', name: 'Google Drive API Key', type: 'API_KEY', integration: 'Google Drive', last4: '8Ab3', createdAt: new Date().toISOString(), rotatedAt: new Date().toISOString(), expiresAt: null, lastUsedAt: new Date().toISOString() },
-  { id: '2', name: 'Odoo Token', type: 'BEARER', integration: 'Odoo ERP', last4: 'zX91', createdAt: new Date().toISOString(), rotatedAt: null, expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(), lastUsedAt: new Date(Date.now() - 95 * 86400000).toISOString() }, // 95 days ago -> warning
-  { id: '3', name: 'WhatsApp API Token', type: 'TOKEN', integration: 'WhatsApp', last4: 'wq0P', createdAt: new Date().toISOString(), rotatedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 2 * 86400000).toISOString(), lastUsedAt: new Date().toISOString() }, // Expires in 2 days
-];
-
-opsRouter.get('/secrets', (req, res) => {
-  // POR CONSTRUCCIÓN: no se envía el valor.
-  res.json(mockSecrets);
+/** Todo /api/ops es de administración. */
+opsRouter.use((req, res, next) => {
+  if (isAdminRole(String(req.headers['x-user-role'] || ''))) return next();
+  res.status(403).json({ success: false, error: 'Solo administradores' });
 });
 
-opsRouter.post('/secrets/:id/rotate', (req, res) => {
-  // body.newValue
-  res.json({ success: true });
-});
-
-opsRouter.post('/secrets/:id/revoke', (req, res) => {
-  res.json({ success: true });
-});
-
-// BLOQUE B: Integraciones
-const mockIntegrations = [
-  { id: 'meta', name: 'Meta (Facebook & Instagram)', status: 'OK', error: null, config: { pageId: '1029384756', instagramId: '1122334455', webhookVerifyToken: 'FusionCG_Secret_Token' } },
-  { id: 'whatsapp', name: 'WhatsApp Business API', status: 'OK', error: null, config: { phoneNumberId: '123456789', wabaId: '987654321', webhookUrl: 'https://api.fusioncg.com/webhooks/whatsapp' } },
-  { id: '1', name: 'Google Drive', status: 'OK', error: null, config: { folderId: 'root' } },
-  { id: '2', name: 'Odoo ERP', status: 'ERROR', error: 'Connection timeout', config: { url: 'https://odoo.local', db: 'prod' } },
-  { id: '3', name: 'WhatsApp', status: 'OK', error: null, config: { phoneNumberId: '12345' } }
-];
-
-opsRouter.get('/integrations', (req, res) => {
-  res.json(mockIntegrations);
-});
-
-opsRouter.post('/integrations/:id/test', (req, res) => {
-  const { id } = req.params;
-  if (id === '2') {
-    res.json({ success: false, latency: 1500, error: 'Connection timeout' });
-  } else {
-    res.json({ success: true, latency: 45, error: null });
+async function pingDatabase(): Promise<{ message: string; latencyMs: number; sizeMb: number | null }> {
+  const t0 = Date.now();
+  if (dataBackend() === 'postgres') {
+    const rows: any[] = await getPrisma().$queryRawUnsafe('SELECT pg_database_size(current_database())::bigint AS size');
+    const sizeMb = Math.round(Number(rows[0]?.size ?? 0) / 1024 / 1024);
+    return { message: `Postgres responde (${sizeMb} MB)`, latencyMs: Date.now() - t0, sizeMb };
   }
+  await documentRepository('app_settings').get('values');
+  return { message: 'Firestore responde', latencyMs: Date.now() - t0, sizeMb: null };
+}
+
+async function pingFirebase(): Promise<string> {
+  const auth = getAdminAuth();
+  if (!auth) throw new Error('Firebase no está configurado (falta la cuenta de servicio)');
+  await auth.listUsers(1);
+  return 'Firebase responde (inicio de sesión disponible)';
+}
+
+// BLOQUE A: Integraciones (estado real según la configuración del servidor)
+opsRouter.get('/integrations', (_req, res) => {
+  res.json({ success: true, integrations: describeIntegrations(process.env) });
 });
 
-// BLOQUE C: Salud del sistema
-opsRouter.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    cards: [
-      { name: 'Base de Datos', status: 'OK', detail: 'PostgreSQL 15 - 45ms' },
-      { name: 'Redis', status: 'OK', detail: 'Connected' },
-      { name: 'Colas (BullMQ)', status: 'WARNING', detail: '45 pending, 2 failed' }
-    ],
-    queues: [
-      { name: 'email_outbox', active: 2, pending: 0, failed: 0, delayed: 0 },
-      { name: 'sync_odoo', active: 1, pending: 45, failed: 2, delayed: 0 }
-    ],
-    cron: [
-      { name: 'verificar_respaldos', lastRun: new Date().toISOString(), duration: 45000, failed: false },
-      { name: 'sync_inventario', lastRun: new Date(Date.now() - 4 * 3600000).toISOString(), duration: 12000, failed: true }
-    ],
-    metrics: { rpm: 450, p95: 120, errorRate: 0.01 },
-    storage: { dbSizeGB: 4.5, diskFreeGB: 45 },
-    aiCost: { currentMonth: 45.2, budget: 100 },
-    system: { version: '1.4.2', commit: 'a1b2c3d4', deployedAt: new Date(Date.now() - 86400000 * 3).toISOString() }
+opsRouter.post('/integrations/:id/test', async (req, res) => {
+  const result = await testIntegration(req.params.id, {
+    env: process.env,
+    fetch: fetch as any,
+    pingDatabase: async () => (await pingDatabase()).message,
+    pingFirebase,
   });
+  res.json({ success: true, ...result });
+});
+
+// BLOQUE B: Salud del sistema
+opsRouter.get('/health', async (_req, res) => {
+  const db = await pingDatabase().then(
+    (r) => ({ ok: true, ...r }),
+    (err) => ({ ok: false, message: String(err?.message || err), latencyMs: null, sizeMb: null })
+  );
+  const [notices, budget, disks] = await Promise.all([
+    stageNotifier().list().catch(() => []),
+    budgetWatcher().check().catch(() => null),
+    Promise.all([diskInfo(process.cwd()), diskInfo(uploadsDir()), diskInfo(backupDir())]),
+  ]);
+  const backups = listBackups(backupDir());
+  const lastBackup = backups.find((b) => b.kind === 'database') ?? null;
+  const events = eventBus.getRecent();
+  res.json({
+    success: true,
+    version: versionInfo(),
+    process: processInfo(),
+    database: { backend: dataBackend(), ...db },
+    disks: disks.filter(Boolean).filter((d, i, all) => all.findIndex((x) => x!.totalGb === d!.totalGb && x!.freeGb === d!.freeGb) === i),
+    metrics: metricsSnapshot(),
+    backups: { available: fs.existsSync(backupDir()), last: lastBackup, status: readBackupStatus(backupDir()) },
+    notices: {
+      scheduled: notices.filter((n: any) => n.status === 'scheduled').length,
+      failed: notices.filter((n: any) => n.status === 'failed').length,
+    },
+    aiBudget: budget,
+    events: { recent: events.length, withErrors: events.filter((e) => e.errors.length).length },
+  });
+});
+
+// BLOQUE C: Eventos recientes del sistema (en memoria desde el último arranque)
+opsRouter.get('/events', (req, res) => {
+  const type = typeof req.query.type === 'string' ? req.query.type : '';
+  const onlyErrors = req.query.errors === 'true';
+  const events = eventBus
+    .getRecent()
+    .filter((e) => (!type || e.type === type) && (!onlyErrors || e.errors.length))
+    .slice(0, 200);
+  res.json({ success: true, events, types: [...new Set(eventBus.getRecent().map((e) => e.type))].sort() });
 });
 
 // BLOQUE D: Respaldos (archivos reales del servicio de respaldo)
@@ -89,9 +113,38 @@ opsRouter.get('/backups/:name/download', (req, res) => {
   res.download(file);
 });
 
-// BLOQUE E: Mantenimiento
-opsRouter.post('/maintenance/execute', (req, res) => {
-  const { action } = req.body;
-  res.json({ success: true, message: `Acción ${action} en progreso` });
-});
+// BLOQUE E: Mantenimiento (tareas reales)
+const MAINTENANCE: Record<string, () => Promise<string>> = {
+  async process_notices() {
+    const n = await stageNotifier().processDue();
+    return n ? `Se enviaron ${n} aviso(s) pendientes.` : 'No había avisos pendientes para enviar ahora.';
+  },
+  async save_state() {
+    await saveStateToFirestore(true);
+    return 'Chat, anuncios y demás estado guardados en la base.';
+  },
+  async check_budget() {
+    const b = await budgetWatcher().check(true);
+    return b.budgetCop ? `Gasto del mes: ${Math.round((b.percent ?? 0) * 100)}% del tope.` : 'No hay tope mensual configurado.';
+  },
+  async test_integrations() {
+    const results = [];
+    for (const i of describeIntegrations(process.env).filter((x) => x.testable && x.configured)) {
+      const r = await testIntegration(i.id, { env: process.env, fetch: fetch as any, pingDatabase: async () => (await pingDatabase()).message, pingFirebase });
+      results.push(`${i.name}: ${r.ok ? 'OK' : `FALLA (${r.message})`}`);
+    }
+    return results.length ? results.join(' · ') : 'No hay conexiones configuradas para probar.';
+  },
+};
 
+opsRouter.post('/maintenance/execute', async (req, res) => {
+  const action = MAINTENANCE[String(req.body?.action || '')];
+  if (!action) return res.status(400).json({ success: false, error: 'Tarea desconocida' });
+  try {
+    const message = await action();
+    console.log(`[mantenimiento] ${req.body.action} por ${req.headers['x-user-name'] || 'desconocido'}: ${message}`);
+    res.json({ success: true, message });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || 'La tarea falló' });
+  }
+});

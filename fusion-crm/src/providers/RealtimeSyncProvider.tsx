@@ -184,6 +184,12 @@ export const RealtimeSyncProvider: React.FC<RealtimeSyncProviderProps> = ({ chil
             break;
           }
 
+          // --- CONEXIONES QUE FALLAN (token de Meta vencido…) ---
+          case 'INTEGRATION_CHECK_FAILED': {
+            window.dispatchEvent(new CustomEvent('fusion_integration_alert', { detail: payload }));
+            break;
+          }
+
           // --- TOPE DE GASTO DE LA IA ---
           case 'AI_BUDGET_ALERT': {
             window.dispatchEvent(new CustomEvent('fusion_ai_budget_alert', { detail: payload }));

@@ -86,7 +86,6 @@ const MaestrosPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/da
 const CalendarioPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/calendario/page'));
 const NumeracionPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/numeracion/page'));
 
-const SecretosPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/secretos/page'));
 const IntegracionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/integraciones/page'));
 const SaludPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/salud/page'));
 const RespaldosPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/respaldos/page'));
@@ -283,6 +282,10 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
       ...(canManageVoice && voiceStatus.enabled ? [{ name: 'Telefonía y troncales', path: '/configuracion/voz', icon: PhoneCall, permission: 'voice:manage_all' }] : []),
       { name: 'Registro de actividad', path: '/dashboard/admin/auditoria', icon: History, moduleKey: 'auditoria' },
       { name: 'Respaldos', path: '/dashboard/admin/respaldos', icon: DatabaseBackup, moduleKey: 'sistema' },
+      { name: 'Salud del sistema', path: '/dashboard/admin/salud', icon: Activity, moduleKey: 'sistema' },
+      { name: 'Integraciones', path: '/dashboard/admin/integraciones', icon: Blocks, moduleKey: 'sistema' },
+      { name: 'Eventos del sistema', path: '/dashboard/admin/outbox', icon: Send, moduleKey: 'sistema' },
+      { name: 'Mantenimiento', path: '/dashboard/admin/mantenimiento', icon: Wrench, moduleKey: 'sistema' },
     ]),
     ...(isAdmin ? [
       group('En construcción', 'configuracion', [
@@ -302,11 +305,6 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         { name: 'Panel de agentes', path: '/dashboard/agentes', icon: Bot },
         { name: 'Agente de capacidad', path: '/dashboard/produccion/capacidad', icon: Bot },
         { name: 'Agente de abastecimiento', path: '/dashboard/inventario/abastecimiento', icon: Bot },
-        { name: 'Bóveda de secretos', path: '/dashboard/admin/secretos', icon: KeyRound },
-        { name: 'Integraciones', path: '/dashboard/admin/integraciones', icon: Blocks },
-        { name: 'Eventos y outbox', path: '/dashboard/admin/outbox', icon: Send },
-        { name: 'Salud del sistema', path: '/dashboard/admin/salud', icon: Activity },
-        { name: 'Mantenimiento', path: '/dashboard/admin/mantenimiento', icon: Wrench },
       ]),
     ] : []),
   ];
@@ -687,7 +685,7 @@ export default function App() {
                     <Route path="admin/roles" element={<RolesPage />} />
                     <Route path="admin/seguridad" element={<SeguridadPage />} />
                     <Route path="admin/revision-accesos" element={<RevisionAccesosPage />} />
-                    <Route path="admin/secretos" element={<SecretosPage />} />
+                    <Route path="admin/secretos" element={<Navigate to="/dashboard/admin/integraciones" replace />} />
                     <Route path="admin/integraciones" element={<IntegracionesPage />} />
                     <Route path="admin/salud" element={<SaludPage />} />
                     <Route path="admin/respaldos" element={<RespaldosPage />} />
