@@ -1,38 +1,17 @@
 import { Router } from 'express';
 import { SettingsCatalog } from '../../packages/contracts/src/settings';
-import fs from 'fs';
-import path from 'path';
+import { documentRepository } from '../repositories/documentStore';
+import { getSettings, updateSettings } from '../services/settingsStore';
 
 export const settingsRouter = Router();
 
-const SETTINGS_STORE_PATH = path.join(process.cwd(), 'settings.store.json');
-
-function loadStoredValues(): Record<string, any> {
-  try {
-    if (fs.existsSync(SETTINGS_STORE_PATH)) {
-      return JSON.parse(fs.readFileSync(SETTINGS_STORE_PATH, 'utf8'));
-    }
-  } catch (e) {
-    console.warn('Could not read settings.store.json:', e);
-  }
-  return {};
-}
-
-function saveStoredValues(values: Record<string, any>) {
-  try {
-    fs.writeFileSync(SETTINGS_STORE_PATH, JSON.stringify(values, null, 2), 'utf8');
-  } catch (e) {
-    console.error('Could not write settings.store.json:', e);
-  }
-}
-
-// In-memory cache
-let storedSettingsCache = loadStoredValues();
+const HISTORY = 'settings_history';
+const FLAGS_PREFIX = 'flags.';
 
 // Fast endpoint to get corporate identity (Logo & Name)
 settingsRouter.get('/identity', (req, res) => {
   try {
-    const values = storedSettingsCache;
+    const values = getSettings();
     const name = values['organization.business.name'] || 'Fusión Comunicación Gráfica';
     const logoUrl = values['organization.branding.logoUrl'] || '';
     const logoSecondaryUrl = values['organization.branding.logoSecondaryUrl'] || '';
@@ -62,7 +41,7 @@ settingsRouter.get('/identity', (req, res) => {
 settingsRouter.get('/', async (req, res) => {
   try {
     const definitions = Object.values(SettingsCatalog).map((def: any) => {
-      const storedVal = storedSettingsCache[def.key];
+      const storedVal = getSettings()[def.key];
       const hasStored = storedVal !== undefined && storedVal !== null;
       return {
         ...def,
@@ -83,12 +62,29 @@ settingsRouter.post('/', async (req, res) => {
     const { updates } = req.body;
     if (!Array.isArray(updates)) return res.status(400).json({ error: 'Invalid payload' });
 
+    const before = getSettings();
+    const changes: Record<string, any> = {};
     for (const update of updates) {
-      if (update.key) {
-        storedSettingsCache[update.key] = update.value;
-      }
+      if (typeof update?.key === 'string' && update.key) changes[update.key] = update.value;
     }
-    saveStoredValues(storedSettingsCache);
+    await updateSettings(changes);
+
+    // Historial real de cambios (quién, cuándo, antes y después)
+    const now = new Date().toISOString();
+    const history = documentRepository(HISTORY);
+    await history.upsertMany(
+      Object.entries(changes)
+        .filter(([key, value]) => JSON.stringify(before[key]) !== JSON.stringify(value))
+        .map(([key, value], i) => ({
+          id: `${now}-${i}-${key}`,
+          key,
+          oldValue: before[key] ?? null,
+          newValue: value,
+          changedBy: String(req.headers['x-user-name'] || req.headers['x-user-id'] || 'sistema'),
+          changedAt: now,
+          reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 300) : null,
+        }))
+    );
 
     res.json({ success: true, changes: updates.length });
   } catch (error: any) {
@@ -97,24 +93,26 @@ settingsRouter.post('/', async (req, res) => {
   }
 });
 
-// GET AUDIT HISTORY
-settingsRouter.get('/history', async (req, res) => {
+// HISTORIAL DE CAMBIOS
+settingsRouter.get('/history', async (_req, res) => {
   try {
-    res.json([
-      { id: '1', key: 'ai.temperature', oldValue: 0.7, newValue: 0.8, changedBy: 'admin', changedAt: new Date().toISOString(), reason: 'Tuning model' }
-    ]);
+    const items = await documentRepository(HISTORY).list();
+    items.sort((a: any, b: any) => String(b.changedAt).localeCompare(String(a.changedAt)));
+    res.json(items.slice(0, 200));
   } catch (error) {
     res.status(500).json({ error: 'Internal error' });
   }
 });
 
-// FEATURE FLAGS
-settingsRouter.get('/flags', async (req, res) => {
+// INTERRUPTORES (feature flags): se guardan como claves flags.<nombre> de la configuración
+settingsRouter.get('/flags', async (_req, res) => {
   try {
-    res.json([
-      { id: '1', key: 'enable_new_dashboard', enabled: true },
-      { id: '2', key: 'beta_features', enabled: false }
-    ]);
+    const values = getSettings();
+    res.json(
+      Object.entries(values)
+        .filter(([k]) => k.startsWith(FLAGS_PREFIX))
+        .map(([k, v]) => ({ id: k.slice(FLAGS_PREFIX.length), key: k.slice(FLAGS_PREFIX.length), enabled: v === true }))
+    );
   } catch (error) {
     res.status(500).json({ error: 'Internal error' });
   }
@@ -122,9 +120,11 @@ settingsRouter.get('/flags', async (req, res) => {
 
 settingsRouter.post('/flags', async (req, res) => {
   try {
+    const key = String(req.body?.key || '').trim();
+    if (!/^[a-z0-9_.-]{1,80}$/i.test(key)) return res.status(400).json({ error: 'Nombre de interruptor inválido' });
+    await updateSettings({ [FLAGS_PREFIX + key]: req.body?.enabled === true });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Internal error' });
   }
 });
-

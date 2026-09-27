@@ -16,7 +16,7 @@ describe('data router helpers', () => {
   });
 
   it('solo expone colecciones permitidas', () => {
-    expect(Object.keys(DATA_COLLECTIONS).sort()).toEqual(['inventory', 'print-orders', 'project-tombstones', 'projects']);
+    expect(Object.keys(DATA_COLLECTIONS).sort()).toEqual(['appointments', 'inventory', 'opportunities', 'print-orders', 'project-tombstones', 'projects']);
   });
 });
 

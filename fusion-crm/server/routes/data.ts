@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { repositories, writeContextFrom, type DocumentRepository } from '../repositories';
 import { createFirestoreRepository } from '../repositories/firestoreRepository';
+import { documentRepository } from '../repositories/documentStore';
 import { eventBus } from '../events/DomainEventBus';
 import { resolveStageIndex } from '../../packages/core/src/portal/clientProgress';
 
@@ -17,13 +18,20 @@ export const DATA_COLLECTIONS: Record<string, string> = {
   inventory: 'inventory_items',
   'print-orders': 'print_orders',
   'project-tombstones': 'project_tombstones',
+  appointments: 'appointments',
+  opportunities: 'opportunities',
 };
+
+/** Colecciones nuevas: van al backend configurado (Postgres o Firestore) desde el principio. */
+const DOCUMENT_COLLECTIONS = new Set(['appointments', 'opportunities']);
 
 const MAX_BULK_ITEMS = 2000;
 
 /** Los proyectos pasan por el repositorio (Firestore o Postgres); el resto sigue en Firestore. */
 function repoFor(name: string): DocumentRepository {
-  return name === 'projects' ? repositories().projects : createFirestoreRepository(DATA_COLLECTIONS[name]);
+  if (name === 'projects') return repositories().projects;
+  if (DOCUMENT_COLLECTIONS.has(name)) return documentRepository(DATA_COLLECTIONS[name]);
+  return createFirestoreRepository(DATA_COLLECTIONS[name]);
 }
 
 /** Firestore rechaza `undefined`; se normaliza el documento a JSON plano. */

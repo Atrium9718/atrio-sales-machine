@@ -1,14 +1,85 @@
-import React, { useState } from 'react';
-import { Download, BarChart2, Calendar as CalendarIcon, Clock, Percent, Filter, Users } from 'lucide-react';
-import { notify } from '@/lib/notify';
+import React, { useMemo, useState } from 'react';
+import { Download, BarChart2, Calendar as CalendarIcon, CheckCircle2, Percent, Users, AlertCircle } from 'lucide-react';
+import type { FusionEmployee } from '@/context/FusionAuthContext';
+import { APPOINTMENT_TYPES, type Appointment } from '@/lib/agendaStore';
 
-export function AgendaReportsTab() {
-  const [period, setPeriod] = useState('MONTH');
-  const [comercial, setComercial] = useState('ALL');
+interface Props {
+  appointments: Appointment[];
+  people: FusionEmployee[];
+  onSave: (a: Appointment) => Promise<void>;
+}
+
+type Period = 'WEEK' | 'MONTH' | 'QUARTER';
+
+function periodStart(period: Period, now = new Date()) {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  if (period === 'WEEK') d.setDate(d.getDate() - ((d.getDay() || 7) - 1));
+  else if (period === 'MONTH') d.setDate(1);
+  else d.setMonth(Math.floor(d.getMonth() / 3) * 3, 1);
+  return d;
+}
+
+const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+
+/** Métricas reales de la agenda: agendadas, realizadas, canceladas y citas pasadas sin cerrar. */
+export function AgendaReportsTab({ appointments, people, onSave }: Props) {
+  const [period, setPeriod] = useState<Period>('MONTH');
+  const [person, setPerson] = useState('ALL');
+  const nameOf = (id: string) => people.find((p) => p.id === id)?.name ?? 'Sin asignar';
+
+  const inPeriod = useMemo(() => {
+    const from = periodStart(period).toISOString();
+    return appointments.filter((a) => a.start >= from && (person === 'ALL' || a.organizerId === person));
+  }, [appointments, period, person]);
+
+  const now = new Date().toISOString();
+  const done = inPeriod.filter((a) => a.status === 'REALIZADA');
+  const cancelled = inPeriod.filter((a) => a.status === 'CANCELADA');
+  const pendingClose = inPeriod.filter((a) => (a.status ?? 'PROGRAMADA') === 'PROGRAMADA' && a.end < now);
+  const pastTotal = inPeriod.filter((a) => a.end < now).length;
+  const compliance = pastTotal ? Math.round((done.length / pastTotal) * 100) : null;
+
+  const byType = APPOINTMENT_TYPES.map((t) => ({ ...t, count: inPeriod.filter((a) => a.type === t.value).length }));
+  const byPerson = people
+    .map((p) => {
+      const mine = inPeriod.filter((a) => a.organizerId === p.id);
+      return { id: p.id, name: p.name, total: mine.length, done: mine.filter((a) => a.status === 'REALIZADA').length, cancelled: mine.filter((a) => a.status === 'CANCELADA').length };
+    })
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total);
 
   const handleExport = () => {
-    notify("Mock: Exportando reporte a Excel respetando los filtros activos...");
+    const header = ['Fecha', 'Inicio', 'Fin', 'Título', 'Tipo', 'Responsable', 'Cliente', 'Estado', 'Lugar'];
+    const rows = inPeriod.map((a) => [
+      new Date(a.start).toLocaleDateString('es-CO'),
+      new Date(a.start).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+      new Date(a.end).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
+      a.visibility === 'PRIVATE' ? 'Privada' : a.title,
+      APPOINTMENT_TYPES.find((t) => t.value === a.type)?.label ?? a.type,
+      nameOf(a.organizerId),
+      a.visibility === 'PRIVATE' ? '' : a.clientName,
+      a.status ?? 'PROGRAMADA',
+      a.visibility === 'PRIVATE' ? '' : a.location,
+    ]);
+    const csv = '﻿' + [header, ...rows].map((r) => r.map(csvCell).join(';')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `agenda-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
+
+  const Kpi = ({ icon, label, value, hint, tone = 'text-foreground' }: { icon: React.ReactNode; label: string; value: React.ReactNode; hint: string; tone?: string }) => (
+    <div className="bg-card p-4 rounded-xl border border-border shadow-sm">
+      <div className="text-sm font-bold text-muted-foreground flex items-center gap-2 mb-2">
+        {icon} {label}
+      </div>
+      <div className={`text-3xl font-black ${tone}`}>{value}</div>
+      <div className="text-xs text-muted-foreground mt-2">{hint}</div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 mt-4">
@@ -16,184 +87,119 @@ export function AgendaReportsTab() {
         <div>
           <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
             <BarChart2 className="w-5 h-5 text-primary" />
-            Rendimiento de Agenda
+            Rendimiento de la agenda
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">Métricas de cumplimiento y actividad por comercial</p>
+          <p className="text-sm text-muted-foreground mt-1">Calculado con las citas guardadas.</p>
         </div>
-        
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 bg-muted/30 border border-border rounded-lg px-3 py-1.5 text-sm">
             <CalendarIcon className="w-4 h-4 text-muted-foreground" />
-            <select value={period} onChange={e => setPeriod(e.target.value)} className="bg-transparent text-xs font-bold text-foreground outline-none cursor-pointer">
-              <option value="WEEK">Esta Semana</option>
-              <option value="MONTH">Este Mes</option>
-              <option value="QUARTER">Este Trimestre</option>
+            <select value={period} onChange={(e) => setPeriod(e.target.value as Period)} className="bg-transparent text-xs font-bold outline-none cursor-pointer">
+              <option value="WEEK">Esta semana</option>
+              <option value="MONTH">Este mes</option>
+              <option value="QUARTER">Este trimestre</option>
             </select>
           </div>
-          
           <div className="flex items-center gap-2 bg-muted/30 border border-border rounded-lg px-3 py-1.5 text-sm">
             <Users className="w-4 h-4 text-muted-foreground" />
-            <select value={comercial} onChange={e => setComercial(e.target.value)} className="bg-transparent text-xs font-bold text-foreground outline-none cursor-pointer">
+            <select value={person} onChange={(e) => setPerson(e.target.value)} className="bg-transparent text-xs font-bold outline-none cursor-pointer">
               <option value="ALL">Todo el equipo</option>
-              <option value="u1">Andrés (Tú)</option>
-              <option value="u2">Ana Gómez</option>
-              <option value="u3">Carlos Ruiz</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </div>
-
-          <button 
-            onClick={handleExport}
-            className="flex items-center gap-2 bg-muted text-foreground px-4 py-2 rounded-lg text-sm font-bold hover:bg-muted/80 transition-colors"
-          >
-            <Download className="w-4 h-4" /> Exportar
+          <button onClick={handleExport} disabled={inPeriod.length === 0} className="flex items-center gap-2 bg-muted px-4 py-2 rounded-lg text-sm font-bold hover:bg-muted/80 disabled:opacity-50">
+            <Download className="w-4 h-4" /> Exportar (Excel)
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI Cards */}
-        <div className="bg-card p-4 rounded-xl border border-border shadow-sm">
-          <div className="text-sm font-bold text-muted-foreground flex items-center gap-2 mb-2">
-            <CalendarIcon className="w-4 h-4" /> Agendadas
-          </div>
-          <div className="text-3xl font-black text-foreground">145</div>
-          <div className="text-xs text-muted-foreground mt-2">+12% vs {period === 'WEEK' ? 'semana' : period === 'MONTH' ? 'mes' : 'trimestre'} anterior</div>
-        </div>
-        
-        <div className="bg-card p-4 rounded-xl border border-border shadow-sm">
-          <div className="text-sm font-bold text-muted-foreground flex items-center gap-2 mb-2">
-            <CheckCircleIcon className="w-4 h-4" /> Realizadas
-          </div>
-          <div className="text-3xl font-black text-success">118</div>
-          <div className="text-xs text-muted-foreground mt-2">12 canceladas / 15 no asistió</div>
-        </div>
-
-        <div className="bg-card p-4 rounded-xl border border-border shadow-sm">
-          <div className="text-sm font-bold text-muted-foreground flex items-center gap-2 mb-2">
-            <Percent className="w-4 h-4" /> Cumplimiento
-          </div>
-          <div className="text-3xl font-black text-primary">81%</div>
-          <div className="text-xs text-muted-foreground mt-2">Tasa de realizadas / agendadas</div>
-        </div>
-
-        <div className="bg-card p-4 rounded-xl border border-border shadow-sm">
-          <div className="text-sm font-bold text-muted-foreground flex items-center gap-2 mb-2">
-            <Clock className="w-4 h-4" /> Tiempo de espera
-          </div>
-          <div className="text-3xl font-black text-foreground">3.2<span className="text-lg font-bold text-muted-foreground ml-1">días</span></div>
-          <div className="text-xs text-muted-foreground mt-2">Promedio entre agendar y realizar</div>
-        </div>
+        <Kpi icon={<CalendarIcon className="w-4 h-4" />} label="Agendadas" value={inPeriod.length} hint="En el periodo elegido" />
+        <Kpi icon={<CheckCircle2 className="w-4 h-4" />} label="Realizadas" value={done.length} hint={`${cancelled.length} cancelada(s)`} tone="text-success" />
+        <Kpi icon={<Percent className="w-4 h-4" />} label="Cumplimiento" value={compliance === null ? '—' : `${compliance}%`} hint="Realizadas / citas ya pasadas" tone="text-primary" />
+        <Kpi icon={<AlertCircle className="w-4 h-4" />} label="Sin cerrar" value={pendingClose.length} hint="Citas pasadas sin marcar resultado" tone={pendingClose.length ? 'text-amber-600' : 'text-foreground'} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Type Distribution */}
         <div className="bg-card p-5 rounded-xl border border-border shadow-sm">
-          <h3 className="font-bold text-foreground mb-4">Distribución por Tipo</h3>
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="font-bold">Visitas Presenciales</span>
-                <span className="text-muted-foreground">45%</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div className="bg-primary h-2 rounded-full" style={{ width: '45%' }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="font-bold">Llamadas</span>
-                <span className="text-muted-foreground">30%</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div className="bg-blue-500 h-2 rounded-full" style={{ width: '30%' }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="font-bold">Demos Virtuales</span>
-                <span className="text-muted-foreground">15%</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div className="bg-emerald-500 h-2 rounded-full" style={{ width: '15%' }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="font-bold">Reuniones Internas</span>
-                <span className="text-muted-foreground">10%</span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div className="bg-amber-500 h-2 rounded-full" style={{ width: '10%' }}></div>
-              </div>
-            </div>
+          <h3 className="font-bold text-foreground mb-4">Por tipo</h3>
+          <div className="space-y-3">
+            {byType.map((t) => {
+              const pct = inPeriod.length ? Math.round((t.count / inPeriod.length) * 100) : 0;
+              return (
+                <div key={t.value}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="font-bold">{t.label}</span>
+                    <span className="text-muted-foreground">
+                      {t.count} · {pct}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div className="bg-primary h-2 rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Heatmap Mock */}
         <div className="bg-card p-5 rounded-xl border border-border shadow-sm lg:col-span-2">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="font-bold text-foreground">Mapa de Calor (Horarios más usados)</h3>
-              <p className="text-xs text-muted-foreground mt-1">Útil para sugerir disponibilidad y huecos comunes</p>
-            </div>
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-bold hidden sm:flex">
-              <span>Menos</span>
-              <div className="w-3 h-3 bg-primary/10 rounded-sm border border-border/50"></div>
-              <div className="w-3 h-3 bg-primary/40 rounded-sm border border-border/50"></div>
-              <div className="w-3 h-3 bg-primary/70 rounded-sm border border-border/50"></div>
-              <div className="w-3 h-3 bg-primary rounded-sm border border-border/50"></div>
-              <span>Más</span>
-            </div>
-          </div>
-          
-          <div className="overflow-x-auto pb-2">
-            <div className="min-w-[500px]">
-              <div className="grid grid-cols-6 gap-1 mb-1">
-                <div className="text-xs font-bold text-muted-foreground text-right pr-2">Hora</div>
-                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie'].map(d => (
-                  <div key={d} className="text-xs font-bold text-center text-muted-foreground">{d}</div>
+          <h3 className="font-bold text-foreground mb-4">Por comercial</h3>
+          {byPerson.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aún no hay citas en este periodo.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                  <th className="py-2">Comercial</th>
+                  <th className="py-2 text-right">Agendadas</th>
+                  <th className="py-2 text-right">Realizadas</th>
+                  <th className="py-2 text-right">Canceladas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byPerson.map((r) => (
+                  <tr key={r.id} className="border-b border-border/50">
+                    <td className="py-2 font-medium">{r.name}</td>
+                    <td className="py-2 text-right">{r.total}</td>
+                    <td className="py-2 text-right text-success">{r.done}</td>
+                    <td className="py-2 text-right text-muted-foreground">{r.cancelled}</td>
+                  </tr>
                 ))}
-              </div>
-              {[8, 9, 10, 11, 14, 15, 16, 17].map(h => (
-                <div key={h} className="grid grid-cols-6 gap-1 mb-1 items-center">
-                  <div className="text-[10px] font-bold text-muted-foreground text-right pr-2">{h}:00</div>
-                  {[...Array(5)].map((_, i) => {
-                    const intensity = [5, 30, 60, 90][Math.floor(Math.random() * 4)];
-                    return (
-                      <div 
-                        key={i} 
-                        className="h-8 rounded-md border border-border/20 transition-all hover:scale-[1.02] cursor-pointer"
-                        style={{ backgroundColor: `hsl(var(--primary) / ${intensity}%)` }}
-                        title={`Horario con ${intensity}% de ocupación histórica`}
-                      ></div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          </div>
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
-    </div>
-  );
-}
 
-function CheckCircleIcon(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
+      {pendingClose.length > 0 && (
+        <div className="bg-card p-5 rounded-xl border border-amber-500/30 shadow-sm">
+          <h3 className="font-bold text-foreground mb-1">Citas pasadas sin cerrar</h3>
+          <p className="text-xs text-muted-foreground mb-4">Marca cómo terminó cada una para que el cumplimiento sea real.</p>
+          <div className="divide-y divide-border">
+            {pendingClose.map((a) => (
+              <div key={a.id} className="py-2 flex flex-wrap items-center gap-3 text-sm">
+                <span className="w-28 text-xs text-muted-foreground">{new Date(a.start).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</span>
+                <span className="flex-1 min-w-[160px] font-medium truncate">
+                  {a.title}
+                  {a.clientName ? ` · ${a.clientName}` : ''}
+                </span>
+                <span className="text-xs text-muted-foreground">{nameOf(a.organizerId)}</span>
+                <button onClick={() => onSave({ ...a, status: 'REALIZADA' })} className="px-2 py-1 text-xs font-bold rounded bg-success/10 text-success hover:bg-success/20">
+                  Realizada
+                </button>
+                <button onClick={() => onSave({ ...a, status: 'CANCELADA' })} className="px-2 py-1 text-xs font-bold rounded bg-muted hover:bg-muted/70">
+                  Cancelada
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

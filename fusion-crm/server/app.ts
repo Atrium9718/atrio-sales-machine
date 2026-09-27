@@ -26,7 +26,8 @@ import { tariffRouter } from './routes/tariff';
 import { dataRouter } from './routes/data';
 import { portalPublicRouter, clientPortalRouter } from './routes/clientPortal';
 import { callsService } from './services/callsService';
-import { loadStateFromFirestore, startStateSync, saveStateToFirestore } from './services/persistenceService';
+import { loadStateFromFirestore, startStateSync, saveStateToFirestore, persistAfterWrites } from './services/persistenceService';
+import { loadSettingsStore } from './services/settingsStore';
 import { registerDomainSubscribers } from './events/subscribers';
 import { authRouter, requireAuth } from './auth/session';
 
@@ -47,6 +48,8 @@ export async function startServer() {
     }
   }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  // Todo cambio en el estado en memoria (chat, anuncios, llamadas…) se guarda al terminar la petición
+  app.use(persistAfterWrites);
 
   // API Routes
   app.get('/api/health', (req, res) => {
@@ -118,13 +121,14 @@ export async function startServer() {
     });
   }
 
+  // El estado guardado se carga ANTES de aceptar peticiones (antes se cargaba después y las
+  // primeras peticiones podían ver o pisar datos vacíos)
+  await loadSettingsStore();
+  await loadStateFromFirestore();
+  startStateSync();
+
   app.listen(PORT, '0.0.0.0', async () => {
     console.log(`Server running on port ${PORT}`);
-    
-    // Load state from Firestore
-    await loadStateFromFirestore();
-    // Start continuous sync
-    startStateSync();
     
     // Start cron job every 24 hours
     setInterval(() => checkMetaTokens().catch(console.error), 24 * 60 * 60 * 1000);

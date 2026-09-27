@@ -123,6 +123,10 @@ El servicio `backup` hace un respaldo **al arrancar** y luego **todos los días 
 docker compose -f docker-compose.minimal.yml logs backup   # ver cuándo se hizo el último
 ```
 
+También se ve en la aplicación: **Administración → Respaldos** muestra el último respaldo, si la
+copia externa funcionó y permite descargar cada archivo (solo administradores). Avisa en rojo si
+el último respaldo falló o tiene más de un día.
+
 **Copia fuera del VPS (muy recomendado).** Si el VPS se pierde, los respaldos locales se pierden
 con él. El servicio puede subir cada respaldo a Google Drive, Backblaze B2, Contabo Object
 Storage, etc. con [rclone](https://rclone.org):

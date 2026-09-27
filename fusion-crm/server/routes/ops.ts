@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import fs from 'fs';
+import { isAdminRole } from '../auth/session';
+import { backupDir, listBackups, readBackupStatus, resolveBackupFile } from '../services/backupsService';
 
 export const opsRouter = Router();
 
@@ -69,16 +72,21 @@ opsRouter.get('/health', (req, res) => {
   });
 });
 
-// BLOQUE D: Respaldos
+// BLOQUE D: Respaldos (archivos reales del servicio de respaldo)
 opsRouter.get('/backups', (req, res) => {
-  res.json([
-    { id: '1', date: new Date().toISOString(), size: '4.5GB', type: 'FULL', verified: true },
-    { id: '2', date: new Date(Date.now() - 86400000).toISOString(), size: '4.4GB', type: 'FULL', verified: false }
-  ]);
+  const dir = backupDir();
+  const backups = listBackups(dir);
+  res.json({ available: fs.existsSync(dir), backups, status: readBackupStatus(dir) });
 });
 
-opsRouter.post('/backups/:id/download', (req, res) => {
-  res.json({ url: '/mock-download.zip' });
+opsRouter.get('/backups/:name/download', (req, res) => {
+  if (!isAdminRole(String(req.headers['x-user-role'] || ''))) {
+    return res.status(403).json({ error: 'Solo un administrador puede descargar respaldos' });
+  }
+  const file = resolveBackupFile(req.params.name);
+  if (!file) return res.status(404).json({ error: 'Respaldo no encontrado' });
+  console.log(`[respaldos] Descarga de ${req.params.name} por ${req.headers['x-user-id'] || 'desconocido'}`);
+  res.download(file);
 });
 
 // BLOQUE E: Mantenimiento

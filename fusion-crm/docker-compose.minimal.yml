@@ -56,6 +56,8 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/firebase-service-account.json
     volumes:
       - ./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
+      # Respaldos (solo lectura) para la pantalla Administración → Respaldos
+      - backups:/backups:ro
     depends_on:
       postgres:
         condition: service_healthy

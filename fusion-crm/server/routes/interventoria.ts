@@ -6,6 +6,7 @@ import { getApps, initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, getDoc, query, limit } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { saveStateToFirestore, loadStateFromFirestore } from '../services/persistenceService';
+import { getSettings, updateSettings } from '../services/settingsStore';
 import { employeeService } from '../services/employeeService';
 import { callsService, inMemoryCallSessions, inMemoryCallParticipants } from '../services/callsService';
 import { memoryRoleLayouts } from './home';
@@ -13,27 +14,14 @@ import { FUSION_MODULES_CATALOG } from '../../packages/core/src/auth/permissions
 
 export const interventoriaRouter = Router();
 
-const SETTINGS_STORE_PATH = path.join(process.cwd(), 'settings.store.json');
-
+// La configuración vive en la base (ver services/settingsStore.ts); antes era un archivo del contenedor.
 export function getStoredSettings(): Record<string, any> {
-  try {
-    if (fs.existsSync(SETTINGS_STORE_PATH)) {
-      return JSON.parse(fs.readFileSync(SETTINGS_STORE_PATH, 'utf8'));
-    }
-  } catch (e) {
-    console.warn('Could not read settings.store.json:', e);
-  }
-  return {};
+  return getSettings();
 }
 
 export function updateStoredSettings(updates: Record<string, any>) {
-  const current = getStoredSettings();
-  const merged = { ...current, ...updates };
-  try {
-    fs.writeFileSync(SETTINGS_STORE_PATH, JSON.stringify(merged, null, 2), 'utf8');
-  } catch (e) {
-    console.error('Could not write settings.store.json:', e);
-  }
+  const merged = { ...getSettings(), ...updates };
+  updateSettings(updates).catch((err) => console.error('[interventoría] No se pudo guardar la configuración:', err));
   return merged;
 }
 
@@ -828,7 +816,7 @@ export async function executeRealSystemRepair(accion: string, target?: string, s
         'quoting.scaleTierValidation': 'MANDATORY',
         'quoting.interventoriaProtectedAt': new Date().toISOString()
       });
-      auditLog.modifiedFiles.push('settings.store.json');
+      auditLog.modifiedFiles.push('configuración (app_settings)');
       auditLog.appliedChanges.push("Archivo 'settings.store.json' blindado con quoting.lockScaleConversion=true y quoting.scaleValidationMode='STRICT'.");
 
       // 2. Mutar Firestore: system_rules/quoting_rules
@@ -889,7 +877,7 @@ export async function executeRealSystemRepair(accion: string, target?: string, s
         'quoting.rounding.to': 100,
         'production.interventoriaProtectedAt': new Date().toISOString()
       });
-      auditLog.modifiedFiles.push('settings.store.json');
+      auditLog.modifiedFiles.push('configuración (app_settings)');
       auditLog.appliedChanges.push("Archivo 'settings.store.json' actualizado con production.rounding.paperSheets='MATH_CEIL', merma base 7.5% y margen de seguridad 8%.");
 
       // 2. Mutar Firestore: system_rules/production_substrate_rules

@@ -72,8 +72,8 @@ export const memoryRoleLayouts: Record<string, any[]> = {
   ],
 };
 
-const memoryUserLayouts: Record<string, any[]> = {};
-const memoryAuditLogs: any[] = [];
+export const memoryUserLayouts: Record<string, any[]> = {};
+export const memoryAuditLogs: any[] = [];
 
 export interface MyDayTask {
   id: string;
