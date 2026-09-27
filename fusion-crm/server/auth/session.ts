@@ -28,7 +28,7 @@ const MAX_SIGN_IN_AGE_S = 5 * 60;
 const PUBLIC_API_PREFIXES = ['/api/health', '/api/auth/', '/api/webhooks/meta', '/api/widget', '/api/portal'];
 
 /** Módulos que solo pueden usar administradores (cualquier método). */
-const ADMIN_ONLY_PREFIXES = ['/api/ops', '/api/interventoria'];
+const ADMIN_ONLY_PREFIXES = ['/api/ops'];
 /** Módulos cuyas escrituras solo pueden hacer administradores. */
 const ADMIN_WRITE_PREFIXES = ['/api/admin', '/api/settings', '/api/maestros'];
 

@@ -60,10 +60,8 @@ const VozCampanasPage = React.lazy(() => import('./pages/voz/VozCampanasPage').t
 const VozSupervisionPage = React.lazy(() => import('./pages/voz/VozSupervisionPage').then((m) => ({ default: m.VozSupervisionPage })));
 const VozInformesPage = React.lazy(() => import('./pages/voz/VozInformesPage').then((m) => ({ default: m.VozInformesPage })));
 const VozConfiguracionPage = React.lazy(() => import('./pages/voz/VozConfiguracionPage').then((m) => ({ default: m.VozConfiguracionPage })));
-const InterventoriaPage = React.lazy(() => import('./pages/admin/InterventoriaPage').then((m) => ({ default: m.InterventoriaPage })));
 const WebchatConfigPage = React.lazy(() => import('./app/(dashboard)/dashboard/canales-config/chat-web/page'));
 
-const IdentidadesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/identidades/page'));
 const TarifarioProduccionPage = React.lazy(() => import('../apps/web/src/app/(app)/cotizaciones/tarifario/page'));
 const ClientesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/clientes/page'));
 const ClientesImportarPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/clientes/importar/page'));
@@ -71,7 +69,6 @@ const ClienteProfilePage = React.lazy(() => import('../apps/web/src/app/(dashboa
 const OportunidadesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/oportunidades/page'));
 const CotizacionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/cotizaciones/page.tsx'));
 const CatalogoPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/catalogo/page'));
-const VeaPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/vea/page'));
 const AgendaComercialPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/agenda/page'));
 const ComercialDashboardPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/comercial/page"));
 const PrecotizacionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/precotizaciones/page'));
@@ -93,9 +90,6 @@ const OutboxPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dash
 const MantenimientoPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/mantenimiento/page'));
 
 const PlantillasPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/admin/plantillas/page"));
-const SemanticaPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/admin/semantica/page"));
-const ContextoPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/admin/contexto/page"));
-const MejoraContinuaPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/admin/ia/mejora/page"));
 
 const UsuariosPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/usuarios/page'));
 const RolesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/roles/page'));
@@ -110,22 +104,15 @@ const VoiceDashboardPage = React.lazy(() => import('./app/(dashboard)/dashboard/
 import { Phone } from 'lucide-react';
 const MetaConfigPage = React.lazy(() => import('./app/(dashboard)/dashboard/canales-config/meta/page'));
 
-const ComplianceDashboard = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/compliance/page'));
 const PreferenciasPage = React.lazy(() => import('../apps/web/src/app/preferencias/[token]/page'));
 const HabeasDataPage = React.lazy(() => import('../apps/web/src/app/habeas-data/page'));
 
 const InboxPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/inbox/page'));
 const ProduccionKanbanPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/produccion/page"));
-const CapacidadAgentePage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/produccion/capacidad/page"));
 const RentabilidadRealPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/produccion/costos/page'));
 const InventarioDashboardPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/inventario/page'));
-const AbastecimientoAgentePage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/inventario/abastecimiento/page'));
-const AgentesDashboardPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/agentes/page'));
 const AdminIAPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/admin/ia/page'));
-const PropuestasAgentesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/agentes/propuestas/page'));
 
-const ArquitecturaIAPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/ia/arquitectura/page'));
-const IATestingPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/ia/testing/page'));
 const KioskoPlantaPage = React.lazy(() => import('../apps/web/src/app/kiosko-planta/page'));
 import { ClientRequestToasts, useNewClientRequestsCount } from './components/portal/ClientRequestAlerts';
 import { InboxAttentionNotifier, useInboxAttentionCount } from './components/omnichannel/InboxAttention';
@@ -273,7 +260,6 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
       { name: 'Roles y permisos', path: '/dashboard/admin/roles', icon: Shield, moduleKey: 'auditoria' },
     ]),
     group('Administración', 'configuracion', [
-      ...(isSuperAdmin ? [{ name: 'Interventor del Sistema', path: '/dashboard/admin/interventoria', icon: Bot, isSuperAdminExclusive: true, moduleKey: 'auditoria' as FusionModuleKey }] : []),
       { name: 'Identidad de la empresa', path: '/dashboard/admin/organizacion', icon: Building },
       { name: 'Parámetros generales', path: '/dashboard/admin/parametros', icon: Settings },
       { name: 'Temperatura comercial', path: '/dashboard/admin/comercial', icon: Target },
@@ -293,18 +279,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     ]),
     ...(isAdmin ? [
       group('En construcción', 'configuracion', [
-        { name: 'Identidades (triage)', path: '/dashboard/identidades', icon: Users },
-        { name: 'Ritual V.E.A.', path: '/dashboard/vea', icon: Calendar },
         ...(!voiceStatus.enabled ? [{ name: 'Voz y telefonía', path: '/voz', icon: Phone }] : []),
-        { name: 'Cumplimiento', path: '/dashboard/compliance', icon: Shield },
-        { name: 'Arquitectura de agentes', path: '/dashboard/ia/arquitectura', icon: Network },
-        { name: 'Laboratorio de pruebas IA', path: '/dashboard/ia/testing', icon: Beaker },
-        { name: 'Diccionario semántico', path: '/dashboard/admin/semantica', icon: FileText },
-        { name: 'Fuentes de contexto', path: '/dashboard/admin/contexto', icon: Database },
-        { name: 'Mejora continua IA', path: '/dashboard/admin/ia/mejora', icon: Activity },
-        { name: 'Panel de agentes', path: '/dashboard/agentes', icon: Bot },
-        { name: 'Agente de capacidad', path: '/dashboard/produccion/capacidad', icon: Bot },
-        { name: 'Agente de abastecimiento', path: '/dashboard/inventario/abastecimiento', icon: Bot },
       ]),
     ] : []),
   ];
@@ -603,7 +578,7 @@ export default function App() {
           <Route path="/voz/supervision" element={<DashboardLayout><VozSupervisionPage /></DashboardLayout>} />
           <Route path="/voz/informes" element={<DashboardLayout><VozInformesPage /></DashboardLayout>} />
           <Route path="/configuracion/voz" element={<DashboardLayout><VozConfiguracionPage /></DashboardLayout>} />
-          <Route path="/interventoria" element={<DashboardLayout><InterventoriaPage /></DashboardLayout>} />
+          <Route path="/interventoria" element={<Navigate to="/dashboard/admin/salud" replace />} />
           
           <Route
             path="/dashboard/*"
@@ -650,7 +625,7 @@ export default function App() {
                     
                     {/* Other existing routes */}
                     <Route path="inbox" element={<InboxPage />} />
-                    <Route path="identidades" element={<IdentidadesPage />} />
+                    <Route path="identidades" element={<Navigate to="/dashboard/inbox" replace />} />
                     <Route path="clientes" element={<ClientesPage />} />
                     <Route path="portal-clientes" element={<PortalClientesPage />} />
                     <Route path="clientes/importar" element={<ClientesImportarPage />} />
@@ -659,19 +634,19 @@ export default function App() {
                     <Route path="cotizaciones" element={<CotizacionesPage />} />
                     <Route path="cotizaciones/tarifario" element={<TarifarioProduccionPage />} />
                     <Route path="catalogo" element={<CatalogoPage />} />
-                    <Route path="vea" element={<VeaPage />} />
+                    <Route path="vea" element={<Navigate to="/dashboard" replace />} />
                     <Route path="produccion" element={<ProduccionKanbanPage />} />
                     <Route path="produccion/costos" element={<RentabilidadRealPage />} />
-                    <Route path="produccion/capacidad" element={<CapacidadAgentePage />} />
+                    <Route path="produccion/capacidad" element={<Navigate to="/dashboard/produccion" replace />} />
                     <Route path="costos-omnicanal" element={<CostosOmnicanalPage />} />
                     <Route path="inventario" element={<InventarioDashboardPage />} />
-                    <Route path="inventario/abastecimiento" element={<AbastecimientoAgentePage />} />
-                    <Route path="ia/arquitectura" element={<ArquitecturaIAPage />} />
-                    <Route path="ia/testing" element={<IATestingPage />} />
-                    <Route path="agentes" element={<AgentesDashboardPage />} />
+                    <Route path="inventario/abastecimiento" element={<Navigate to="/dashboard/inventario" replace />} />
+                    <Route path="ia/arquitectura" element={<Navigate to="/dashboard/inbox" replace />} />
+                    <Route path="ia/testing" element={<Navigate to="/dashboard/inbox" replace />} />
+                    <Route path="agentes" element={<Navigate to="/dashboard/inbox" replace />} />
                     <Route path="admin/ia" element={<AdminIAPage />} />
-                    <Route path="agentes/propuestas" element={<PropuestasAgentesPage />} />
-                    <Route path="compliance" element={<ComplianceDashboard />} />
+                    <Route path="agentes/propuestas" element={<Navigate to="/dashboard/inbox" replace />} />
+                    <Route path="compliance" element={<Navigate to="/dashboard/admin/salud" replace />} />
                     <Route path="canales-config/chat-web" element={<WebchatConfigPage />} />
                     <Route path="canales-config/meta" element={<MetaConfigPage />} />
                     <Route path="simulator" element={<Navigate to="/dashboard/inbox" replace />} />
@@ -695,10 +670,10 @@ export default function App() {
                     <Route path="admin/parametros" element={<ParametrosPage />} />
                     <Route path="admin/flags" element={<FlagsPage />} />
                     <Route path="admin/auditoria" element={<AuditoriaConfigPage />} />
-                    <Route path="admin/semantica" element={<SemanticaPage />} />
-                    <Route path="admin/contexto" element={<ContextoPage />} />
-                    <Route path="admin/ia/mejora" element={<MejoraContinuaPage />} />
-                    <Route path="admin/interventoria" element={<InterventoriaPage />} />
+                    <Route path="admin/semantica" element={<Navigate to="/dashboard/inbox" replace />} />
+                    <Route path="admin/contexto" element={<Navigate to="/dashboard/inbox" replace />} />
+                    <Route path="admin/ia/mejora" element={<Navigate to="/dashboard/inbox" replace />} />
+                    <Route path="admin/interventoria" element={<Navigate to="/dashboard/admin/salud" replace />} />
                   </Routes>
                 </React.Suspense>
               </DashboardLayout>

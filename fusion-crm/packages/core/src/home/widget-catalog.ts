@@ -266,7 +266,7 @@ export const WIDGET_CATALOG: Record<string, WidgetDefinition> = {
     refreshSeconds: 300,
     dataSource: 'METRIC_DAILY',
     configSchema: EmptyConfigSchema,
-    drillDownRoute: () => '/dashboard/produccion/capacidad',
+    drillDownRoute: () => '/dashboard/produccion',
     availableFrom: '15.2',
   },
   calidad_pendiente: {
@@ -386,7 +386,7 @@ export const WIDGET_CATALOG: Record<string, WidgetDefinition> = {
     refreshSeconds: 300,
     dataSource: 'METRIC_DAILY',
     configSchema: EmptyConfigSchema,
-    drillDownRoute: () => '/dashboard/compliance',
+    drillDownRoute: () => '/dashboard/admin/salud',
     availableFrom: '15.2',
   },
   salud_integraciones: {

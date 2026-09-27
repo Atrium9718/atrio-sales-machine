@@ -128,10 +128,9 @@ describe('requireAuth', () => {
     expect(ctxUserId).toBe('emp-planta');
   });
 
-  it('exige rol de administrador para ops, interventoría y escrituras de admin/settings', async () => {
+  it('exige rol de administrador para ops y escrituras de admin/settings', async () => {
     const cookie = 'fusion_session=cookie-planta';
     expect((await run(mockReq('/api/ops/secrets', { cookie }))).res.statusCode).toBe(403);
-    expect((await run(mockReq('/api/interventoria/scan', { cookie }))).res.statusCode).toBe(403);
     expect((await run(mockReq('/api/admin/users', { cookie, method: 'POST' }))).res.statusCode).toBe(403);
     expect((await run(mockReq('/api/settings', { cookie, method: 'POST' }))).res.statusCode).toBe(403);
     expect((await run(mockReq('/api/admin/users', { cookie }))).nextCalled).toBe(true);

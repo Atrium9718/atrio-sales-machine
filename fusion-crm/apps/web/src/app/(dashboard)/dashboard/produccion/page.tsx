@@ -11,6 +11,7 @@ import { getQuotes } from '../../../../lib/quotesStore';
 import { useProjectsQuery } from '@/hooks/useDomainQueries';
 import { useSettingValue } from '@/hooks/useSettingValue';
 import { EditProjectForm } from './components/EditProjectForm';
+import { WorkloadView } from './components/WorkloadView';
 import { ProjectFiles } from './components/ProjectFiles';
 import { uploadFile, type FileRef } from '@/lib/files';
 import { notify } from '@/lib/notify';
@@ -665,7 +666,7 @@ export default function ProduccionKanbanPage() {
           <button onClick={() => setView('list')} className={`p-1.5 rounded-md ${view === 'list' ? 'bg-primary shadow-sm text-primary-foreground' : 'text-muted-foreground hover:bg-background/50'}`}><List className="w-4 h-4" /></button>
           <button onClick={() => setView('remisiones')} className={`p-1.5 rounded-md ${view === 'remisiones' ? 'bg-primary shadow-sm text-primary-foreground' : 'text-muted-foreground hover:bg-background/50'}`}><Truck className="w-4 h-4" /></button>
           <button onClick={() => setView('archivados')} className={`p-1.5 rounded-md ${view === 'archivados' ? 'bg-primary shadow-sm text-primary-foreground' : 'text-muted-foreground hover:bg-background/50'}`}><Archive className="w-4 h-4" /></button>
-          <button onClick={() => setView('gantt')} className={`p-1.5 rounded-md ${view === 'gantt' ? 'bg-primary shadow-sm text-primary-foreground' : 'text-muted-foreground hover:bg-background/50'}`}><Calendar className="w-4 h-4" /></button>
+          <button onClick={() => setView('gantt')} title="Carga y entregas" className={`p-1.5 rounded-md ${view === 'gantt' ? 'bg-primary shadow-sm text-primary-foreground' : 'text-muted-foreground hover:bg-background/50'}`}><Calendar className="w-4 h-4" /></button>
         </div>
       </div>
 
@@ -1625,75 +1626,7 @@ export default function ProduccionKanbanPage() {
       )}
 
       
-      {view === 'gantt' && (
-        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
-          <div className="p-4 border-b border-border bg-muted/20 flex justify-between items-center">
-            <h3 className="font-bold">Planificador Gantt (Simulado)</h3>
-            <div className="flex gap-2">
-              <button className="bg-primary/10 text-primary px-3 py-1.5 rounded-md text-sm font-medium hover:bg-primary/20 flex items-center gap-1 transition-colors">
-                <Calendar className="w-4 h-4" /> Semana Actual
-              </button>
-            </div>
-          </div>
-          <div className="flex-1 p-8 flex flex-col items-center justify-center text-center">
-            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-4">
-              <Calendar className="w-10 h-10" />
-            </div>
-            <h2 className="text-xl font-bold mb-2">Vista Gantt</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-6">
-              El planificador interactivo permite visualizar la carga por máquina. Para consultar viabilidad, posibles cuellos de botella o reasignaciones, consulte al Agente de Capacidad.
-            </p>
-            <Link 
-              to="/dashboard/produccion/capacidad" 
-              className="bg-primary text-primary-foreground px-6 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-primary/90 transition-all hover:scale-105 shadow-md"
-            >
-              <Bot className="w-5 h-5" />
-              Preguntar al Agente de Capacidad
-            </Link>
-            
-            <div className="mt-12 w-full max-w-3xl">
-              <div className="text-left text-sm font-bold text-muted-foreground mb-4">Vista Previa de Máquinas (Mock)</div>
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-32 text-sm font-medium text-right shrink-0">Troqueladora</div>
-                  <div className="flex-1 h-8 bg-muted rounded-md relative overflow-hidden flex">
-                    <div className="w-[30%] bg-blue-500/80 border-r border-background group relative cursor-pointer hover:brightness-110">
-                      <div className="absolute inset-0 flex items-center px-2 text-[10px] font-bold text-white truncate">PROY-840</div>
-                      <div className="hidden group-hover:block absolute bottom-full left-0 mb-1 z-10 w-48 bg-card border border-border p-2 rounded shadow-lg text-xs">
-                        <p className="font-bold mb-1">PROY-840</p>
-                        <Link to="/dashboard/produccion/capacidad" className="text-primary hover:underline flex items-center gap-1 mt-2">
-                           <Bot className="w-3 h-3"/> Analizar con IA
-                        </Link>
-                      </div>
-                    </div>
-                    <div className="w-[40%] bg-blue-500/80 border-r border-background group relative cursor-pointer hover:brightness-110">
-                       <div className="absolute inset-0 flex items-center px-2 text-[10px] font-bold text-white truncate">PROY-852</div>
-                       <div className="hidden group-hover:block absolute bottom-full left-0 mb-1 z-10 w-48 bg-card border border-border p-2 rounded shadow-lg text-xs">
-                        <p className="font-bold mb-1">PROY-852</p>
-                        <Link to="/dashboard/produccion/capacidad" className="text-primary hover:underline flex items-center gap-1 mt-2">
-                           <Bot className="w-3 h-3"/> Analizar con IA
-                        </Link>
-                      </div>
-                    </div>
-                    <div className="w-[10%] bg-red-500/80 border-r border-background group relative cursor-pointer hover:brightness-110">
-                       <div className="absolute inset-0 flex items-center px-2 text-[10px] font-bold text-white truncate text-center w-full">Mantenimiento</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-4">
-                  <div className="w-32 text-sm font-medium text-right shrink-0">Offset GTO</div>
-                  <div className="flex-1 h-8 bg-muted rounded-md relative overflow-hidden flex">
-                    <div className="w-[60%] bg-emerald-500/80 border-r border-background group relative cursor-pointer hover:brightness-110">
-                      <div className="absolute inset-0 flex items-center px-2 text-[10px] font-bold text-white truncate">PROY-801 (Tiraje Largo)</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {view === 'gantt' && <WorkloadView projects={projects as any} stages={stages} onOpen={setActiveProjectId} />}
 
       {view === 'remisiones' && (
         <div className="flex flex-col h-full space-y-6 max-w-4xl mx-auto w-full pb-8">

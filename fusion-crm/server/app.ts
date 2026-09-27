@@ -19,12 +19,10 @@ import { performanceRouter, goalsRouter } from './routes/performance';
 import { announcementsRouter } from './routes/announcements';
 import { realtimeRouter, initDomainEventBridge, closeAllSSEClients } from './routes/realtime';
 import { chatRouter } from './routes/chat';
-import { agentsRouter } from './routes/agents';
 import { callsRouter } from './routes/calls';
 import { inboxRouter } from './routes/inbox';
 import { quotesRouter } from './routes/quotes';
 import { clientsRouter } from './routes/clients';
-import { interventoriaRouter } from './routes/interventoria';
 import { tariffRouter } from './routes/tariff';
 import { dataRouter } from './routes/data';
 import { filesRouter } from './routes/files';
@@ -87,12 +85,10 @@ export async function startServer() {
   app.use('/api/realtime', realtimeRouter);
   app.use('/api/stream', realtimeRouter); // Migración canal Etapa 6
   app.use('/api/chat', chatRouter);
-  app.use('/api/agents', agentsRouter);
   app.use('/api/calls', callsRouter);
   app.use('/api/inbox', inboxRouter);
   app.use('/api/quotes', quotesRouter);
   app.use('/api/clients', clientsRouter);
-  app.use('/api/interventoria', interventoriaRouter);
   app.use('/api/tariff', tariffRouter);
   app.use('/api/data', dataRouter);
   app.use('/api/files', filesRouter);

@@ -3,9 +3,6 @@ import { Bot, ChevronLeft, EyeOff, MessageSquare, Plus, X, Zap } from 'lucide-re
 
 // Los paneles se descargan la primera vez que se abren (el asistente trae un renderizador de markdown pesado).
 const ChatWidget = React.lazy(() => import('./ChatWidget'));
-const InterventorFloatingButton = React.lazy(() =>
-  import('./interventoria/InterventorFloatingButton').then((m) => ({ default: m.InterventorFloatingButton }))
-);
 
 const HIDDEN_KEY = 'fusion_quick_actions_hidden';
 
@@ -26,11 +23,11 @@ function writeHidden(v: boolean) {
   }
 }
 
-type Panel = 'none' | 'assistant' | 'interventor';
+type Panel = 'none' | 'assistant';
 
 /**
  * Un solo botón flotante que agrupa los accesos rápidos del súper admin
- * (nueva oportunidad, asistente IA e Interventor). Antes eran tres botones
+ * (nueva oportunidad y asistente IA). Antes eran botones
  * sueltos que tapaban el contenido; ahora se despliegan al tocarlo y se
  * pueden esconder en una pestañita del borde.
  */
@@ -39,7 +36,7 @@ export function QuickActionsDock({ onNewOpportunity }: { onNewOpportunity: () =>
   const [hidden, setHidden] = useState<boolean>(readHidden);
   const [panel, setPanel] = useState<Panel>('none');
   // Una vez abierto, el panel queda montado para conservar su conversación
-  const [loaded, setLoaded] = useState<{ assistant: boolean; interventor: boolean }>({ assistant: false, interventor: false });
+  const [loaded, setLoaded] = useState<{ assistant: boolean }>({ assistant: false });
 
   useEffect(() => {
     if (!expanded) return;
@@ -68,7 +65,6 @@ export function QuickActionsDock({ onNewOpportunity }: { onNewOpportunity: () =>
   const actions = [
     { key: 'new', label: 'Nueva oportunidad', hint: 'N', icon: Plus, className: 'bg-primary text-primary-foreground', onClick: () => { setExpanded(false); onNewOpportunity(); } },
     { key: 'assistant', label: 'Asistente IA', icon: MessageSquare, className: 'bg-indigo-600 text-white', onClick: () => openPanel('assistant') },
-    { key: 'interventor', label: 'Interventor', icon: Bot, className: 'bg-slate-950 text-amber-300 border border-amber-500', onClick: () => openPanel('interventor') },
   ];
 
   return (
@@ -76,9 +72,6 @@ export function QuickActionsDock({ onNewOpportunity }: { onNewOpportunity: () =>
       <React.Suspense fallback={null}>
         {loaded.assistant && (
           <ChatWidget hideLauncher open={panel === 'assistant'} onOpenChange={(v) => setPanel(v ? 'assistant' : 'none')} />
-        )}
-        {loaded.interventor && (
-          <InterventorFloatingButton hideLauncher open={panel === 'interventor'} onOpenChange={(v) => setPanel(v ? 'interventor' : 'none')} />
         )}
       </React.Suspense>
 

@@ -5,7 +5,6 @@ import { Search, Filter, AlertCircle, Package, TrendingDown, ArrowDownRight, Pri
 import { Link } from "react-router-dom";
 import { getInventory, InventoryItem } from "../../../../lib/inventoryStore";
 
-const mockAlerts: any[] = [];
 const mockWaste: any[] = [];
 
 export default function InventarioDashboardPage() {
@@ -19,21 +18,18 @@ export default function InventarioDashboardPage() {
   }, []);
 
   const totalValue = inventory.reduce((acc, item) => acc + (item.available * item.unitCost), 0);
+  // Alertas reales: sin existencias o con menos disponible que lo ya reservado para OT
+  const alerts = inventory
+    .filter((item) => item.available <= 0 || item.available < item.reserved)
+    .map((item) => ({
+      id: item.id,
+      item: item.name,
+      type: item.available <= 0 ? 'Agotado' : 'Faltante',
+      detail: item.available <= 0 ? `Sin existencias${item.reserved > 0 ? `; ${item.reserved} ${item.unit} reservados` : ''}` : `Faltan ${item.reserved - item.available} ${item.unit} para lo reservado`,
+    }));
 
   return (
     <div className="flex flex-col font-sans max-w-7xl mx-auto w-full pb-6 space-y-6">
-
-      <div className="bg-primary text-primary-foreground p-6 rounded-lg shadow-md flex justify-between items-center bg-gradient-to-r from-primary to-primary/80">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2 mb-1"><Bot className="w-6 h-6"/> Agente de Abastecimiento IA</h2>
-          <p className="text-primary-foreground/90 max-w-2xl">
-            Vigile el inventario proyectado, evalúe transformaciones contra compras y analice desperdicios usando IA.
-          </p>
-        </div>
-        <Link to="/dashboard/inventario/abastecimiento" className="bg-background text-foreground font-bold px-4 py-2 rounded-md shadow-sm hover:bg-muted transition-colors whitespace-nowrap">
-          Consultar Agente
-        </Link>
-      </div>
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -76,8 +72,8 @@ export default function InventarioDashboardPage() {
             </div>
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Alertas</span>
           </div>
-          <div className="text-3xl font-bold text-foreground mb-1">{mockAlerts.length} Items</div>
-          <div className="text-sm text-muted-foreground">Requieren pedido de compra</div>
+          <div className="text-3xl font-bold text-foreground mb-1">{alerts.length} Items</div>
+          <div className="text-sm text-muted-foreground">Agotados o con menos de lo reservado</div>
         </div>
 
         {/* KPI 3 - Desperdicio global */}
@@ -187,13 +183,14 @@ export default function InventarioDashboardPage() {
               Acción Requerida
             </h2>
             <div className="space-y-3">
-              {mockAlerts.length > 0 ? (
-                mockAlerts.map(alert => (
+              {alerts.length > 0 ? (
+                alerts.map(alert => (
                   <div key={alert.id} className="p-3 bg-muted/50 rounded-lg border border-border flex flex-col gap-2">
                     <div className="flex justify-between items-start">
                       <span className="font-bold text-sm">{alert.item}</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-sm font-bold uppercase bg-amber-100 text-amber-700">{alert.type}</span>
                     </div>
+                    <span className="text-xs text-muted-foreground">{alert.detail}</span>
                   </div>
                 ))
               ) : (
