@@ -30,6 +30,23 @@ export interface InboxStats {
   failedMessages: number;
 }
 
+export interface StageNotice {
+  id: string;
+  projectId: string;
+  orderNumber: string;
+  stageKey: string;
+  stageLabel: string;
+  clientName: string;
+  phone: string | null;
+  status: 'scheduled' | 'sent' | 'failed' | 'skipped';
+  reason: string | null;
+  mode: 'text' | 'template' | null;
+  attempts: number;
+  dueAt: string;
+  sentAt: string | null;
+  createdAt: string;
+}
+
 export interface ChannelStatus {
   whatsapp: boolean;
   messenger: boolean;
@@ -65,6 +82,8 @@ export const inboxApi = {
   simulate: (text: string, session: string, phone?: string) =>
     request<{ conversation: Conversation }>('POST', '/simulate', { text, session, phone: phone || undefined }).then((d) => d.conversation),
   resetSimulator: () => request('POST', '/simulate/reset', {}),
+  notices: () => request<{ notices: StageNotice[] }>('GET', '/notifications').then((d) => d.notices),
+  retryNotice: (id: string) => request<{ notice: StageNotice }>('POST', `/notifications/${encodeURIComponent(id)}/retry`, {}).then((d) => d.notice),
 };
 
 export const CHANNEL_LABEL: Record<string, string> = {

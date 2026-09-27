@@ -12,6 +12,15 @@ const AUTO_INTENTS = [
   { key: 'otro', label: 'Otras consultas' },
 ];
 
+const NOTIFY_STAGES = [
+  { key: 'POR_REVISAR', label: 'Revisión de archivos', hint: 'Pedido recibido' },
+  { key: 'PRODUCCION_PROGRAMADA', label: 'Programado', hint: 'Tiene turno en planta' },
+  { key: 'EN_PRODUCCION', label: 'En producción', hint: 'Se está imprimiendo' },
+  { key: 'ACABADOS', label: 'Acabados', hint: 'Cortes y terminaciones' },
+  { key: 'FINALIZADO', label: 'Listo para entrega', hint: 'Pasó control de calidad' },
+  { key: 'ENTREGADO', label: 'Entregado', hint: 'Confirmación de entrega' },
+];
+
 const MODES: { key: OmnichannelConfig['aiMode']; title: string; text: string }[] = [
   { key: 'off', title: 'Apagada', text: 'La IA no responde; todo lo atiende tu equipo.' },
   { key: 'suggest', title: 'Sugerencia (recomendado al empezar)', text: 'La IA escribe la respuesta y una persona la aprueba o corrige con un clic.' },
@@ -132,6 +141,65 @@ export function AiConfigPanel() {
             <input type="time" value={config.businessHours.end} onChange={(e) => set('businessHours', { ...config.businessHours, end: e.target.value })} className="bg-background border border-border rounded px-1.5 py-0.5" />
           </div>
           <p className="text-[11px] text-muted-foreground">Fuera de este horario la IA sigue atendiendo; si algo necesita a una persona, avisa que responderán en el próximo horario.</p>
+        </section>
+
+        <section className="bg-card border border-border rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-bold text-sm">Avisos automáticos al cliente</h3>
+            <label className="flex items-center gap-2 text-xs font-semibold">
+              <input
+                type="checkbox"
+                checked={config.notifications.enabled}
+                onChange={(e) => set('notifications', { ...config.notifications, enabled: e.target.checked })}
+              />
+              {config.notifications.enabled ? 'Activados' : 'Desactivados'}
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Cuando un pedido avanza en el tablero de producción, el cliente recibe un WhatsApp con la etapa y el enlace para ver el avance.
+            Si el cliente escribió en las últimas 24 h se envía como mensaje normal; si no, con la plantilla aprobada en Meta (ver DEPLOY.md → 8.7).
+          </p>
+          <div className="space-y-1.5">
+            {NOTIFY_STAGES.map((st) => {
+              const on = config.notifications.stages.includes(st.key);
+              return (
+                <div key={st.key} className={`flex flex-wrap items-center gap-2 p-2 rounded-lg border ${on ? 'border-primary/40 bg-primary/5' : 'border-border'}`}>
+                  <label className="flex items-center gap-2 text-sm min-w-[190px]">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={(e) =>
+                        set('notifications', {
+                          ...config.notifications,
+                          stages: e.target.checked ? [...config.notifications.stages, st.key] : config.notifications.stages.filter((k) => k !== st.key),
+                        })
+                      }
+                    />
+                    <span>
+                      <span className="font-semibold">{st.label}</span> <span className="text-[11px] text-muted-foreground">· {st.hint}</span>
+                    </span>
+                  </label>
+                  <input
+                    value={config.notifications.templates[st.key] || ''}
+                    onChange={(e) =>
+                      set('notifications', { ...config.notifications, templates: { ...config.notifications.templates, [st.key]: e.target.value.trim() } })
+                    }
+                    placeholder="nombre_de_plantilla"
+                    title="Nombre de la plantilla aprobada en Meta"
+                    className="flex-1 min-w-[160px] bg-background border border-border rounded px-2 py-1 text-xs font-mono"
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span>Enviar solo entre</span>
+            <input type="time" value={config.notifications.sendFrom} onChange={(e) => set('notifications', { ...config.notifications, sendFrom: e.target.value })} className="bg-background border border-border rounded px-1.5 py-0.5" />
+            <span>y</span>
+            <input type="time" value={config.notifications.sendUntil} onChange={(e) => set('notifications', { ...config.notifications, sendUntil: e.target.value })} className="bg-background border border-border rounded px-1.5 py-0.5" />
+            <span className="text-muted-foreground">(los de la noche salen a primera hora)</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Cada pedido avisa una sola vez por etapa. Si el cliente responde STOP o "no quiero recibir mensajes", deja de recibirlos.</p>
         </section>
 
         <section className="bg-card border border-border rounded-xl p-4 space-y-3">

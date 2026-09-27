@@ -8,6 +8,7 @@ import { createMetaSender } from './senders';
 import { createGeminiClient } from './llm';
 import { createOmnichannelService, type OmnichannelService } from './service';
 import type { AgentDeps } from './agents';
+import { createStageNotifier, type StageNotice, type StageNotifier } from './notifications';
 
 export const CONVERSATIONS_COLLECTION = 'omni_conversations';
 const SETTINGS_COLLECTION = 'omnichannel_settings';
@@ -28,9 +29,18 @@ function cached<T>(ttlMs: number, load: () => Promise<T>): () => Promise<T> {
 
 export async function loadOmnichannelConfig(): Promise<OmnichannelConfig> {
   try {
-    const stored = await documentRepository(SETTINGS_COLLECTION).get(CONFIG_ID);
-    const { id: _id, ...rest } = (stored ?? {}) as Record<string, unknown>;
-    return { ...DEFAULT_OMNICHANNEL_CONFIG, ...(rest as Partial<OmnichannelConfig>) };
+    const doc = await documentRepository(SETTINGS_COLLECTION).get(CONFIG_ID);
+    const { id: _id, ...rest } = (doc ?? {}) as Record<string, unknown>;
+    const stored = rest as Partial<OmnichannelConfig>;
+    return {
+      ...DEFAULT_OMNICHANNEL_CONFIG,
+      ...stored,
+      notifications: {
+        ...DEFAULT_OMNICHANNEL_CONFIG.notifications,
+        ...(stored.notifications ?? {}),
+        templates: { ...DEFAULT_OMNICHANNEL_CONFIG.notifications.templates, ...(stored.notifications?.templates ?? {}) },
+      },
+    };
   } catch {
     return DEFAULT_OMNICHANNEL_CONFIG;
   }
@@ -91,8 +101,49 @@ export function omnichannel(): OmnichannelService {
   return service;
 }
 
+let notifier: StageNotifier | null = null;
+
+/** Avisos al cliente por cambio de etapa (datos reales, WhatsApp). */
+export function stageNotifier(): StageNotifier {
+  if (!notifier) {
+    notifier = createStageNotifier({
+      notices: documentRepository<StageNotice>('omni_stage_notices'),
+      loadConfig: loadOmnichannelConfig,
+      listClients: () => repositories().clients.list() as any,
+      listProjects: () => repositories().projects.list(),
+      listQuotes: () => repositories().quotes.list(),
+      service: omnichannel(),
+      sender: createMetaSender(),
+      createPortalLink: createPortalLinkForAssistant,
+      appUrl: (process.env.APP_URL || '').replace(/\/$/, ''),
+      now: () => new Date(),
+    });
+  }
+  return notifier;
+}
+
+let started = false;
+
+/** Se llama al arrancar el servidor: escucha los cambios de etapa y procesa la cola cada 5 min. */
+export function startStageNotifications() {
+  if (started) return;
+  started = true;
+  eventBus.subscribe('PROJECT_STAGE_CHANGED', (event) => {
+    stageNotifier()
+      .onStageChanged(event)
+      .catch((err) => console.error('[avisos] Error al procesar cambio de etapa:', err));
+  });
+  const timer = setInterval(() => {
+    stageNotifier()
+      .processDue()
+      .catch((err) => console.error('[avisos] Error procesando la cola:', err));
+  }, 5 * 60 * 1000);
+  timer.unref?.();
+}
+
 /** Tras cambiar la configuración, el próximo mensaje la lee de nuevo. */
 export function resetOmnichannelRuntime() {
   service = null;
   agentDeps = undefined;
+  notifier = null;
 }

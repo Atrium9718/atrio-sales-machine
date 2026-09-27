@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from 'react';
-import { Inbox, Settings2, Sparkles } from 'lucide-react';
+import { BellRing, Inbox, Settings2, Sparkles } from 'lucide-react';
 import { ConversationsPanel } from './components/ConversationsPanel';
 import { SimulatorPanel } from './components/SimulatorPanel';
 import { AiConfigPanel } from './components/AiConfigPanel';
+import { NoticesPanel } from './components/NoticesPanel';
 
 const TABS = [
   { key: 'conversations', label: 'Conversaciones', icon: Inbox },
+  { key: 'notices', label: 'Avisos', icon: BellRing },
   { key: 'simulator', label: 'Simulador', icon: Sparkles },
   { key: 'config', label: 'Configuración de la IA', icon: Settings2 },
 ] as const;
@@ -40,6 +42,7 @@ export default function InboxPage() {
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {tab === 'conversations' && <ConversationsPanel />}
+        {tab === 'notices' && <NoticesPanel />}
         {tab === 'simulator' && <SimulatorPanel />}
         {tab === 'config' && <AiConfigPanel />}
       </div>

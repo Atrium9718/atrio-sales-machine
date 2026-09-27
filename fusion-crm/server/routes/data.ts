@@ -1,6 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { repositories, writeContextFrom, type DocumentRepository } from '../repositories';
 import { createFirestoreRepository } from '../repositories/firestoreRepository';
+import { eventBus } from '../events/DomainEventBus';
+import { resolveStageIndex } from '../../packages/core/src/portal/clientProgress';
 
 /**
  * API genérica de colecciones de negocio que antes vivían solo en el localStorage del
@@ -34,6 +36,37 @@ export function isValidDocId(id: unknown): id is string {
   return typeof id === 'string' && id.length > 0 && id.length <= 700 && !id.includes('/') && id !== '.' && id !== '..';
 }
 
+const stageOf = (doc: any): string | null => {
+  const v = doc?.stageId ?? doc?.stage;
+  return v === undefined || v === null || v === '' ? null : String(v);
+};
+
+/**
+ * El tablero de producción guarda los proyectos por esta API: aquí se detecta el cambio de etapa
+ * para avisar al cliente (evento PROJECT_STAGE_CHANGED). Proyectos nuevos no generan aviso.
+ */
+export function detectStageChanges(previous: Map<string, any>, saved: any[]): { projectId: string; fromStage: string; toStage: string }[] {
+  const changes = [];
+  for (const doc of saved) {
+    const before = previous.get(doc.id);
+    const from = stageOf(before);
+    const to = stageOf(doc);
+    if (!before || !from || !to) continue;
+    if (resolveStageIndex(from) !== resolveStageIndex(to)) changes.push({ projectId: doc.id, fromStage: from, toStage: to });
+  }
+  return changes;
+}
+
+function publishStageChanges(changes: ReturnType<typeof detectStageChanges>) {
+  for (const c of changes) {
+    try {
+      eventBus.publish('PROJECT_STAGE_CHANGED', c);
+    } catch (err) {
+      console.error('[data] No se pudo publicar el cambio de etapa:', err);
+    }
+  }
+}
+
 function resolveRepo(req: Request, res: Response): DocumentRepository | null {
   const collection = req.params.collection;
   if (!DATA_COLLECTIONS[collection]) {
@@ -60,8 +93,10 @@ dataRouter.put('/:collection/:id', async (req, res) => {
   const { id } = req.params;
   if (!isValidDocId(id)) return res.status(400).json({ success: false, error: 'ID inválido' });
   try {
+    const previous = req.params.collection === 'projects' ? await repo.get(id) : null;
     const item = await repo.upsert(toStorableDoc(req.body, id), writeContextFrom(req));
     res.json({ success: true, item });
+    if (previous) publishStageChanges(detectStageChanges(new Map([[id, previous]]), [item]));
   } catch (err: any) {
     console.error(`[data] Error guardando ${req.params.collection}/${id}:`, err);
     res.status(500).json({ success: false, error: err.message });
@@ -82,8 +117,11 @@ dataRouter.post('/:collection/bulk', async (req, res) => {
   try {
     const now = new Date().toISOString();
     const saved = items.map((it: any) => toStorableDoc(it, it.id, now));
+    // Etapas anteriores solo para lotes pequeños (cambios del tablero); las cargas masivas no avisan
+    const previous = req.params.collection === 'projects' && saved.length <= 50 ? new Map((await repo.list()).map((d) => [d.id, d])) : null;
     await repo.upsertMany(saved, writeContextFrom(req));
     res.json({ success: true, count: saved.length, items: saved });
+    if (previous) publishStageChanges(detectStageChanges(previous, saved));
   } catch (err: any) {
     console.error(`[data] Error en carga masiva de ${req.params.collection}:`, err);
     res.status(500).json({ success: false, error: err.message });

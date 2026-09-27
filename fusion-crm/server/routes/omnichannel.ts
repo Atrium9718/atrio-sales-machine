@@ -7,7 +7,7 @@ import {
 } from '../../packages/core/src/omnichannel';
 import { isAdminRole } from '../auth/session';
 import { createMemoryRepository } from '../repositories/documentStore';
-import { loadOmnichannelConfig, omnichannel, resetOmnichannelRuntime, saveOmnichannelConfig } from '../omnichannel/runtime';
+import { loadOmnichannelConfig, omnichannel, resetOmnichannelRuntime, saveOmnichannelConfig, stageNotifier } from '../omnichannel/runtime';
 import { createOmnichannelService, type OmnichannelService } from '../omnichannel/service';
 import { createGeminiClient } from '../omnichannel/llm';
 import { repositories } from '../repositories';
@@ -165,6 +165,14 @@ const ConfigSchema = z.object({
   knowledge: z.string().max(20000),
   forbidden: z.string().max(4000),
   escalationEmployeeIds: z.array(z.string().max(100)).max(50),
+  notifications: z.object({
+    enabled: z.boolean(),
+    stages: z.array(z.enum(['POR_REVISAR', 'PRODUCCION_PROGRAMADA', 'EN_PRODUCCION', 'ACABADOS', 'FINALIZADO', 'ENTREGADO'])).max(6),
+    templates: z.record(z.string(), z.string().trim().max(512).regex(/^[a-z0-9_]*$/, 'El nombre de plantilla solo admite minúsculas, números y _')),
+    templateLanguage: z.string().trim().min(2).max(10),
+    sendFrom: z.string().regex(/^\d{2}:\d{2}$/),
+    sendUntil: z.string().regex(/^\d{2}:\d{2}$/),
+  }),
 });
 
 omnichannelRouter.get('/config', async (_req, res) => {
@@ -185,12 +193,36 @@ omnichannelRouter.put('/config', async (req, res) => {
   if (!isAdminRole(String(req.headers['x-user-role'] || ''))) {
     return res.status(403).json({ success: false, error: 'Solo un administrador puede cambiar la configuración' });
   }
-  const parsed = ConfigSchema.safeParse({ ...DEFAULT_OMNICHANNEL_CONFIG, ...req.body });
+  const parsed = ConfigSchema.safeParse({
+    ...DEFAULT_OMNICHANNEL_CONFIG,
+    ...req.body,
+    notifications: { ...DEFAULT_OMNICHANNEL_CONFIG.notifications, ...(req.body?.notifications ?? {}) },
+  });
   if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0].message });
   try {
     const saved = await saveOmnichannelConfig(parsed.data as OmnichannelConfig);
     resetOmnichannelRuntime();
     res.json({ success: true, config: saved });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ── Avisos de cambio de etapa ──────────────────────────────────
+
+omnichannelRouter.get('/notifications', async (_req, res) => {
+  try {
+    res.json({ success: true, notices: await stageNotifier().list() });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+omnichannelRouter.post('/notifications/:id/retry', async (req, res) => {
+  try {
+    const notice = await stageNotifier().retry(req.params.id);
+    if (!notice) return res.status(404).json({ success: false, error: 'Aviso no encontrado' });
+    res.json({ success: true, notice });
   } catch (err) {
     fail(res, err);
   }

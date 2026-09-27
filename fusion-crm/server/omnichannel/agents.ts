@@ -145,7 +145,7 @@ const TOOL_SOLICITUD: ToolDeclaration = {
   },
 };
 
-const AGENT_TOOLS: Record<Exclude<AgentKey, 'recepcionista'>, ToolDeclaration[]> = {
+const AGENT_TOOLS: Record<'servicio' | 'comercial', ToolDeclaration[]> = {
   servicio: [TOOL_PEDIDOS, TOOL_VERIFICAR, TOOL_ESCALAR],
   comercial: [TOOL_SOLICITUD, TOOL_PEDIDOS, TOOL_VERIFICAR, TOOL_ESCALAR],
 };

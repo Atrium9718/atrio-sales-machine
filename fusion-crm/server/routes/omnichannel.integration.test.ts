@@ -29,6 +29,9 @@ suite('omnicanal por HTTP (integración)', () => {
     const { widgetRouter } = await import('./widget');
     const { omnichannelRouter } = await import('./omnichannel');
     const { metaWebhookRouter } = await import('./metaWebhook');
+    const { dataRouter } = await import('./data');
+    const { startStageNotifications } = await import('../omnichannel/runtime');
+    startStageNotifications();
     const app = express();
     app.use(express.json({ verify: (req: any, _res, buf) => { req.rawBody = buf; } }));
     app.use('/api/widget', widgetRouter);
@@ -41,6 +44,7 @@ suite('omnicanal por HTTP (integración)', () => {
       next();
     });
     app.use('/api/omnichannel', omnichannelRouter);
+    app.use('/api/data', dataRouter);
     server = app.listen(0);
     await new Promise((r) => server.once('listening', r));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -136,5 +140,34 @@ suite('omnicanal por HTTP (integración)', () => {
     await new Promise((r) => setTimeout(r, 200));
     const again = await call('GET', '/api/omnichannel/conversations/whatsapp_573009998877');
     expect(again.body.conversation.messages.filter((m: any) => m.direction === 'in')).toHaveLength(1);
+  });
+
+  it('cambio de etapa desde el tablero → aviso registrado (y en cola si WhatsApp no está configurado)', async () => {
+    const db = prismaMod.getPrisma();
+    await db.storedDocument.deleteMany({ where: { collection: 'omni_stage_notices' } });
+    const { repositories } = await import('../repositories');
+    await repositories().clients.upsert({ id: 'cli-aviso', name: 'Tintas del Valle S.A.S', nit: '901222333-4', phone: '3157778899' } as any);
+    await repositories().quotes.upsert({ id: 'q-aviso', number: 'COT-5501', status: 'Aprobada', clientName: 'Tintas del Valle S.A.S', clientNit: '901222333-4', items: [] } as any);
+
+    const admin = { 'x-test-role': 'admin' };
+    const cfg = (await call('GET', '/api/omnichannel/config')).body.config;
+    expect((await call('PUT', '/api/omnichannel/config', { ...cfg, notifications: { ...cfg.notifications, enabled: true, sendFrom: '00:00', sendUntil: '23:59' } }, admin)).status).toBe(200);
+
+    expect((await call('PUT', '/api/data/projects/proj-aviso', { number: 'OT-5501', quoteId: 'q-aviso', stageId: '2' })).status).toBe(200);
+    expect((await call('PUT', '/api/data/projects/proj-aviso', { number: 'OT-5501', quoteId: 'q-aviso', stageId: '3' })).status).toBe(200);
+
+    let notice: any = null;
+    // Se espera al primer intento de envío (se registra antes y se intenta enseguida)
+    for (let i = 0; i < 50 && !(notice?.attempts >= 1); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      notice = (await call('GET', '/api/omnichannel/notifications')).body.notices.find((n: any) => n.projectId === 'proj-aviso');
+    }
+    expect(notice).toMatchObject({ stageKey: 'EN_PRODUCCION', phone: '573157778899', orderNumber: 'OT-5501', clientName: 'Tintas del Valle S.A.S' });
+    // Sin credenciales de WhatsApp en la prueba: queda en cola para reintento, con el motivo
+    expect(notice.status).toBe('scheduled');
+    expect(notice.reason).toContain('WhatsApp no está configurado');
+    // Y la conversación del cliente muestra el intento en la bandeja
+    const conv = (await call('GET', '/api/omnichannel/conversations/whatsapp_573157778899')).body.conversation;
+    expect(conv.messages.at(-1)).toMatchObject({ author: 'system', status: 'failed' });
   });
 });

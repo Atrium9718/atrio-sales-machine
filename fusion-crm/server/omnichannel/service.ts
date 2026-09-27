@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import {
   appendMessage,
   canAutoSend,
+  optOutIntent,
   DEFAULT_OMNICHANNEL_CONFIG,
   type ChannelKind,
   type Conversation,
@@ -10,7 +11,7 @@ import {
   type OmnichannelConfig,
 } from '../../packages/core/src/omnichannel';
 import type { DocumentRepository } from '../repositories/types';
-import type { ChannelSender } from './senders';
+import type { ChannelSender, SendResult } from './senders';
 import { runAgentTurn, type AgentDeps } from './agents';
 
 export interface InboundMessage {
@@ -151,6 +152,24 @@ export function createOmnichannelService(deps: OmnichannelDeps) {
         if (conv.status === 'resolved') {
           conv.status = 'open';
           if (conv.mode !== 'human') conv.mode = modeFor(config);
+        }
+
+        // Baja (o alta) de avisos automáticos: se confirma siempre, sin pasar por la IA
+        const opt = optOutIntent(text);
+        if (opt) {
+          conv.optedOut = opt === 'out';
+          const ack = message({
+            direction: 'out',
+            author: 'system',
+            status: 'suggested',
+            aiAgent: 'seguimiento',
+            text:
+              opt === 'out'
+                ? 'Listo, no te enviaremos más avisos automáticos. Si nos escribes, igual te atendemos. Para volver a recibirlos escribe REACTIVAR.'
+                : '¡Listo! Volverás a recibir los avisos sobre tus pedidos.',
+          });
+          conv.messages = appendMessage(conv.messages, await deliver(conv, ack));
+          return save(conv, text);
         }
 
         // Una persona lleva la conversación: la IA no interviene
@@ -294,6 +313,44 @@ export function createOmnichannelService(deps: OmnichannelDeps) {
           m.status = status;
         }
         return '';
+      });
+    },
+
+    /**
+     * Mensaje que inicia el sistema (p. ej. aviso de cambio de etapa). `send` hace el envío real
+     * (texto o plantilla) y el resultado queda en la conversación para que el equipo lo vea.
+     */
+    recordOutbound(input: {
+      channel: ChannelKind;
+      externalUserId: string;
+      contactName: string;
+      text: string;
+      send: (conv: Conversation) => Promise<SendResult>;
+      identity?: Partial<Pick<Conversation, 'clientId' | 'clientName' | 'clientNit' | 'verified' | 'verifiedBy' | 'portalPath'>>;
+    }): Promise<{ conversation: Conversation; result: SendResult }> {
+      const id = conversationId(input.channel, input.externalUserId);
+      return serialized(id, async () => {
+        const conv =
+          (await deps.conversations.get(id)) ??
+          newConversation({ channel: input.channel, externalUserId: input.externalUserId, contactName: input.contactName, text: '' }, await deps.loadConfig());
+        if (input.identity) {
+          for (const [k, v] of Object.entries(input.identity)) if (v !== undefined && (conv as any)[k] == null) (conv as any)[k] = v;
+          if (input.identity.verified && !conv.verified) Object.assign(conv, { verified: true, verifiedBy: input.identity.verifiedBy ?? 'phone' });
+        }
+        const result = await input.send(conv);
+        const msg = message({
+          direction: 'out',
+          author: 'system',
+          aiAgent: 'seguimiento',
+          text: input.text,
+          status: result.ok ? 'sent' : 'failed',
+          externalId: result.externalId ?? null,
+          error: result.ok ? null : result.error ?? 'Error de envío',
+        });
+        conv.messages = appendMessage(conv.messages, msg);
+        conv.lastMessageAt = msg.createdAt;
+        await save(conv, input.text);
+        return { conversation: conv, result };
       });
     },
 

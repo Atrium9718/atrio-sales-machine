@@ -19,3 +19,21 @@ describe('data router helpers', () => {
     expect(Object.keys(DATA_COLLECTIONS).sort()).toEqual(['inventory', 'print-orders', 'project-tombstones', 'projects']);
   });
 });
+
+import { detectStageChanges } from './data';
+describe('detección de cambio de etapa', () => {
+  it('solo reporta proyectos existentes cuya etapa cambió', () => {
+    const prev = new Map<string, any>([
+      ['p1', { id: 'p1', stageId: '2' }],
+      ['p2', { id: 'p2', stageId: '3' }],
+      ['p3', { id: 'p3', stage: 'EN_PRODUCCION' }],
+    ]);
+    const saved = [
+      { id: 'p1', stageId: '3' }, // cambió
+      { id: 'p2', stageId: '3', name: 'otro campo' }, // igual
+      { id: 'p3', stageId: '3' }, // misma etapa con otro formato
+      { id: 'p4', stageId: '5' }, // nuevo
+    ];
+    expect(detectStageChanges(prev, saved)).toEqual([{ projectId: 'p1', fromStage: '2', toStage: '3' }]);
+  });
+});

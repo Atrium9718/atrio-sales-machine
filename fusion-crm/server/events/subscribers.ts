@@ -1,6 +1,7 @@
 import { eventBus } from './DomainEventBus';
 import { inMemoryAgentStatuses } from '../routes/voice';
 import { inMemoryPresences } from '../routes/chat';
+import { startStageNotifications } from '../omnichannel/runtime';
 
 let isSubscribed = false;
 
@@ -64,6 +65,9 @@ export function registerDomainSubscribers() {
   eventBus.subscribe('PROJECT_STAGE_CHANGED', ({ projectId, fromStage, toStage }) => {
     console.log(`[Production Kanban 🏭] Proyecto ${projectId} avanzó de [${fromStage}] a [${toStage}]. Recalculando WIP y capacidad de taller.`);
   });
+
+  // 6. Avisos al cliente por WhatsApp cuando su pedido cambia de etapa
+  startStageNotifications();
 
   console.log('[DomainEventBus] Todos los suscriptores centrales han sido enlazados.');
 }

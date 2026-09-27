@@ -57,6 +57,20 @@ export interface OmnichannelConfig {
   forbidden: string;
   /** Personas que reciben los casos escalados (ids de empleado). */
   escalationEmployeeIds: string[];
+  /** Avisos automáticos al cliente cuando su pedido cambia de etapa. */
+  notifications: NotificationSettings;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  /** Etapas que generan aviso (claves de CLIENT_PROGRESS_STEPS). */
+  stages: string[];
+  /** Plantilla aprobada en Meta por etapa (para escribir fuera de la ventana de 24 h). */
+  templates: Record<string, string>;
+  templateLanguage: string;
+  /** Franja en la que se envían avisos (hora de Colombia); fuera de ella esperan. */
+  sendFrom: string;
+  sendUntil: string;
 }
 
 export const DEFAULT_OMNICHANNEL_CONFIG: OmnichannelConfig = {
@@ -67,6 +81,22 @@ export const DEFAULT_OMNICHANNEL_CONFIG: OmnichannelConfig = {
   knowledge: '',
   forbidden: 'No prometer fechas de entrega que no estén en el sistema. No dar descuentos. No confirmar precios finales: solo precotizaciones que revisa un asesor.',
   escalationEmployeeIds: [],
+  notifications: {
+    enabled: false,
+    stages: ['EN_PRODUCCION', 'FINALIZADO', 'ENTREGADO'],
+    // Una sola plantilla para todas las etapas (ver DEPLOY.md → 8.7); se puede cambiar por etapa
+    templates: {
+      POR_REVISAR: 'actualizacion_pedido',
+      PRODUCCION_PROGRAMADA: 'actualizacion_pedido',
+      EN_PRODUCCION: 'actualizacion_pedido',
+      ACABADOS: 'actualizacion_pedido',
+      FINALIZADO: 'actualizacion_pedido',
+      ENTREGADO: 'actualizacion_pedido',
+    },
+    templateLanguage: 'es',
+    sendFrom: '07:30',
+    sendUntil: '19:30',
+  },
 };
 
 /** ¿Está dentro del horario de atención humana? (zona horaria de Bogotá, UTC-5 sin horario de verano). */
@@ -101,4 +131,44 @@ export function classifyIntent(text: string): 'estado_pedido' | 'cotizacion' | '
   if (quote.test(t)) return 'cotizacion';
   if (/^(hola|buen(os|as)( dias| tardes| noches)?|saludos|hey|que tal)\b/.test(t) && t.length < 40) return 'saludo';
   return 'otro';
+}
+
+
+const bogotaMinutes = (now: Date) => {
+  const b = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+  return b.getUTCHours() * 60 + b.getUTCMinutes();
+};
+const hhmm = (v: string) => {
+  const [h, m] = v.split(':').map(Number);
+  return h * 60 + (m || 0);
+};
+
+/** Próximo momento permitido para enviar un aviso (ahora mismo si está dentro de la franja). */
+export function nextSendTime(settings: Pick<NotificationSettings, 'sendFrom' | 'sendUntil'>, now = new Date()): Date {
+  const mins = bogotaMinutes(now);
+  const from = hhmm(settings.sendFrom);
+  const until = hhmm(settings.sendUntil);
+  if (mins >= from && mins < until) return now;
+  const wait = mins < from ? from - mins : 24 * 60 - mins + from;
+  const next = new Date(now.getTime() + wait * 60 * 1000);
+  next.setUTCSeconds(0, 0);
+  return next;
+}
+
+const OPT_OUT = /^(stop|basta|baja|cancelar suscripcion|no (me )?(envien|manden|escriban) (mas )?(mensajes|avisos|notificaciones)|no quiero (recibir )?(mas )?(mensajes|avisos|notificaciones))\b/;
+const OPT_IN = /^(reactivar|quiero recibir (los )?(avisos|mensajes|notificaciones)|alta)\b/;
+
+/** El cliente pide dejar de recibir (o volver a recibir) avisos automáticos. */
+export function optOutIntent(text: string): 'out' | 'in' | null {
+  const t = norm(text).trim().replace(/[.!¡]+$/g, '');
+  if (OPT_OUT.test(t)) return 'out';
+  if (OPT_IN.test(t)) return 'in';
+  return null;
+}
+
+/** Texto del aviso de cambio de etapa (el mismo contenido que las plantillas de WhatsApp). */
+export function stageNoticeText(p: { name: string; orderNumber: string; stepLabel: string; stepDescription: string; link: string | null; businessName: string }): string {
+  const hello = p.name ? `Hola ${p.name}` : 'Hola';
+  const link = p.link ? ` Puedes ver el avance aquí: ${p.link}` : '';
+  return `${hello} 👋 Tu pedido ${p.orderNumber} de ${p.businessName} avanzó a: *${p.stepLabel}*. ${p.stepDescription}${link}`;
 }

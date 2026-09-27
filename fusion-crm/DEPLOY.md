@@ -216,6 +216,42 @@ solo ve lo que necesita a una persona. Antes de conectar clientes reales, prueba
            data-api="https://app.tudominio.com" defer></script>
    ```
 
+### 8.7 Avisos automáticos de cambio de etapa (plantilla de WhatsApp)
+Cuando un pedido avanza en el tablero de producción, el cliente recibe un WhatsApp con la etapa y
+el enlace para ver el avance. Se activan en **Bandeja → Configuración de la IA → Avisos
+automáticos** (tú eliges las etapas; por defecto *En producción*, *Listo para entrega* y
+*Entregado*). El historial queda en **Bandeja → Avisos**.
+
+Si el cliente escribió en las últimas 24 h el aviso sale como mensaje normal; si no, WhatsApp exige
+una **plantilla aprobada**. Crea una sola en *WhatsApp Manager → Plantillas de mensajes*:
+
+| Campo | Valor |
+|-------|-------|
+| Nombre | `actualizacion_pedido` |
+| Categoría | **Utilidad** (Utility) |
+| Idioma | Español (`es`) |
+
+**Cuerpo** (4 variables, en este orden):
+
+```
+Hola {{1}}, tu pedido {{2}} avanzó a la etapa: {{3}}. Puedes ver el avance aquí: {{4}} . Si tienes alguna pregunta, responde a este mensaje.
+```
+
+Ejemplos que pide Meta al enviarla: `Claudia`, `OT-1203`, `En producción`,
+`https://app.tudominio.com/portal/abc123`.
+
+- El sistema llena las variables: {{1}} nombre del contacto, {{2}} número del pedido, {{3}} etapa,
+  {{4}} enlace del portal de avance.
+- Si prefieres un texto distinto por etapa, crea más plantillas (mismas 4 variables, mismo orden)
+  y pon su nombre en la etapa correspondiente.
+- Solo se envían entre las horas configuradas (por defecto 7:30 a. m. a 7:30 p. m.); lo de la
+  noche sale a primera hora. Cada pedido avisa una sola vez por etapa y los fallos se reintentan
+  (3 intentos, y botón **Reintentar** en la pestaña Avisos).
+- Si el cliente responde **STOP** o "no quiero recibir mensajes", deja de recibir avisos (con
+  **REACTIVAR** vuelven). Son mensajes sobre un pedido que el cliente contrató; aun así, revisa
+  que tu política de tratamiento de datos (habeas data) mencione los avisos por WhatsApp.
+- El cliente debe tener un **celular** registrado (en su ficha o en la de uno de sus contactos).
+
 ### 8.6 Arranque recomendado
 1. **Semana 1 — modo Sugerencia:** la IA escribe cada respuesta y alguien la aprueba o corrige
    con un clic. Así ves cómo responde con clientes reales.

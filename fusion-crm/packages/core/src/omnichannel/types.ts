@@ -31,7 +31,7 @@ export interface ConversationMessage {
   error?: string | null;
 }
 
-export type AgentKey = 'recepcionista' | 'servicio' | 'comercial';
+export type AgentKey = 'recepcionista' | 'servicio' | 'comercial' | 'seguimiento';
 
 export type Intent = 'estado_pedido' | 'cotizacion' | 'saludo' | 'queja' | 'pago' | 'humano' | 'otro';
 
@@ -62,6 +62,8 @@ export interface Conversation {
   unread: number;
   /** Ruta del portal de avance generada para este cliente (se reutiliza). */
   portalPath: string | null;
+  /** El cliente pidió no recibir mensajes que no haya solicitado (avisos automáticos). */
+  optedOut?: boolean;
   /** Chat web: ids de mensajes ya mostrados al visitante. */
   widgetSeen?: string[];
   messages: ConversationMessage[];
