@@ -30,7 +30,7 @@ export const productionSettings = {
     key: 'production.labor.hourlyRate',
     domain: "PRODUCTION",
     label: 'Costo de mano de obra por hora (COP)',
-    description: 'Valor con el que se costea cada hora registrada con el cronómetro de producción.',
+    description: 'Valor con el que se costea cada hora de mano de obra: en el cotizador (horas M.O. de cada ítem) y en las horas registradas con el cronómetro de producción.',
     valueType: "NUMBER",
     schema: z.number().min(0).max(1_000_000),
     defaultValue: 20000,

@@ -13,6 +13,7 @@ import { QuoteAssistSheet, AssistRunReadOnlyModal } from "../../../../features/q
 import { Calculator, History, Settings, Building2, UserPlus, Search, Package, Plus, GripVertical, Copy, ChevronDown, ChevronUp, UploadCloud, Save, FileText, Mail, MessageCircle, PenLine, X, AlertCircle, CheckCircle2, Trash2, Check, Sparkles } from "lucide-react";
 import { notify } from '@/lib/notify';
 import { useFusionAuth } from '@/context/FusionAuthContext';
+import { useSettingValue } from '@/hooks/useSettingValue';
 import { catalogCollection, newProductId, searchProducts, withPriceHistory, type CatalogProduct } from '@/lib/catalogStore';
 
 import { calcularCostoInterno, resolverDesdeCampoEditado, type ProductionMode, type QuoteItem, CONFIG, formatCurrency } from './quoteModel';
@@ -259,6 +260,8 @@ function QuoteEditor({
     return () => window.removeEventListener('fusion_catalog_updated', refresh);
   }, []);
   const catalogResults = React.useMemo(() => searchProducts(catalogProducts, catalogSearch), [catalogProducts, catalogSearch]);
+  // Misma tarifa con la que Producción costea las horas del cronómetro
+  const laborRatePerHour = Number(useSettingValue<number>('production.labor.hourlyRate', 20000)) || 0;
   const [items, setItems] = React.useState<QuoteItem[]>([
     {
       id: '1',
@@ -1080,8 +1083,8 @@ function QuoteEditor({
 
       const calc = calcularCostoInterno({
         laborHours: newLaborHours,
-        laborRatePerHour: CONFIG.tarifaHoraMO,
-        dailyDivisor: CONFIG.divisorJornada,
+        laborRatePerHour: laborRatePerHour,
+        dailyDivisor: 1,
         rawMaterialCost: newRawMaterialCost,
         marginPercent: newMarginPercent
       });
@@ -1113,8 +1116,8 @@ function QuoteEditor({
       if (item.id !== id) return item;
       const res = calcularCostoInterno({
         laborHours: item.laborHours || 0,
-        laborRatePerHour: CONFIG.tarifaHoraMO,
-        dailyDivisor: CONFIG.divisorJornada,
+        laborRatePerHour: laborRatePerHour,
+        dailyDivisor: 1,
         rawMaterialCost: item.rawMaterialCost || 0,
         marginPercent: item.marginPercent ?? CONFIG.margins[item.productionMode] ?? CONFIG.margins.IN_HOUSE
       });
@@ -1193,8 +1196,8 @@ function QuoteEditor({
       if (item.laborHours > 0 || item.rawMaterialCost > 0 || item.showCalcPanel) {
         const calc = calcularCostoInterno({
           laborHours: item.laborHours || 0,
-          laborRatePerHour: CONFIG.tarifaHoraMO,
-          dailyDivisor: CONFIG.divisorJornada,
+          laborRatePerHour: laborRatePerHour,
+          dailyDivisor: 1,
           rawMaterialCost: item.rawMaterialCost || 0,
           marginPercent: newMargin
         });
@@ -1244,7 +1247,7 @@ function QuoteEditor({
   const totalInternalCost = items.reduce((acc, it) => {
     if (it.assistRunId && Number(it.internalCost) > 0) return acc + Number(it.internalCost);
     const c = calcularCostoInterno({
-      laborHours: it.laborHours, laborRatePerHour: CONFIG.tarifaHoraMO, dailyDivisor: CONFIG.divisorJornada,
+      laborHours: it.laborHours, laborRatePerHour, dailyDivisor: 1,
       rawMaterialCost: it.rawMaterialCost, marginPercent: it.marginPercent
     });
     return acc + (c.base * it.quantity);
@@ -1884,9 +1887,7 @@ function QuoteEditor({
               </div>
             )}
             {items.map((item, index) => {
-              const itemLaborCost = CONFIG.divisorJornada > 0 
-                ? ((item.laborHours || 0) * CONFIG.tarifaHoraMO) / CONFIG.divisorJornada 
-                : 0;
+              const itemLaborCost = (item.laborHours || 0) * laborRatePerHour;
               const itemBaseCost = itemLaborCost + (item.rawMaterialCost || 0);
               const itemMarginPercent = item.marginPercent ?? CONFIG.margins[item.productionMode] ?? CONFIG.margins.IN_HOUSE;
               const itemMarginAmount = itemBaseCost * (itemMarginPercent / 100);
@@ -2062,7 +2063,7 @@ function QuoteEditor({
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <label className="text-xs font-bold text-amber-900 block">Horas M.O.</label>
-                          <span className="text-[10px] text-amber-700 font-medium">Jornada {CONFIG.divisorJornada}h (${(CONFIG.tarifaHoraMO / CONFIG.divisorJornada).toLocaleString('es-CO', {maximumFractionDigits: 0})}/h)</span>
+                          <span className="text-[10px] text-amber-700 font-medium">${laborRatePerHour.toLocaleString('es-CO', {maximumFractionDigits: 0})}/h (Configuración › Producción)</span>
                         </div>
                         <div className="relative">
                           <input 

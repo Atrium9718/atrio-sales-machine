@@ -119,8 +119,6 @@ export interface QuoteItem {
 }
 
 export const CONFIG = {
-  tarifaHoraMO: 90404,
-  divisorJornada: 6,
   vatRate: 0.19,
   margins: {
     IN_HOUSE: 35,
