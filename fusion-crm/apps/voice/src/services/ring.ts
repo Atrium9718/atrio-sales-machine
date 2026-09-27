@@ -1,268 +1,173 @@
 import { trunkDialString } from '../trunk';
-import { AriClient } from '../ari/client';
-import { ActiveCall, callRegistry } from '../state/registry';
+import { ActiveCall } from '../state/registry';
 import { prisma } from './persist';
 import { telemetry } from '../telemetry';
+import { NoAnswerReason, RingTracker } from './ringGroups';
 
-export interface RingResult {
-  strategy: 'BROWSER_ONLY' | 'BROWSER_THEN_MOBILE' | 'BROWSER_AND_MOBILE' | 'MOBILE_ONLY';
-  answeredChannelId?: string;
-  isDndActive: boolean;
-  forwardedToExtension?: string;
-  cancelledChannels: string[];
+export type RingStrategy = 'BROWSER_ONLY' | 'BROWSER_THEN_MOBILE' | 'BROWSER_AND_MOBILE' | 'MOBILE_ONLY';
+
+export interface RingExtensionRow {
+  id: string;
+  userId: string | null;
+  extension: string;
+  ringStrategy: RingStrategy;
+  mobileNumber: string | null;
+  ringTimeoutSeconds: number;
+  voicemailEnabled: boolean;
+  dndUntil: Date | null;
+  forwardToExtension: string | null;
+  recordingPolicy: 'ALWAYS' | 'NEVER' | 'INBOUND_ONLY' | 'OUTBOUND_ONLY';
+}
+
+export interface RingStore {
+  findExtension(organizationId: string, extension: string): Promise<RingExtensionRow | null>;
+  agentStatus(userId: string): Promise<string | null>;
+}
+
+export const prismaRingStore: RingStore = {
+  async findExtension(organizationId, extension) {
+    const ext = await prisma.voiceExtension.findFirst({ where: { organizationId, extension, status: 'ACTIVE', deletedAt: null } });
+    return ext as RingExtensionRow | null;
+  },
+  async agentStatus(userId) {
+    const row = await prisma.voiceAgentStatus.findUnique({ where: { userId } });
+    return row?.status ?? null;
+  },
+};
+
+export interface RingAri {
+  createChannel(params: { endpoint: string; app: string; appArgs?: string; callerId?: string; callerName?: string }): Promise<{ id: string }>;
+  dialChannel(channelId: string, callerChannelId?: string, timeout?: number): Promise<void>;
+}
+
+export interface RingTarget {
+  endpoint: string;
+  label: string;
+}
+
+/** Endpoints a timbrar para una extensión según su estrategia (sin el orden: eso lo decide quien llama). */
+export function extensionEndpoints(ext: Pick<RingExtensionRow, 'extension' | 'mobileNumber'>, which: 'browser' | 'mobile' | 'both'): RingTarget[] {
+  const out: RingTarget[] = [];
+  if (which !== 'mobile') out.push({ endpoint: `PJSIP/${ext.extension}`, label: `navegador ${ext.extension}` });
+  if (which !== 'browser' && ext.mobileNumber) out.push({ endpoint: trunkDialString(ext.mobileNumber), label: `celular ${ext.mobileNumber}` });
+  return out;
+}
+
+export interface ExtensionRingHandlers {
+  onAnswered: (legChannelId: string, ext: RingExtensionRow) => void | Promise<void>;
+  /** Nadie contestó, "no molestar" o la extensión no existe (ext = null). */
+  onNoAnswer: (ext: RingExtensionRow | null) => void | Promise<void>;
+  /** Justo antes de timbrar (para avisar al navegador del asesor). */
+  onRinging?: (ext: RingExtensionRow) => void | Promise<void>;
 }
 
 export class VoiceRingService {
-  constructor(private readonly ari: AriClient) {}
+  constructor(
+    private readonly ari: RingAri,
+    private readonly tracker: RingTracker,
+    private readonly store: RingStore = prismaRingStore
+  ) {}
 
   /**
-   * Timbra una extensión según su estrategia configurada, respetando no molestar (DND),
-   * estado del agente (no perder 25s si está OFFLINE) y desvíos.
+   * Timbra varios destinos a la vez. La primera pierna que contesta llega en onAnswered con su canal;
+   * si nadie contesta (tiempo, rechazo o teléfono desconectado) se llama onNoAnswer una sola vez.
    */
-  public async ringExtension(
+  public async ringEndpoints(
     call: ActiveCall,
-    extensionNumber: string,
-    onAnswered: (answeredChannelId: string) => Promise<void>,
-    onFailedOrTimeout: () => Promise<void>
+    targets: RingTarget[],
+    timeoutSeconds: number,
+    onAnswered: (legChannelId: string, target: RingTarget) => void | Promise<void>,
+    onNoAnswer: (reason: NoAnswerReason) => void | Promise<void>,
+    callerId: { number?: string; name?: string } = {}
   ): Promise<void> {
-    const ext = await prisma.voiceExtension.findFirst({
-      where: {
-        organizationId: call.organizationId,
-        extension: extensionNumber,
-        status: 'ACTIVE',
-      },
+    const targetByLeg = new Map<string, RingTarget>();
+    const group = this.tracker.start({
+      callId: call.callId,
+      timeoutSeconds,
+      onAnswered: (leg) => onAnswered(leg, targetByLeg.get(leg) ?? targets[0]),
+      onNoAnswer,
     });
+    for (const target of targets) {
+      try {
+        const leg = await this.ari.createChannel({
+          endpoint: target.endpoint,
+          app: 'fusion-voz',
+          appArgs: `ring_leg,${call.callId}`,
+          callerId: callerId.number ?? call.fromNumber,
+          callerName: callerId.name ?? call.context?.customerName ?? undefined,
+        });
+        targetByLeg.set(leg.id, target);
+        this.tracker.addLeg(group, leg.id);
+        await this.ari.dialChannel(leg.id, call.channelId, timeoutSeconds);
+        telemetry.log('INFO', `Timbrando ${target.label} para la llamada ${call.callId}`);
+      } catch (err: any) {
+        telemetry.log('WARN', `No se pudo timbrar ${target.label}: ${err.message}`);
+      }
+    }
+    this.tracker.ready(group);
+  }
 
+  /**
+   * Timbra una extensión según su estrategia (navegador, celular o ambos), respetando
+   * "no molestar", desvíos y el estado del asesor. onNoAnswer recibe la extensión (si existe)
+   * para que quien llama decida si pasa al buzón.
+   */
+  public async ringExtension(call: ActiveCall, extensionNumber: string, handlers: ExtensionRingHandlers, hops = 0): Promise<void> {
+    const { onAnswered, onNoAnswer } = handlers;
+    const ext = await this.store.findExtension(call.organizationId, extensionNumber);
     if (!ext) {
       telemetry.log('WARN', `Extensión ${extensionNumber} no existe o no está activa.`);
-      await onFailedOrTimeout();
+      await onNoAnswer(null);
       return;
     }
 
-    // 1. Comprobar No Molestar (DND)
-    const now = new Date();
-    if (ext.dndUntil && ext.dndUntil > now) {
-      telemetry.log('INFO', `Extensión ${extensionNumber} en modo No Molestar (DND) hasta ${ext.dndUntil.toISOString()}`);
-      if (ext.forwardToExtension) {
-        telemetry.log('INFO', `Desviando llamada de ${extensionNumber} hacia ${ext.forwardToExtension}`);
-        return this.ringExtension(call, ext.forwardToExtension, onAnswered, onFailedOrTimeout);
-      }
-      await onFailedOrTimeout();
+    const forward = ext.forwardToExtension && ext.forwardToExtension !== ext.extension ? ext.forwardToExtension : null;
+    const inDnd = !!ext.dndUntil && ext.dndUntil > new Date();
+    if (forward && hops < 3) {
+      telemetry.log('INFO', `Extensión ${extensionNumber} desviada a ${forward}`);
+      return this.ringExtension(call, forward, handlers, hops + 1);
+    }
+    if (inDnd) {
+      telemetry.log('INFO', `Extensión ${extensionNumber} en "no molestar"`);
+      await onNoAnswer(ext);
       return;
     }
-
-    // 2. Comprobar desvío incondicional
-    if (ext.forwardToExtension) {
-      telemetry.log('INFO', `Extensión ${extensionNumber} tiene desvío activo hacia ${ext.forwardToExtension}`);
-      return this.ringExtension(call, ext.forwardToExtension, onAnswered, onFailedOrTimeout);
-    }
-
-    // 3. Comprobar estado de agente en el CRM
-    let isAgentOnline = true;
-    if (ext.userId) {
-      const agentStatus = await prisma.voiceAgentStatus.findUnique({
-        where: { userId: ext.userId },
-      });
-      if (agentStatus && (agentStatus.status as string) === 'OFFLINE') {
-        isAgentOnline = false;
-        telemetry.log('INFO', `Asesor ${ext.userId} está OFFLINE. No se perderá tiempo timbrando navegador.`);
-      }
-    }
-
-    const ringStrategy = ext.ringStrategy as
-      | 'BROWSER_ONLY'
-      | 'BROWSER_THEN_MOBILE'
-      | 'BROWSER_AND_MOBILE'
-      | 'MOBILE_ONLY';
 
     call.handledByUserId = ext.userId ?? undefined;
     call.extensionId = ext.id;
     call.targetExtensionNumber = ext.extension;
 
-    // Si la estrategia requiere navegador pero el agente está OFFLINE:
-    if (!isAgentOnline && ringStrategy === 'BROWSER_ONLY') {
-      await onFailedOrTimeout();
+    // Si el asesor está desconectado no se pierde tiempo timbrando el navegador
+    const status = ext.userId ? await this.store.agentStatus(ext.userId).catch(() => null) : null;
+    const browserOff = status === 'OFFLINE';
+    const strategy: RingStrategy = ext.ringStrategy;
+
+    let first: RingTarget[];
+    let then: RingTarget[] = [];
+    if (strategy === 'MOBILE_ONLY') first = extensionEndpoints(ext, 'mobile');
+    else if (strategy === 'BROWSER_AND_MOBILE') first = extensionEndpoints(ext, browserOff ? 'mobile' : 'both');
+    else if (strategy === 'BROWSER_THEN_MOBILE') {
+      first = extensionEndpoints(ext, browserOff ? 'mobile' : 'browser');
+      then = browserOff ? [] : extensionEndpoints(ext, 'mobile');
+    } else first = browserOff ? [] : extensionEndpoints(ext, 'browser');
+
+    if (first.length === 0) {
+      await onNoAnswer(ext);
       return;
     }
 
-    if (!isAgentOnline && ringStrategy === 'BROWSER_THEN_MOBILE') {
-      if (ext.mobileNumber) {
-        // Saltar directo al celular
-        return this.dialMobileLeg(call, ext.mobileNumber, ext.ringTimeoutSeconds, onAnswered, onFailedOrTimeout);
+    await handlers.onRinging?.(ext);
+    const timeout = ext.ringTimeoutSeconds || 25;
+    await this.ringEndpoints(
+      call,
+      first,
+      timeout,
+      (leg) => onAnswered(leg, ext),
+      async () => {
+        if (then.length === 0) return onNoAnswer(ext);
+        telemetry.log('INFO', `El navegador de ${ext.extension} no contestó; timbrando el celular`);
+        await this.ringEndpoints(call, then, timeout, (leg) => onAnswered(leg, ext), () => onNoAnswer(ext));
       }
-      await onFailedOrTimeout();
-      return;
-    }
-
-    // Ejecutar según estrategia
-    switch (ringStrategy) {
-      case 'BROWSER_ONLY':
-        await this.dialBrowserLeg(call, ext.extension, ext.ringTimeoutSeconds, onAnswered, onFailedOrTimeout);
-        break;
-
-      case 'MOBILE_ONLY':
-        if (ext.mobileNumber) {
-          await this.dialMobileLeg(call, ext.mobileNumber, ext.ringTimeoutSeconds, onAnswered, onFailedOrTimeout);
-        } else {
-          await onFailedOrTimeout();
-        }
-        break;
-
-      case 'BROWSER_THEN_MOBILE':
-        await this.dialBrowserLeg(
-          call,
-          ext.extension,
-          ext.ringTimeoutSeconds,
-          onAnswered,
-          async () => {
-            // Si el navegador no contestó, timbrar celular
-            if (ext.mobileNumber) {
-              telemetry.log('INFO', `Navegador no contestó. Marcando al celular ${ext.mobileNumber}...`);
-              await this.dialMobileLeg(call, ext.mobileNumber, ext.ringTimeoutSeconds, onAnswered, onFailedOrTimeout);
-            } else {
-              await onFailedOrTimeout();
-            }
-          }
-        );
-        break;
-
-      case 'BROWSER_AND_MOBILE':
-        await this.dialSimultaneousLegs(call, ext.extension, ext.mobileNumber ?? undefined, ext.ringTimeoutSeconds, onAnswered, onFailedOrTimeout);
-        break;
-    }
-  }
-
-  /**
-   * Timbra el endpoint WebRTC del navegador
-   */
-  private async dialBrowserLeg(
-    call: ActiveCall,
-    extNumber: string,
-    timeoutSecs: number,
-    onAnswered: (channelId: string) => Promise<void>,
-    onTimeout: () => Promise<void>
-  ): Promise<void> {
-    try {
-      telemetry.log('INFO', `Originando canal PJSIP/${extNumber} para llamada ${call.callId}`);
-      const channel = await this.ari.createChannel({
-        endpoint: `PJSIP/${extNumber}`,
-        app: 'fusion-voz',
-        appArgs: `outbound_agent,${call.callId}`,
-        callerId: call.fromNumber,
-      });
-
-      callRegistry.linkChannelToCall(call.callId, channel.id);
-
-      // Iniciar marcación
-      await this.ari.dialChannel(channel.id, call.channelId || undefined, timeoutSecs);
-
-      // Timer de timeout de timbrado
-      call.ringTimer = setTimeout(async () => {
-        telemetry.log('INFO', `Tiempo de timbrado expirado en navegador (${timeoutSecs}s) para llamada ${call.callId}`);
-        try {
-          await this.ari.hangupChannel(channel.id, 'no_answer');
-        } catch (e) {
-          // ignore
-        }
-        await onTimeout();
-      }, timeoutSecs * 1000);
-    } catch (err: any) {
-      telemetry.log('ERROR', `Error originando pierna de navegador para ext ${extNumber}: ${err.message}`);
-      await onTimeout();
-    }
-  }
-
-  /**
-   * Timbra el celular del asesor por la troncal SIP del operador
-   */
-  private async dialMobileLeg(
-    call: ActiveCall,
-    mobileNumber: string,
-    timeoutSecs: number,
-    onAnswered: (channelId: string) => Promise<void>,
-    onTimeout: () => Promise<void>
-  ): Promise<void> {
-    try {
-      telemetry.log('INFO', `Originando llamada hacia celular ${mobileNumber} por troncal para ${call.callId}`);
-      const trunkEndpoint = trunkDialString(mobileNumber);
-
-      const channel = await this.ari.createChannel({
-        endpoint: trunkEndpoint,
-        app: 'fusion-voz',
-        appArgs: `outbound_mobile,${call.callId}`,
-        callerId: call.fromNumber,
-      });
-
-      callRegistry.linkChannelToCall(call.callId, channel.id);
-      await this.ari.dialChannel(channel.id, call.channelId || undefined, timeoutSecs);
-
-      call.ringTimer = setTimeout(async () => {
-        try {
-          await this.ari.hangupChannel(channel.id, 'no_answer');
-        } catch (e) {
-          // ignore
-        }
-        await onTimeout();
-      }, timeoutSecs * 1000);
-    } catch (err: any) {
-      telemetry.log('ERROR', `Error originando pierna móvil ${mobileNumber}: ${err.message}`);
-      await onTimeout();
-    }
-  }
-
-  /**
-   * Timbra navegador y celular a la vez; el primero que contesta se queda la llamada y el otro se cuelga.
-   */
-  private async dialSimultaneousLegs(
-    call: ActiveCall,
-    extNumber: string,
-    mobileNumber?: string,
-    timeoutSecs = 25,
-    onAnswered?: (channelId: string) => Promise<void>,
-    onTimeout?: () => Promise<void>
-  ): Promise<void> {
-    let browserChannelId: string | null = null;
-    let mobileChannelId: string | null = null;
-
-    try {
-      const browserChannel = await this.ari.createChannel({
-        endpoint: `PJSIP/${extNumber}`,
-        app: 'fusion-voz',
-        appArgs: `outbound_simultaneous,${call.callId}`,
-        callerId: call.fromNumber,
-      });
-      browserChannelId = browserChannel.id;
-      callRegistry.linkChannelToCall(call.callId, browserChannelId);
-      await this.ari.dialChannel(browserChannelId, call.channelId || undefined, timeoutSecs);
-
-      if (mobileNumber) {
-        const mobileChannel = await this.ari.createChannel({
-          endpoint: trunkDialString(mobileNumber),
-          app: 'fusion-voz',
-          appArgs: `outbound_simultaneous,${call.callId}`,
-          callerId: call.fromNumber,
-        });
-        mobileChannelId = mobileChannel.id;
-        callRegistry.linkChannelToCall(call.callId, mobileChannelId);
-        await this.ari.dialChannel(mobileChannelId, call.channelId || undefined, timeoutSecs);
-      }
-
-      call.ringTimer = setTimeout(async () => {
-        if (browserChannelId) {
-          try {
-            await this.ari.hangupChannel(browserChannelId, 'no_answer');
-          } catch (e) {}
-        }
-        if (mobileChannelId) {
-          try {
-            await this.ari.hangupChannel(mobileChannelId, 'no_answer');
-          } catch (e) {}
-        }
-        if (onTimeout) await onTimeout();
-      }, timeoutSecs * 1000);
-    } catch (err: any) {
-      telemetry.log('ERROR', `Error en timbrado simultáneo: ${err.message}`);
-      if (onTimeout) await onTimeout();
-    }
+    );
   }
 }

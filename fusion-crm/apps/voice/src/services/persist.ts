@@ -122,6 +122,22 @@ class VoicePersistenceService {
     });
   }
 
+  /** Actualiza campos de la llamada en orden con el resto de escrituras (quién atendió, cola, buzón…). */
+  public updateCall(callId: string, data: Record<string, unknown>): void {
+    this.enqueue(`update-call-${callId}`, async () => {
+      await prisma.voiceCall.update({ where: { id: callId }, data: data as any });
+    });
+  }
+
+  /** Registra un evento de la llamada sin cambiar su estado (opción del menú, asesor que no contestó…). */
+  public logEvent(callId: string, organizationId: string, type: string, payload: Record<string, unknown> = {}, actorUserId?: string): void {
+    this.enqueue(`event-${callId}-${type}`, async () => {
+      await prisma.voiceCallEvent.create({
+        data: { organizationId, callId, type: type as any, actorUserId: actorUserId ?? null, payload: payload as any },
+      });
+    });
+  }
+
   /**
    * Persiste cada transición y su evento en VoiceCallEvent (SIN EXCEPCIÓN)
    */
@@ -131,6 +147,8 @@ class VoicePersistenceService {
     event: { type: string; from: string; to: string; at: Date; actorUserId?: string; payload: Record<string, unknown> },
     snapshot: CallMachineSnapshot
   ): void {
+    // Una transición al mismo estado no es un evento (su tipo NOOP_* no existe en la tabla)
+    if (event.type.startsWith('NOOP_')) return;
     this.enqueue(`transition-${callId}-${event.to}`, async () => {
       // 1. Crear evento inmutable de auditoría
       await prisma.voiceCallEvent.create({
@@ -169,7 +187,7 @@ class VoicePersistenceService {
    */
   public persistCallCompletion(
     call: ActiveCall,
-    disposition: 'ANSWERED' | 'MISSED' | 'ABANDONED_IN_QUEUE' | 'VOICEMAIL_LEFT' | 'HANDLED_BY_AI' | 'FAILED',
+    disposition: 'ANSWERED' | 'MISSED' | 'ABANDONED_IN_QUEUE' | 'VOICEMAIL_LEFT' | 'HANDLED_BY_AI' | 'FAILED' | 'CANCELLED',
     hangupCause?: string,
     hangupBy: 'CALLER' | 'AGENT' | 'SYSTEM' | 'UNKNOWN' = 'UNKNOWN'
   ): void {
@@ -218,7 +236,7 @@ class VoicePersistenceService {
       }
 
       // Si nadie contestó (MISSED): crear tarea de devolución en 2 horas hábiles
-      if (disposition === 'MISSED') {
+      if (disposition === 'MISSED' && call.direction === 'INBOUND') {
         await this.createCallbackTask(call);
       }
     });

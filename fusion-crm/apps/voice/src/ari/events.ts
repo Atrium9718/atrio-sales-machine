@@ -6,9 +6,11 @@ import {
   AriChannelUnholdEvent,
   AriChannelDtmfReceivedEvent,
   AriRecordingFinishedEvent,
+  AriRecordingFailedEvent,
+  AriPlaybackFinishedEvent,
 } from './types';
 import { AriClient } from './client';
-import { callRegistry } from '../state/registry';
+import { ActiveCall, callRegistry } from '../state/registry';
 import { transitionCall } from '@fusion/core/src/voice/callMachine';
 import { InboundCallHandler } from '../handlers/inbound';
 import { OutboundCallHandler } from '../handlers/outbound';
@@ -16,6 +18,20 @@ import { InternalCallHandler } from '../handlers/internal';
 import { VoiceRecordService } from '../services/record';
 import { VoiceBridgeService } from '../services/bridge';
 import { persistence } from '../services/persist';
+import { finishCall, Disposition } from '../state/lifecycle';
+import type { MediaController } from '../services/media';
+import type { RingTracker } from '../services/ringGroups';
+import type { VoiceQueueService } from '../services/queue';
+import type { VoiceVoicemailService } from '../services/voicemail';
+import type { VoiceIvrService } from '../services/ivr';
+
+export interface DispatcherServices {
+  media: MediaController;
+  tracker: RingTracker;
+  queue: VoiceQueueService;
+  voicemail: VoiceVoicemailService;
+  ivr: VoiceIvrService;
+}
 import { broadcaster } from '../services/broadcast';
 import { telemetry } from '../telemetry';
 
@@ -26,7 +42,8 @@ export class AriEventDispatcher {
     private readonly outboundHandler: OutboundCallHandler,
     private readonly internalHandler: InternalCallHandler,
     private readonly recordService: VoiceRecordService,
-    private readonly bridgeService: VoiceBridgeService
+    private readonly bridgeService: VoiceBridgeService,
+    private readonly services: DispatcherServices
   ) {}
 
   public async dispatch(event: AriEvent): Promise<void> {
@@ -55,6 +72,16 @@ export class AriEventDispatcher {
         await this.handleRecordingFinished(event as AriRecordingFinishedEvent);
         break;
 
+      case 'RecordingFailed': {
+        const rec = (event as AriRecordingFailedEvent).recording;
+        await this.services.voicemail.finished(rec.name, 0);
+        break;
+      }
+
+      case 'PlaybackFinished':
+        this.services.media.finished((event as AriPlaybackFinishedEvent).playback.id);
+        break;
+
       case 'ApplicationReplaced':
         telemetry.log('ERROR', 'ALERTA CRÍTICA: ApplicationReplaced recibida en ARI. Otra instancia ha tomado la app fusion-voz.');
         break;
@@ -75,6 +102,15 @@ export class AriEventDispatcher {
       channelId: channel.id,
       dialplanExten: dialedExt,
     });
+
+    // 0. Una pierna que timbraba (asesor, celular, externo) contestó
+    if (args[0] === 'ring_leg') {
+      if (!this.services.tracker.answered(channel.id)) {
+        // Contestó tarde: la llamada ya siguió su camino
+        await this.ari.hangupChannel(channel.id, 'normal').catch(() => {});
+      }
+      return;
+    }
 
     // 1. Lo que marca una extensión (contexto fusion-interno): interna o número externo
     if (args.includes('internal')) {
@@ -124,63 +160,76 @@ export class AriEventDispatcher {
 
   private async handleChannelDestroyed(event: AriChannelDestroyedEvent): Promise<void> {
     const channelId = event.channel.id;
+    this.services.media.channelGone(channelId);
+    // Una pierna que timbraba se cayó (rechazo, ocupado, teléfono desconectado)
+    if (this.services.tracker.legGone(channelId)) return;
+
     const call = callRegistry.getCallByChannelId(channelId);
+    if (!call || call.finished) return;
 
-    if (!call) return;
+    telemetry.log('INFO', `Canal ${channelId} colgado en la llamada ${call.callId}: ${event.cause_txt} (${event.cause})`);
+    const isPrimary = call.channelId === channelId;
+    const talking = ['CONNECTED', 'ON_HOLD', 'TRANSFERRING'].includes(call.machine.state);
+    const cause = event.cause_txt || `CAUSE_${event.cause}`;
 
-    telemetry.log('INFO', `Canal ${channelId} destruido en llamada ${call.callId}. Causa: ${event.cause_txt} (${event.cause})`);
+    if (talking) {
+      const hangupBy = isPrimary ? (call.direction === 'OUTBOUND' ? 'AGENT' : 'CALLER') : call.direction === 'OUTBOUND' ? 'CALLER' : 'AGENT';
+      await this.endConnectedCall(call, channelId, cause, hangupBy);
+      return;
+    }
 
-    const isPrimaryChannel = call.channelId === channelId;
+    if (isPrimary) {
+      this.services.ivr.abort(channelId);
+      this.services.tracker.cancel(call.callId);
+      if (this.services.voicemail.isRecording(call.callId)) {
+        // El mensaje se guarda al llegar RecordingFinished; ahí se cierra la llamada
+        this.services.voicemail.callerHungUp(call);
+        return;
+      }
+      if (this.services.queue.callerLeft(call.callId)) {
+        finishCall(call, 'ABANDONED_IN_QUEUE', cause, 'CALLER');
+        return;
+      }
+      await this.hangupLinked(call, channelId);
+      const disposition: Disposition =
+        call.direction === 'INBOUND' ? (call.voicemail?.saved ? 'VOICEMAIL_LEFT' : 'MISSED') : 'CANCELLED';
+      finishCall(call, disposition, cause, 'CALLER');
+      return;
+    }
 
-    if (isPrimaryChannel || call.machine.state === 'CONNECTED') {
-      // La parte principal o una de las partes en conversación colgó
-      const disposition = call.machine.state === 'CONNECTED' ? 'ANSWERED' : 'FAILED';
-      const hangupBy = isPrimaryChannel ? 'CALLER' : 'AGENT';
+    // Saliente: el cliente no contestó o rechazó antes de conectar
+    if (call.direction === 'OUTBOUND') {
+      await this.ari.hangupChannel(call.channelId, 'normal').catch(() => {});
+      finishCall(call, 'FAILED', cause, 'CALLER');
+    }
+  }
 
-      const compTrans = transitionCall(call.machine, 'COMPLETED', {
-        reason: event.cause_txt,
-        hangupCause: `CAUSE_${event.cause}`,
+  private async hangupLinked(call: ActiveCall, except: string) {
+    for (const linkedId of [call.channelId, ...call.linkedChannelIds]) {
+      if (linkedId !== except) await this.ari.hangupChannel(linkedId, 'normal').catch(() => {});
+    }
+  }
+
+  private async endConnectedCall(call: ActiveCall, channelId: string, cause: string, hangupBy: 'CALLER' | 'AGENT') {
+    await this.hangupLinked(call, channelId);
+    if (call.bridgeId) await this.bridgeService.destroyBridge(call.bridgeId);
+    if (call.queueId) await this.services.queue.callEnded(call);
+    finishCall(call, 'ANSWERED', cause, hangupBy);
+    if (call.handledByUserId) {
+      await broadcaster.publishToUser(call.handledByUserId, {
+        event: 'voice.call_ended',
+        callId: call.callId,
         channelId,
+        organizationId: call.organizationId,
+        fromNumber: call.fromNumber,
+        displayNumber: call.fromNumber,
+        state: 'COMPLETED',
+        direction: call.direction,
+        context: call.context ?? null,
+        timestamp: new Date().toISOString(),
+        waitSeconds: call.machine.waitSeconds,
+        talkSeconds: call.machine.talkSeconds,
       });
-      call.machine = compTrans.snapshot;
-
-      // Persistir cierre
-      persistence.persistCallCompletion(call, disposition, event.cause_txt, hangupBy);
-
-      // Colgar canales asociados restantes
-      for (const linkedId of call.linkedChannelIds) {
-        if (linkedId !== channelId) {
-          try {
-            await this.ari.hangupChannel(linkedId, 'normal');
-          } catch (e) {}
-        }
-      }
-
-      // Destruir el puente si existía
-      if (call.bridgeId) {
-        await this.bridgeService.destroyBridge(call.bridgeId);
-      }
-
-      // Notificar al navegador por Redis SSE
-      if (call.handledByUserId) {
-        await broadcaster.publishToUser(call.handledByUserId, {
-          event: 'voice.call_ended',
-          callId: call.callId,
-          channelId,
-          organizationId: call.organizationId,
-          fromNumber: call.fromNumber,
-          displayNumber: call.fromNumber,
-          state: 'COMPLETED',
-          direction: call.direction,
-          context: call.context ?? null,
-          timestamp: new Date().toISOString(),
-          waitSeconds: call.machine.waitSeconds,
-          talkSeconds: call.machine.talkSeconds,
-        });
-      }
-
-      telemetry.recordCallCompleted(disposition !== 'ANSWERED');
-      callRegistry.removeCall(call.callId);
     }
   }
 
@@ -243,28 +292,15 @@ export class AriEventDispatcher {
   }
 
   private async handleDtmf(event: AriChannelDtmfReceivedEvent): Promise<void> {
-    const call = callRegistry.getCallByChannelId(event.channel.id);
-    if (!call) return;
-
-    telemetry.log('INFO', `DTMF '${event.digit}' recibido en llamada ${call.callId} (${event.duration_ms}ms)`);
-
-    // Persistir evento DTMF
-    await persistence.persistCallTransition(
-      call.callId,
-      call.organizationId,
-      {
-        type: 'DTMF',
-        from: call.machine.state,
-        to: call.machine.state,
-        at: new Date(),
-        payload: { digit: event.digit, durationMs: event.duration_ms },
-      },
-      call.machine
-    );
+    const channelId = event.channel.id;
+    // Las teclas no se guardan (pueden ser datos que el cliente digita); el menú registra la opción elegida
+    if (this.services.ivr.handleDigit(channelId, event.digit)) return;
+    await this.services.queue.handleDigit(channelId, event.digit);
   }
 
   private async handleRecordingFinished(event: AriRecordingFinishedEvent): Promise<void> {
     const rec = event.recording;
+    if (await this.services.voicemail.finished(rec.name, rec.duration || 0)) return;
     await this.recordService.handleRecordingFinished(rec.name, rec.duration || 0);
   }
 }

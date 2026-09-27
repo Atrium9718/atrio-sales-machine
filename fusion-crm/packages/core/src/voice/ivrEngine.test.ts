@@ -421,3 +421,52 @@ describe('Motor de IVR y Reglas de Oro (Etapa 17.5)', () => {
     expect(summary.passed).toBe(25);
   });
 });
+
+describe('Menú en vivo: sin respuesta y horario de la empresa', () => {
+  const ctx = (over: Partial<IvrExecutionContext> = {}): IvrExecutionContext => ({
+    callId: 'c1',
+    organizationId: 'org_test',
+    fromNumber: '+573001112233',
+    toNumber: '6068801234',
+    variables: {},
+    currentNodeId: 'node_menu_main',
+    currentRetries: {},
+    dtmfBuffer: '',
+    accumulatedWaitSeconds: 0,
+    stepHistory: [],
+    legalNoticePlayed: true,
+    activeMenuDepth: 0,
+    ...over,
+  });
+
+  it('si nadie marca repite el menú y al tercer intento pasa a una persona (opción 0)', () => {
+    const flow = createMockFlow();
+    let c = ctx();
+    const first = runFlowStep(flow, c, { type: 'TIMEOUT' });
+    expect(first.action).toBe('WAIT_DTMF');
+    expect(first.nextContext.currentRetries.node_menu_main).toBe(1);
+    c = runFlowStep(flow, first.nextContext, { type: 'TIMEOUT' }).nextContext;
+    const third = runFlowStep(flow, c, { type: 'TIMEOUT' });
+    expect(third.action).toBe('JUMP');
+    expect(third.nextContext.currentNodeId).toBe('node_ext_humano');
+  });
+
+  it('menú sin opción 0 ni salida: agotados los intentos cuelga (o buzón si así se configuró)', () => {
+    const flow = createMockFlow();
+    const menu = flow.nodes.find((n) => n.id === 'node_menu_main')!;
+    menu.data.outputs = menu.data.outputs.filter((o) => o.label !== '0');
+    const exhausted = ctx({ currentRetries: { node_menu_main: 2 } });
+    expect(runFlowStep(flow, exhausted, { type: 'DTMF', dtmf: '7' }).action).toBe('HANGUP');
+    menu.data.exhaustedAction = 'VOICEMAIL';
+    expect(runFlowStep(flow, exhausted, { type: 'TIMEOUT' }).action).toBe('RECORD_VOICEMAIL');
+  });
+
+  it('el nodo de horario usa el estado calculado con el calendario de la empresa', () => {
+    const flow = createMockFlow();
+    const at = (businessStatus: 'abierto' | 'cerrado' | 'festivo') =>
+      runFlowStep(flow, ctx({ currentNodeId: 'node_schedule', businessStatus, currentVirtualTimeBogota: new Date('2026-09-28T15:00:00Z') })).nextContext.currentNodeId;
+    expect(at('abierto')).toBe('node_menu_main');
+    expect(at('cerrado')).toBe('node_voicemail');
+    expect(at('festivo')).toBe('node_holiday_prompt');
+  });
+});

@@ -33,6 +33,14 @@ export interface ActiveCall {
   attendedTransferSecondBridgeId?: string;
   /** Saliente marcada desde el teléfono del asesor: su canal se contesta cuando contesta el cliente. */
   agentDialed?: boolean;
+  /** Ya se contestó el canal de quien llama (menú, cola o buzón). */
+  callerAnswered?: boolean;
+  /** Se cerró y guardó el resultado (evita cerrar dos veces). */
+  finished?: boolean;
+  /** Buzón en curso: nombre de la grabación y si el mensaje quedó guardado. */
+  voicemail?: { recordingName?: string; saved?: boolean; callerGone?: boolean; extensionId?: string | null; queueId?: string | null; assigneeUserId?: string | null };
+  /** Saltos entre colas por desborde (máximo 2). */
+  queueHops?: number;
 }
 
 class CallRegistry {

@@ -3,6 +3,8 @@ import { ActiveCall } from '../state/registry';
 import { prisma } from './persist';
 import { telemetry } from '../telemetry';
 
+export const recordingStorageKey = (recordingName: string) => `recording/${recordingName}.wav`;
+
 export class VoiceRecordService {
   constructor(private readonly ari: AriClient) {}
 
@@ -31,7 +33,7 @@ export class VoiceRecordService {
       return null;
     }
 
-    const recordingName = `rec_${call.callId}_${Date.now()}`;
+    const recordingName = `rec_${call.callId}`;
     try {
       telemetry.log('INFO', `Iniciando grabación en bridge ${call.bridgeId}: ${recordingName}`);
       const liveRec = await this.ari.recordBridge(call.bridgeId, recordingName, 'wav');
@@ -43,16 +45,19 @@ export class VoiceRecordService {
       retentionDate.setFullYear(retentionDate.getFullYear() + 1);
 
       // Registrar en base de datos el registro de grabación inicial
-      const voiceRecording = await prisma.voiceRecording.create({
-        data: {
+      // Una grabación por llamada: el archivo queda en /var/spool/asterisk/recording/<nombre>.wav
+      const voiceRecording = await prisma.voiceRecording.upsert({
+        where: { callId: call.callId },
+        create: {
           organizationId: call.organizationId,
           callId: call.callId,
-          storageKey: `asterisk/${recordingName}.wav`,
+          storageKey: recordingStorageKey(recordingName),
           format: 'wav',
           durationSeconds: 0,
           consentAnnounced: call.legalConsentAnnounced,
           retentionUntil: retentionDate,
         },
+        update: { storageKey: recordingStorageKey(recordingName), durationSeconds: 0, deletedAt: null },
       });
 
       call.recordingId = voiceRecording.id;
@@ -145,7 +150,7 @@ export class VoiceRecordService {
   public async handleRecordingFinished(recordingName: string, durationSeconds: number): Promise<void> {
     try {
       const rec = await prisma.voiceRecording.findFirst({
-        where: { storageKey: `asterisk/${recordingName}.wav` },
+        where: { storageKey: recordingStorageKey(recordingName) },
       });
 
       if (rec) {

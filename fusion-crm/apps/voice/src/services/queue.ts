@@ -1,79 +1,39 @@
-import { trunkDialString } from '../trunk';
 /**
- * Motor de Colas de Atención ACD (apps/voice/src/services/queue.ts)
- * Etapa 17.6 — Bloque A.
+ * Colas de atención (ACD) sin app_queue: las colas, sus miembros y el estado de cada asesor
+ * viven en Postgres (lo edita el CRM) y el puente reparte las llamadas.
  *
- * Arquitectura:
- * - El llamante entra a un bridge de tipo 'holding' con música de espera (MOH).
- * - En un holding bridge los canales no se escuchan entre sí y oyen la música.
- * - El llamante NO se mueve mientras se busca agente candidato.
- * - Se origina un canal hacia el agente y, al contestar, se mueve al llamante
- *   a un mixing bridge con él (sin silencios ni repiques molestos).
- * - Control estricto de 5 estrategias + Skill-based.
- * - Desborde por maxWaitSeconds, maxCallers o sin agentes disponibles.
- * - Tecla de salida (por defecto '9') para buzón o devolución virtual (callback).
- * - Auto-pausa por 2 no respuestas consecutivas.
- * - Wrap-up automático y respiro manual.
- * - Detección de bucle de rebotes (máximo 2 saltos entre colas).
- * - Vigilancia periódica (voice:queue-watchdog).
+ * - Quien llama se contesta, oye la bienvenida y música de espera, y cada cierto tiempo su posición.
+ * - Se timbra a los asesores disponibles según la estrategia (todos a la vez, por turnos, el que
+ *   lleva más tiempo libre…). La llamada se une al asesor solo cuando contesta (evento StasisStart).
+ * - Asesor que no contesta dos veces seguidas pasa a "pausa" (no responde).
+ * - Tras colgar, el asesor queda unos segundos en "respiro" antes de recibir otra.
+ * - Si nadie atiende en el tiempo máximo, o la cola está llena, se desborda: buzón, otra cola
+ *   (máximo 2 saltos), un número externo o colgar dejando la tarea de devolver la llamada.
+ * - Marcando 9 quien espera sale al buzón.
  */
 
-import { AriClient } from '../ari/client';
 import { ActiveCall, callRegistry } from '../state/registry';
+import { finishCall, moveCall } from '../state/lifecycle';
 import { prisma, persistence } from './persist';
 import { broadcaster } from './broadcast';
 import { telemetry } from '../telemetry';
-import {
-  selectQueueAgent,
-  calculateEstimatedWaitTime,
-  calculateServiceLevel,
-  shouldAutoBreakAgent,
-  canBounceToAnotherQueue,
-  QueueAgentCandidate,
-  QueueStrategyType,
-  MAX_QUEUE_BOUNCES,
-} from '@fusion/core/src/voice/queueStrategies';
-import { transitionCall } from '@fusion/core/src/voice/callMachine';
+import { trunkDialString } from '../trunk';
+import { answerCaller } from './connect';
+import type { CallConnector } from './connect';
+import type { MediaController } from './media';
+import type { RingTarget, VoiceRingService } from './ring';
+import type { RingTracker } from './ringGroups';
+import type { VoiceVoicemailService } from './voicemail';
+import { selectQueueAgent, shouldAutoBreakAgent, QueueAgentCandidate, QueueStrategyType, MAX_QUEUE_BOUNCES } from '@fusion/core/src/voice/queueStrategies';
 
-export interface QueueCallItem {
-  callId: string;
-  channelId: string;
-  queueId: string;
-  organizationId: string;
-  enteredAt: Date;
-  callerNumber: string;
-  callerName: string | null;
-  holdingBridgeId: string;
-  hopCount: number;
-  isVirtualCallback: boolean;
-  callbackPhone?: string;
-  callbackRequestedAt?: Date;
-  estimatedWaitMinutes: number;
-  announcedPosition: number;
-  announceTimer?: NodeJS.Timeout;
-  overflowTimer?: NodeJS.Timeout;
-}
+export const QUEUE_EXIT_KEY = '9';
 
-export interface QueueAgentInternalState {
-  userId: string;
-  name: string;
-  extension: string;
-  status: 'AVAILABLE' | 'ON_CALL' | 'WRAP_UP' | 'BREAK' | 'OFFLINE';
-  penalty: number;
-  skills: string[];
-  lastCallCompletedAt: Date | null;
-  callsHandledToday: number;
-  availableSince: Date | null;
-  consecutiveMissedCalls: number;
-  currentCallId?: string;
-  wrapUpTimer?: NodeJS.Timeout;
-}
+export type QueueOverflowTarget = 'VOICEMAIL' | 'ANOTHER_QUEUE' | 'EXTERNAL_NUMBER' | 'AI_AGENT' | 'HANGUP_WITH_MESSAGE';
 
-export interface VoiceQueueRuntimeData {
+export interface QueueConfig {
   id: string;
   organizationId: string;
   name: string;
-  extension?: string | null;
   strategy: QueueStrategyType;
   ringSeconds: number;
   wrapUpSeconds: number;
@@ -82,894 +42,574 @@ export interface VoiceQueueRuntimeData {
   announcePositionEverySeconds: number;
   announceHoldTime: boolean;
   musicOnHold: string;
-  greetingPromptId?: string | null;
-  periodicPromptId?: string | null;
-  overflowTarget: 'VOICEMAIL' | 'ANOTHER_QUEUE' | 'EXTERNAL_NUMBER' | 'AI_AGENT' | 'HANGUP_WITH_MESSAGE';
-  overflowTargetId?: string | null;
-  exitKey: string;
+  greetingMedia: string | null;
+  periodicMedia: string | null;
+  overflowTarget: QueueOverflowTarget;
+  overflowTargetId: string | null;
   isActive: boolean;
 }
 
+export interface QueueMemberRow {
+  userId: string;
+  name: string;
+  extension: string;
+  extensionId: string;
+  mobileNumber: string | null;
+  ringStrategy: string;
+  recordingPolicy: 'ALWAYS' | 'NEVER' | 'INBOUND_ONLY' | 'OUTBOUND_ONLY';
+  penalty: number;
+  skills: string[];
+  /** Estado que puso el asesor en el CRM (null = nunca lo ha cambiado). */
+  status: string | null;
+}
+
+export interface QueueStore {
+  getQueue(queueId: string, organizationId: string): Promise<QueueConfig | null>;
+  getMembers(queueId: string): Promise<QueueMemberRow[]>;
+  setAgentStatus(organizationId: string, userId: string, status: 'AVAILABLE' | 'ON_CALL' | 'WRAP_UP' | 'BREAK', reason?: string | null, currentCallId?: string | null): Promise<void>;
+  /** Vuelve a "disponible" solo si sigue en respiro (no pisa una pausa que el asesor puso). */
+  endWrapUp(userId: string): Promise<void>;
+}
+
+/** Nombre del archivo de una locución en Asterisk → media de ARI. */
+export const promptMedia = (asteriskFilename: string | null | undefined) =>
+  asteriskFilename ? `sound:fusion/${asteriskFilename.replace(/^fusion\//, '').replace(/\.(wav|gsm|ulaw|alaw|sln\d*)$/i, '')}` : null;
+
+async function promptById(id: string | null | undefined): Promise<string | null> {
+  if (!id) return null;
+  const p = await prisma.voicePrompt.findFirst({ where: { id, isActive: true, deletedAt: null } }).catch(() => null);
+  return promptMedia(p?.asteriskFilename);
+}
+
+export const prismaQueueStore: QueueStore = {
+  async getQueue(queueId, organizationId) {
+    const q = await prisma.voiceQueue.findFirst({ where: { id: queueId, organizationId, deletedAt: null } });
+    if (!q) return null;
+    return {
+      id: q.id,
+      organizationId: q.organizationId,
+      name: q.name,
+      strategy: q.strategy as QueueStrategyType,
+      ringSeconds: q.ringSeconds,
+      wrapUpSeconds: q.wrapUpSeconds,
+      maxWaitSeconds: q.maxWaitSeconds,
+      maxCallers: q.maxCallers,
+      announcePositionEverySeconds: q.announcePositionEverySeconds,
+      announceHoldTime: q.announceHoldTime,
+      musicOnHold: q.musicOnHold,
+      greetingMedia: await promptById(q.greetingPromptId),
+      periodicMedia: await promptById(q.periodicPromptId),
+      overflowTarget: q.overflowTarget as QueueOverflowTarget,
+      overflowTargetId: q.overflowTargetId,
+      isActive: q.isActive,
+    };
+  },
+  async getMembers(queueId) {
+    const members = await prisma.voiceQueueMember.findMany({ where: { queueId, isActive: true, deletedAt: null } });
+    if (!members.length) return [];
+    const userIds = members.map((m) => m.userId);
+    const [exts, statuses] = await Promise.all([
+      prisma.voiceExtension.findMany({ where: { userId: { in: userIds }, status: 'ACTIVE', deletedAt: null } }),
+      prisma.voiceAgentStatus.findMany({ where: { userId: { in: userIds } } }),
+    ]);
+    const extByUser = new Map(exts.map((e) => [e.userId, e]));
+    const statusByUser = new Map(statuses.map((s) => [s.userId, s.status as string]));
+    return members.flatMap((m) => {
+      const ext = extByUser.get(m.userId);
+      if (!ext) return [];
+      return [
+        {
+          userId: m.userId,
+          name: ext.label,
+          extension: ext.extension,
+          extensionId: ext.id,
+          mobileNumber: ext.mobileNumber,
+          ringStrategy: ext.ringStrategy,
+          recordingPolicy: ext.recordingPolicy as QueueMemberRow['recordingPolicy'],
+          penalty: m.penalty,
+          skills: m.skills,
+          status: statusByUser.get(m.userId) ?? null,
+        },
+      ];
+    });
+  },
+  async setAgentStatus(organizationId, userId, status, reason = null, currentCallId = null) {
+    await prisma.voiceAgentStatus.upsert({
+      where: { userId },
+      create: { organizationId, userId, status, reason, currentCallId, since: new Date() },
+      update: { status, reason, currentCallId, since: new Date() },
+    });
+  },
+  async endWrapUp(userId) {
+    await prisma.voiceAgentStatus.updateMany({
+      where: { userId, status: 'WRAP_UP' },
+      data: { status: 'AVAILABLE', reason: null, currentCallId: null, since: new Date() },
+    });
+  },
+};
+
+interface Waiting {
+  call: ActiveCall;
+  queue: QueueConfig;
+  enteredAt: Date;
+  ringing: boolean;
+  overflowTimer?: NodeJS.Timeout;
+  announceTimer?: NodeJS.Timeout;
+  mohOn: boolean;
+}
+
+interface AgentState {
+  ringingFor?: string;
+  onCall?: string;
+  wrapUntil?: number;
+  wrapTimer?: NodeJS.Timeout;
+  wrapUpSeconds?: number;
+  misses: number;
+  lastCallEndedAt: Date | null;
+  callsToday: number;
+  availableSince: Date | null;
+}
+
+export interface QueueAri {
+  answerChannel(channelId: string): Promise<void>;
+  startMusicOnHold(channelId: string, mohClass?: string): Promise<void>;
+  stopMusicOnHold(channelId: string): Promise<void>;
+  hangupChannel(channelId: string, reason?: string): Promise<void>;
+}
+
+export interface QueueDeps {
+  ari: QueueAri;
+  ring: Pick<VoiceRingService, 'ringEndpoints'>;
+  tracker: Pick<RingTracker, 'cancel'>;
+  connector: Pick<CallConnector, 'connect'>;
+  voicemail: Pick<VoiceVoicemailService, 'start'>;
+  media: MediaController;
+  store?: QueueStore;
+  /** Cada cuánto se reintenta repartir (asesores que se liberan o se conectan). */
+  retryMs?: number;
+}
+
+/** Endpoints de un asesor para una llamada de cola (navegador y, si así lo configuró, celular). */
+export function memberTargets(m: QueueMemberRow): RingTarget[] {
+  const browser = { endpoint: `PJSIP/${m.extension}`, label: `${m.name} (${m.extension})` };
+  const mobile = m.mobileNumber ? { endpoint: trunkDialString(m.mobileNumber), label: `${m.name} (celular)` } : null;
+  if (m.ringStrategy === 'MOBILE_ONLY') return mobile ? [mobile] : [];
+  if (m.ringStrategy === 'BROWSER_AND_MOBILE' && mobile) return [browser, mobile];
+  return [browser];
+}
+
+/** Frase de posición: "usted es el siguiente" o "hay N llamadas antes que usted". */
+export function positionMedia(position: number): string[] {
+  return position <= 1 ? ['sound:queue-youarenext'] : ['sound:queue-thereare', `number:${position - 1}`, 'sound:queue-callswaiting'];
+}
+
 export class VoiceQueueService {
-  // Mapa de llamadas esperando por cola: queueId -> QueueCallItem[]
-  private waitingCallsByQueue = new Map<string, QueueCallItem[]>();
+  private waiting = new Map<string, Waiting[]>();
+  private agents = new Map<string, AgentState>();
+  private lastAssigned = new Map<string, string>();
+  private dispatching = new Set<string>();
+  private retryTimer?: NodeJS.Timeout;
+  private readonly store: QueueStore;
 
-  // Estado en memoria de agentes: userId -> QueueAgentInternalState
-  private agentStates = new Map<string, QueueAgentInternalState>();
-
-  // Historial de duraciones en los últimos 30m por cola para AHT: queueId -> number[] (segundos)
-  private rollingAhtSeconds = new Map<string, number[]>();
-
-  // Historial de llamadas para cálculo de SLA: queueId -> { waitSeconds: number; answered: boolean }[]
-  private slaSamples = new Map<string, { callId: string; waitSeconds: number; answered: boolean }[]>();
-
-  // Último agente asignado por cola para Round Robin
-  private lastAssignedAgentByQueue = new Map<string, string>();
-
-  // Temporizador de watchdog
-  private watchdogTimer?: NodeJS.Timeout;
-
-  constructor(private readonly ari: AriClient) {
-    this.startWatchdog();
+  constructor(private readonly deps: QueueDeps) {
+    this.store = deps.store ?? prismaQueueStore;
   }
 
-  /**
-   * Encola una llamada entrante a una cola especificada.
-   */
+  // --- Entrada a la cola -----------------------------------------------------
+
   public async enqueueCall(call: ActiveCall, queueId: string): Promise<void> {
-    const queue = await this.getQueueConfig(queueId, call.organizationId);
+    const queue = await this.store.getQueue(queueId, call.organizationId).catch(() => null);
     if (!queue || !queue.isActive) {
-      telemetry.log('WARN', `Cola ${queueId} no encontrada o inactiva para llamada ${call.callId}`);
-      await this.handleOverflow(call, queue || { overflowTarget: 'VOICEMAIL' } as any, 'QUEUE_INACTIVE');
+      telemetry.log('WARN', `Cola ${queueId} no existe o está inactiva; la llamada ${call.callId} pasa al buzón`);
+      await this.deps.voicemail.start(call, { queueId: queue?.id ?? null });
       return;
     }
+    const list = this.list(queue.id);
+    const members = await this.store.getMembers(queue.id).catch(() => [] as QueueMemberRow[]);
+    if (list.length >= queue.maxCallers) return this.overflow(call, queue, 'QUEUE_FULL');
+    if (members.length === 0) return this.overflow(call, queue, 'NO_MEMBERS');
 
     call.queueId = queue.id;
-    const currentHop = (call as any).queueHopCount || 0;
-
-    // 1. Verificación de bucle de rebotes (máximo 2 saltos)
-    if (!canBounceToAnotherQueue(currentHop)) {
-      telemetry.log('WARN', `Llamada ${call.callId} alcanzó el límite de rebotes (${currentHop}). Desbordando a buzón.`);
-      await this.handleOverflow(call, { ...queue, overflowTarget: 'VOICEMAIL' }, 'MAX_BOUNCES_EXCEEDED');
-      return;
-    }
-
-    const currentWaiting = this.getWaitingCalls(queue.id);
-
-    // 2. Verificación de saturación (maxCallers)
-    if (currentWaiting.length >= queue.maxCallers) {
-      telemetry.log('WARN', `Cola ${queue.name} llena (${currentWaiting.length}/${queue.maxCallers}). Disparando desborde.`);
-      await this.handleOverflow(call, queue, 'MAX_CALLERS_EXCEEDED');
-      return;
-    }
-
-    // 3. Crear bridge de tipo 'holding' para mantener al cliente con música
-    const holdingBridge = await this.ari.createBridge('holding', `holding-q-${queue.id}-${call.callId}`);
-    telemetry.log('INFO', `Llamada ${call.callId} entrando a holding bridge ${holdingBridge.id}`);
-
+    moveCall(call, 'IN_QUEUE', { extra: { queueId: queue.id, queueName: queue.name } });
+    persistence.updateCall(call.callId, { queueId: queue.id });
     try {
-      await this.ari.addChannelToBridge(holdingBridge.id, call.channelId);
-      await this.ari.startMusicOnHold(call.channelId, queue.musicOnHold || 'default');
-    } catch (e: any) {
-      telemetry.log('WARN', `Fallo al agregar canal ${call.channelId} a holding bridge: ${e.message}`);
+      await answerCaller(this.deps.ari, call);
+    } catch (err: any) {
+      telemetry.log('WARN', `No se pudo contestar la llamada ${call.callId} para la cola: ${err.message}`);
     }
 
-    // Calcular posición y tiempo estimado de espera
-    const position = currentWaiting.length + 1;
-    const availableAgentsCount = this.getAvailableAgents(queue.id).length;
-    const rollingDurations = this.rollingAhtSeconds.get(queue.id) || [];
-    const waitEstimate = calculateEstimatedWaitTime(rollingDurations, position, availableAgentsCount);
+    const item: Waiting = { call, queue, enteredAt: new Date(), ringing: false, mohOn: false };
+    list.push(item);
+    item.overflowTimer = setTimeout(() => void this.overflow(call, queue, 'MAX_WAIT'), queue.maxWaitSeconds * 1000);
+    item.overflowTimer.unref?.();
+    const every = Math.max(15, queue.announcePositionEverySeconds || 45) * 1000;
+    item.announceTimer = setInterval(() => void this.announce(item), every);
+    item.announceTimer.unref?.();
+    telemetry.log('INFO', `Llamada ${call.callId} en la cola ${queue.name} (posición ${list.length})`);
+    void this.publish(queue);
 
-    const queueItem: QueueCallItem = {
-      callId: call.callId,
-      channelId: call.channelId,
-      queueId: queue.id,
-      organizationId: call.organizationId,
-      enteredAt: new Date(),
-      callerNumber: call.fromNumber,
-      callerName: call.context?.customerName || null,
-      holdingBridgeId: holdingBridge.id,
-      hopCount: currentHop,
-      isVirtualCallback: false,
-      estimatedWaitMinutes: waitEstimate.estimatedMinutes,
-      announcedPosition: position,
+    void this.dispatch(queue.id);
+    this.ensureRetry();
+
+    if (queue.greetingMedia) await this.deps.media.play(call.channelId, [queue.greetingMedia]);
+    if (this.isWaiting(call.callId)) await this.startMoh(item);
+  }
+
+  // --- Reparto -----------------------------------------------------------------
+
+  public async dispatch(queueId: string): Promise<void> {
+    if (this.dispatching.has(queueId)) return;
+    this.dispatching.add(queueId);
+    try {
+      const pending = this.list(queueId).filter((i) => !i.ringing);
+      if (!pending.length) return;
+      const members = await this.store.getMembers(queueId).catch(() => [] as QueueMemberRow[]);
+      for (const item of pending) {
+        if (!this.isWaiting(item.call.callId)) continue;
+        const free = members.filter((m) => this.isAvailable(m) && memberTargets(m).length > 0);
+        if (!free.length) break;
+        const byUser = new Map(free.map((m) => [m.userId, m]));
+        const selected = selectQueueAgent(
+          item.queue.strategy,
+          free.map((m) => this.candidate(m)),
+          { lastAssignedUserId: this.lastAssigned.get(queueId) }
+        );
+        if (!selected.length) break;
+        const chosen = (item.queue.strategy === 'RINGALL' ? selected : selected.slice(0, 1))
+          .map((c) => byUser.get(c.userId))
+          .filter((m): m is QueueMemberRow => !!m);
+        await this.ringAgents(item, chosen);
+      }
+    } finally {
+      this.dispatching.delete(queueId);
+    }
+  }
+
+  private async ringAgents(item: Waiting, agents: QueueMemberRow[]): Promise<void> {
+    const { call, queue } = item;
+    const targets: RingTarget[] = [];
+    const agentByEndpoint = new Map<string, QueueMemberRow>();
+    for (const a of agents) {
+      for (const t of memberTargets(a)) {
+        targets.push(t);
+        agentByEndpoint.set(t.endpoint, a);
+      }
+    }
+    if (!targets.length) return;
+    for (const a of agents) this.state(a.userId).ringingFor = call.callId;
+    item.ringing = true;
+    this.lastAssigned.set(queue.id, agents[agents.length - 1].userId);
+    persistence.logEvent(call.callId, call.organizationId, 'AGENT_RINGING', { queueId: queue.id, userIds: agents.map((a) => a.userId) });
+
+    const release = () => {
+      for (const a of agents) {
+        const s = this.state(a.userId);
+        if (s.ringingFor === call.callId) s.ringingFor = undefined;
+      }
     };
 
-    // Registrar en la lista de espera
-    if (!this.waitingCallsByQueue.has(queue.id)) {
-      this.waitingCallsByQueue.set(queue.id, []);
-    }
-    this.waitingCallsByQueue.get(queue.id)!.push(queueItem);
-
-    // Notificar estado a través de Redis / SSE
-    await this.broadcastQueueState(queue.id, call.organizationId);
-
-    // 4. Locución de bienvenida si está configurada
-    if (queue.greetingPromptId) {
-      try {
-        await this.ari.playMediaOnChannel(call.channelId, `sound:${queue.greetingPromptId}`);
-      } catch (err) {}
-    }
-
-    // 5. Iniciar temporizador de desborde por tiempo máximo (maxWaitSeconds)
-    queueItem.overflowTimer = setTimeout(async () => {
-      telemetry.log('INFO', `Llamada ${call.callId} excedió maxWaitSeconds (${queue.maxWaitSeconds}s). Desbordando...`);
-      await this.handleOverflow(call, queue, 'MAX_WAIT_TIMEOUT');
-    }, queue.maxWaitSeconds * 1000);
-
-    // 6. Iniciar ciclo de anuncios periódicos
-    this.scheduleAnnouncements(call, queue, queueItem);
-
-    // 7. Disparar asignación inmediata de agente
-    this.dispatchNext(queue.id);
-  }
-
-  /**
-   * Programa anuncios periódicos para el llamante mientras espera en el holding bridge:
-   * - "Usted es el número N en la fila"
-   * - "Su espera aproximada es de M minutos"
-   * - Tecla de salida ("En cualquier momento, pulse 9...")
-   */
-  private scheduleAnnouncements(call: ActiveCall, queue: VoiceQueueRuntimeData, item: QueueCallItem): void {
-    const cycleIntervalMs = (queue.announcePositionEverySeconds || 45) * 1000;
-
-    item.announceTimer = setInterval(async () => {
-      // Si la llamada ya no está esperando, limpiar
-      const waitingList = this.waitingCallsByQueue.get(queue.id) || [];
-      const currentPos = waitingList.findIndex((w) => w.callId === item.callId) + 1;
-      if (currentPos <= 0 || item.isVirtualCallback) {
-        clearInterval(item.announceTimer);
-        return;
-      }
-
-      item.announcedPosition = currentPos;
-      telemetry.log('INFO', `Emitiendo anuncio a llamada ${item.callId}: posición ${currentPos}`);
-
-      try {
-        // Reproducir locución de posición usando medios de Asterisk
-        await this.ari.playMediaOnChannel(item.channelId, `sound:queue-youarenext`);
-        await this.ari.playMediaOnChannel(item.channelId, `number:${currentPos}`);
-
-        if (queue.announceHoldTime) {
-          const availableCount = this.getAvailableAgents(queue.id).length;
-          const rolling = this.rollingAhtSeconds.get(queue.id) || [];
-          const est = calculateEstimatedWaitTime(rolling, currentPos, availableCount);
-          await this.ari.playMediaOnChannel(item.channelId, `sound:queue-holdtime`);
-          await this.ari.playMediaOnChannel(item.channelId, `number:${est.estimatedMinutes}`);
-        }
-
-        // Anuncio periódico promocional o WhatsApp
-        if (queue.periodicPromptId) {
-          await this.ari.playMediaOnChannel(item.channelId, `sound:${queue.periodicPromptId}`);
-        }
-
-        // Tecla de salida (default '9') para buzón o devolución
-        await this.ari.playMediaOnChannel(item.channelId, `sound:queue-press-9-for-callback`);
-      } catch (err: any) {
-        telemetry.log('WARN', `Error reproduciendo anuncios periódicos en canal ${item.channelId}: ${err.message}`);
-      }
-    }, cycleIntervalMs);
-  }
-
-  /**
-   * Maneja pulsaciones DTMF del llamante en espera.
-   * Si pulsa la tecla de salida (por defecto '9'), permite solicitar devolución de llamada o buzón.
-   */
-  public async handleCallerDtmf(channelId: string, digit: string): Promise<void> {
-    const call = callRegistry.getCallByChannelId(channelId);
-    if (!call || !call.queueId) return;
-
-    const queue = await this.getQueueConfig(call.queueId, call.organizationId);
-    if (!queue) return;
-
-    if (digit === queue.exitKey) {
-      telemetry.log('INFO', `Llamada ${call.callId} presionó tecla de salida ${digit} en cola ${queue.name}`);
-      // Ofrecer devolución de llamada virtual (Callback) conservando posición
-      await this.requestVirtualCallback(call, queue);
-    }
-  }
-
-  /**
-   * Registra una Devolución de Llamada (Virtual Callback).
-   * El cliente cuelga pero mantiene su posición en la fila.
-   * Cuando le toque su turno, el sistema marcará al agente y luego al cliente.
-   */
-  public async requestVirtualCallback(call: ActiveCall, queue: VoiceQueueRuntimeData): Promise<void> {
-    const waitingList = this.waitingCallsByQueue.get(queue.id) || [];
-    const item = waitingList.find((w) => w.callId === call.callId);
-    if (!item) return;
-
-    item.isVirtualCallback = true;
-    item.callbackPhone = call.fromNumber;
-    item.callbackRequestedAt = new Date();
-
-    if (item.announceTimer) clearInterval(item.announceTimer);
-
-    telemetry.log('INFO', `Devolución de llamada aceptada para ${call.fromNumber}. Conservando lugar virtual.`);
-
-    try {
-      // Reproducir locución de confirmación y colgar cortésmente el canal físico
-      await this.ari.playMediaOnChannel(call.channelId, 'sound:queue-callback-accepted');
-      setTimeout(async () => {
-        try {
-          await this.ari.hangupChannel(call.channelId, 'normal');
-          await this.ari.destroyBridge(item.holdingBridgeId);
-        } catch (e) {}
-      }, 3000);
-    } catch (e) {}
-
-    await this.broadcastQueueState(queue.id, call.organizationId);
-  }
-
-  /**
-   * Bucle Principal de Despacho (ACD Dispatcher):
-   * Selecciona el agente adecuado según la estrategia configurada y los conecta.
-   */
-  public async dispatchNext(queueId: string): Promise<void> {
-    const waitingList = this.waitingCallsByQueue.get(queueId) || [];
-    if (waitingList.length === 0) return;
-
-    // Obtener la llamada más antigua en espera
-    const nextCallItem = waitingList[0];
-    const call = callRegistry.getCallById(nextCallItem.callId);
-    if (!call) {
-      waitingList.shift();
-      return;
-    }
-
-    const queue = await this.getQueueConfig(queueId, call.organizationId);
-    if (!queue) return;
-
-    // Obtener candidatos de la cola
-    const candidates = await this.getQueueCandidates(queue.id);
-    if (candidates.length === 0) {
-      telemetry.log('INFO', `No hay agentes configurados para la cola ${queue.name}`);
-      return;
-    }
-
-    // Seleccionar agente usando el motor de funciones puras de paquetes/core
-    const lastAssigned = this.lastAssignedAgentByQueue.get(queue.id);
-    const selectedAgents = selectQueueAgent(queue.strategy, candidates, {
-      lastAssignedUserId: lastAssigned,
-    });
-
-    if (selectedAgents.length === 0) {
-      telemetry.log('INFO', `Ningún agente disponible en cola ${queue.name}. Llamada ${call.callId} continúa en espera.`);
-      return;
-    }
-
-    // Tomar el candidato seleccionado (o el primero si ringall)
-    const targetAgent = selectedAgents[0];
-    telemetry.log('INFO', `Despachador asignó llamada ${call.callId} a agente ${targetAgent.name} (${targetAgent.extension}) vía ${queue.strategy}`);
-
-    // Marcar agente temporalmente como ON_CALL para que no reciba dos llamadas
-    this.updateAgentState(targetAgent.userId, { status: 'ON_CALL', currentCallId: call.callId });
-
-    // Actualizar puntero de Round Robin
-    this.lastAssignedAgentByQueue.set(queue.id, targetAgent.userId);
-
-    // Originar timbrado hacia el agente
-    await this.ringAgentForQueueCall(call, queue, nextCallItem, targetAgent);
-  }
-
-  /**
-   * Origina el canal hacia el agente y, al contestar, transfiere al llamante
-   * del holding bridge al mixing bridge.
-   */
-  private async ringAgentForQueueCall(
-    call: ActiveCall,
-    queue: VoiceQueueRuntimeData,
-    queueItem: QueueCallItem,
-    agent: QueueAgentCandidate
-  ): Promise<void> {
-    const agentEndpoint = `PJSIP/${agent.extension}`;
-    const agentChannelId = `ch_agent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    let answered = false;
-
-    telemetry.log('INFO', `Timbrando extensión ${agent.extension} para llamada de cola ${call.callId}`);
-
-    try {
-      const originatePromise = this.ari.originateChannel({
-        endpoint: agentEndpoint,
-        app: 'fusion-voz',
-        channelId: agentChannelId,
-        callerId: `Cola: ${queue.name} <${call.fromNumber}>`,
-        timeout: queue.ringSeconds,
-      });
-
-      // Temporizador de no respuesta (ringSeconds)
-      const ringTimeout = setTimeout(async () => {
-        if (!answered) {
-          telemetry.log('WARN', `Agente ${agent.name} (${agent.extension}) no contestó en ${queue.ringSeconds}s.`);
-          try {
-            await this.ari.hangupChannel(agentChannelId, 'timeout');
-          } catch (e) {}
-
-          await this.handleAgentNoAnswer(agent, queue);
-          // Intentar despachar al siguiente agente
-          this.dispatchNext(queue.id);
-        }
-      }, queue.ringSeconds * 1000);
-
-      const agentChannel = await originatePromise;
-      clearTimeout(ringTimeout);
-      answered = true;
-
-      // ¡Agente contestó!
-      telemetry.log('INFO', `Agente ${agent.name} contestó la llamada de cola ${call.callId}!`);
-
-      // Resetear contador de no respuestas
-      this.resetAgentMissedCalls(agent.userId);
-
-      // Limpiar timers de cola
-      if (queueItem.announceTimer) clearInterval(queueItem.announceTimer);
-      if (queueItem.overflowTimer) clearTimeout(queueItem.overflowTimer);
-
-      // 1. Crear bridge de tipo 'mixing' bidireccional
-      const mixingBridge = await this.ari.createBridge('mixing', `mixing-q-${call.callId}`);
-      call.bridgeId = mixingBridge.id;
-
-      // 2. Si es devolución virtual (Callback), marcar ahora al cliente
-      if (queueItem.isVirtualCallback && queueItem.callbackPhone) {
-        telemetry.log('INFO', `Devolución virtual: marcando al cliente ${queueItem.callbackPhone}...`);
-        const customerLeg = await this.ari.originateChannel({
-          endpoint: trunkDialString(queueItem.callbackPhone),
-          app: 'fusion-voz',
-          callerId: `Fusión <${process.env.VOICE_CALLER_ID || queue.extension || ''}>`,
-        });
-        await this.ari.addChannelToBridge(mixingBridge.id, customerLeg.id);
-        await this.ari.addChannelToBridge(mixingBridge.id, agentChannel.id);
-      } else {
-        // 3. Mover al cliente del holding bridge al mixing bridge (sin silencios)
-        try {
-          await this.ari.stopMusicOnHold(call.channelId);
-          await this.ari.removeChannelFromBridge(queueItem.holdingBridgeId, call.channelId);
-          await this.ari.destroyBridge(queueItem.holdingBridgeId);
-        } catch (e) {}
-
-        await this.ari.addChannelToBridge(mixingBridge.id, call.channelId);
-        await this.ari.addChannelToBridge(mixingBridge.id, agentChannel.id);
-      }
-
-      // Transición de estado a CONNECTED
-      const connectedTransition = transitionCall(call.machine, 'CONNECTED', {
-        actorUserId: agent.userId,
-        bridgeId: mixingBridge.id,
-      });
-      call.machine = connectedTransition.snapshot;
-      call.handledByUserId = agent.userId;
-      call.answeredAt = new Date();
-      persistence.persistCallTransition(call.callId, call.organizationId, connectedTransition.event, connectedTransition.snapshot);
-
-      // Registrar muestra de SLA
-      const waitDurationSeconds = Math.round((Date.now() - queueItem.enteredAt.getTime()) / 1000);
-      this.recordSlaSample(queue.id, call.callId, waitDurationSeconds, true);
-
-      // Remover llamada de la lista de espera
-      this.removeWaitingCall(queue.id, call.callId);
-
-      // Notificar a la cola y al supervisor
-      await this.broadcastQueueState(queue.id, call.organizationId);
-      await broadcaster.publishToUser(agent.userId, {
-        event: 'voice.call_answered',
-        callId: call.callId,
-        channelId: agentChannel.id,
-        organizationId: call.organizationId,
-        fromNumber: call.fromNumber,
-        displayNumber: call.toNumber,
-        state: 'CONNECTED',
-        direction: 'INBOUND',
-        context: call.context as any,
-        timestamp: new Date().toISOString(),
-        waitSeconds: waitDurationSeconds,
-        talkSeconds: 0,
-      });
-
-    } catch (err: any) {
-      telemetry.log('WARN', `Error originando pierna de agente ${agent.extension}: ${err.message}`);
-      this.updateAgentState(agent.userId, { status: 'AVAILABLE', currentCallId: undefined });
-      this.dispatchNext(queue.id);
-    }
-  }
-
-  /**
-   * Maneja el caso de agente que no contesta en ringSeconds:
-   * - Marca el intento (VoiceCallEvent AGENT_NO_ANSWER).
-   * - Incrementa el contador consecutivo de fallos.
-   * - Si consecutiveMissedCalls >= 2: pone al agente en BREAK con motivo "no responde" y emite voz.agente_no_contesta.
-   */
-  public async handleAgentNoAnswer(agent: QueueAgentCandidate, queue: VoiceQueueRuntimeData): Promise<void> {
-    const state = this.getOrCreateAgentState(agent.userId, agent);
-    state.consecutiveMissedCalls++;
-
-    telemetry.log('WARN', `Agente ${agent.name} no contestó. Consecutivas perdidas: ${state.consecutiveMissedCalls}`);
-
-    persistence.persistCallTransition(
-      state.currentCallId || 'unassigned',
-      queue.organizationId,
-      {
-        type: 'AGENT_NO_ANSWER',
-        from: 'IN_QUEUE',
-        to: 'IN_QUEUE',
-        at: new Date(),
-        actorUserId: agent.userId,
-        payload: { extension: agent.extension, consecutiveMissed: state.consecutiveMissedCalls },
-      },
-      {} as any
-    );
-
-    if (shouldAutoBreakAgent(state.consecutiveMissedCalls)) {
-      telemetry.log('WARN', `AUTO-PAUSA: Asesor ${agent.name} puesto en pausa por no responder 2 llamadas.`);
-      state.status = 'BREAK';
-      state.currentCallId = undefined;
-
-      // Actualizar en PostgreSQL
-      try {
-        await prisma.voiceAgentStatus.upsert({
-          where: { userId: agent.userId },
-          create: {
-            organizationId: queue.organizationId,
-            userId: agent.userId,
-            status: 'BREAK',
-            reason: 'no responde (auto-pausa)',
-          },
-          update: {
-            status: 'BREAK',
-            reason: 'no responde (auto-pausa)',
-            since: new Date(),
-          },
-        });
-      } catch (e) {}
-
-      // Emitir evento al motor de reglas y SSE
-      await broadcaster.publishToOrg(queue.organizationId, {
-        event: 'voice.orphan_call_cleaned', // mapeo o evento
-        organizationId: queue.organizationId,
-        payload: {
-          event: 'voz.agente_no_contesta',
-          userId: agent.userId,
-          agentName: agent.name,
-          reason: 'no responde (auto-pausa tras 2 llamadas sin contestar)',
-        },
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      // Devolver a AVAILABLE para permitirle una oportunidad más
-      state.status = 'AVAILABLE';
-      state.currentCallId = undefined;
-    }
-  }
-
-  /**
-   * Tras colgar la llamada, el agente entra en WRAP_UP durante wrapUpSeconds
-   * y regresa solo a AVAILABLE.
-   */
-  public async handleCallEnded(callId: string, agentUserId: string, durationSeconds: number): Promise<void> {
-    const call = callRegistry.getCallById(callId);
-    const queueId = call?.queueId;
-    const queue = queueId ? await this.getQueueConfig(queueId, call?.organizationId || 'default') : null;
-    const wrapUpSecs = queue?.wrapUpSeconds || 10;
-
-    const state = this.agentStates.get(agentUserId);
-    if (!state) return;
-
-    state.status = 'WRAP_UP';
-    state.currentCallId = undefined;
-    state.lastCallCompletedAt = new Date();
-    state.callsHandledToday++;
-
-    // Registrar duración en el promedio móvil de 30m
-    if (queueId) {
-      if (!this.rollingAhtSeconds.has(queueId)) {
-        this.rollingAhtSeconds.set(queueId, []);
-      }
-      const rolling = this.rollingAhtSeconds.get(queueId)!;
-      rolling.push(durationSeconds);
-      if (rolling.length > 50) rolling.shift();
-    }
-
-    telemetry.log('INFO', `Asesor ${state.name} entra en WRAP_UP por ${wrapUpSecs}s tras llamada ${callId}`);
-
-    // Temporizador automático para regresar a AVAILABLE
-    if (state.wrapUpTimer) clearTimeout(state.wrapUpTimer);
-    state.wrapUpTimer = setTimeout(async () => {
-      if (state.status === 'WRAP_UP') {
-        state.status = 'AVAILABLE';
-        state.availableSince = new Date();
-        telemetry.log('INFO', `Asesor ${state.name} terminó respiro de post-llamada. Ahora DISPONIBLE.`);
-        if (queueId) this.dispatchNext(queueId);
-      }
-    }, wrapUpSecs * 1000);
-  }
-
-  /**
-   * Terminar respiro manualmente (botón de UI).
-   */
-  public endWrapUpEarly(userId: string): void {
-    const state = this.agentStates.get(userId);
-    if (state && state.status === 'WRAP_UP') {
-      if (state.wrapUpTimer) clearTimeout(state.wrapUpTimer);
-      state.status = 'AVAILABLE';
-      state.availableSince = new Date();
-      telemetry.log('INFO', `Asesor ${state.name} finalizó manualmente su respiro. Ahora DISPONIBLE.`);
-    }
-  }
-
-  /**
-   * Ejecuta el desborde cuando la llamada excede maxWaitSeconds, maxCallers o no hay agentes.
-   * La llamada CONSERVA su VoiceCall id (no crea una nueva).
-   */
-  public async handleOverflow(call: ActiveCall, queue: VoiceQueueRuntimeData, reason: string): Promise<void> {
-    telemetry.log('INFO', `Ejecutando desborde para llamada ${call.callId} en cola ${queue.name}. Destino: ${queue.overflowTarget}`);
-
-    // Remover de espera
-    this.removeWaitingCall(queue.id, call.callId);
-
-    // Muestra de SLA (no contestada a tiempo)
-    this.recordSlaSample(queue.id, call.callId, queue.maxWaitSeconds, false);
-
-    switch (queue.overflowTarget) {
-      case 'VOICEMAIL': {
-        const vmTransition = transitionCall(call.machine, 'VOICEMAIL', { reason: `OVERFLOW_${reason}` });
-        call.machine = vmTransition.snapshot;
-        persistence.persistCallTransition(call.callId, call.organizationId, vmTransition.event, vmTransition.snapshot);
-
-        // Locución de invitación al buzón
-        try {
-          await this.ari.playMediaOnChannel(call.channelId, 'sound:queue-overflow-voicemail');
-          // Grabar mensaje en buzón
-          const recName = `vm_queue_${queue.id}_${call.callId}`;
-          await this.ari.recordChannel(call.channelId, {
-            name: recName,
-            maxDurationSeconds: 120,
-            maxSilenceSeconds: 5,
-            terminateOn: '#',
-          });
-        } catch (e) {}
-        break;
-      }
-
-      case 'ANOTHER_QUEUE': {
-        const nextQueueId = queue.overflowTargetId;
-        if (!nextQueueId) {
-          await this.handleOverflow(call, { ...queue, overflowTarget: 'VOICEMAIL' }, 'NO_TARGET_QUEUE');
+    await this.deps.ring.ringEndpoints(
+      call,
+      targets,
+      queue.ringSeconds,
+      async (leg, target) => {
+        release();
+        item.ringing = false;
+        const agent = agentByEndpoint.get(target.endpoint) ?? agents[0];
+        if (!this.isWaiting(call.callId)) {
+          await this.deps.ari.hangupChannel(leg, 'normal').catch(() => {});
           return;
         }
-        (call as any).queueHopCount = ((call as any).queueHopCount || 0) + 1;
-        telemetry.log('INFO', `Desbordando llamada ${call.callId} hacia otra cola ${nextQueueId} (Salto #${(call as any).queueHopCount})`);
-        await this.enqueueCall(call, nextQueueId);
-        break;
-      }
-
-      case 'EXTERNAL_NUMBER': {
-        const phone = queue.overflowTargetId || '3001234567';
-        telemetry.log('INFO', `Desbordando llamada ${call.callId} hacia celular externo ${phone}`);
-        try {
-          await this.ari.originateChannel({
-            endpoint: trunkDialString(phone),
-            app: 'fusion-voz',
-            callerId: call.fromNumber,
-          });
-        } catch (e) {}
-        break;
-      }
-
-      case 'AI_AGENT': {
-        const aiTransition = transitionCall(call.machine, 'IN_AI', { reason: 'OVERFLOW_TO_AI' });
-        call.machine = aiTransition.snapshot;
-        persistence.persistCallTransition(call.callId, call.organizationId, aiTransition.event, aiTransition.snapshot);
-        telemetry.log('INFO', `Llamada ${call.callId} derivada al agente de voz conversacional AI`);
-        break;
-      }
-
-      case 'HANGUP_WITH_MESSAGE':
-      default: {
-        try {
-          await this.ari.playMediaOnChannel(call.channelId, 'sound:queue-overflow-callback-task');
-          await this.ari.hangupChannel(call.channelId, 'normal');
-        } catch (e) {}
-
-        const completeTransition = transitionCall(call.machine, 'COMPLETED', {
-          reason: 'OVERFLOW_HANGUP_WITH_TASK',
-          hangupCause: 'SYSTEM_OVERFLOW',
+        this.leave(item);
+        const s = this.state(agent.userId);
+        s.misses = 0;
+        s.onCall = call.callId;
+        s.wrapUpSeconds = queue.wrapUpSeconds;
+        const ok = await this.deps.connector.connect(call, leg, {
+          userId: agent.userId,
+          extensionId: agent.extensionId,
+          recordingPolicy: agent.recordingPolicy,
+          reason: `QUEUE_${queue.id}`,
         });
-        call.machine = completeTransition.snapshot;
-        persistence.persistCallCompletion(call, 'ABANDONED_IN_QUEUE', 'OVERFLOW_CALLBACK_TASK', 'SYSTEM');
-
-        // Crear tarea de devolución de llamada en el CRM (Etapa 6)
-        try {
-          await prisma.task.create({
-            data: {
-              organizationId: call.organizationId,
-              code: `TASK-QUEUE-${Date.now()}`,
-              title: `Devolución de llamada urgente (Desborde cola ${queue.name})`,
-              description: `El cliente ${call.fromNumber} esperó en la cola ${queue.name} y desbordó sin atención. Contactar inmediatamente.`,
-              priority: 'HIGH' as any,
-              status: 'PENDING' as any,
-              dueAt: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 horas
-            } as any,
-          });
-        } catch (e) {}
-        break;
-      }
-    }
-
-    await this.broadcastQueueState(queue.id, call.organizationId);
+        if (ok) {
+          persistence.logEvent(call.callId, call.organizationId, 'AGENT_ANSWERED', { queueId: queue.id }, agent.userId);
+          await this.store.setAgentStatus(call.organizationId, agent.userId, 'ON_CALL', null, call.callId).catch(() => {});
+        } else {
+          s.onCall = undefined;
+        }
+        void this.publish(queue);
+      },
+      async (reason) => {
+        release();
+        item.ringing = false;
+        for (const a of agents) {
+          const s = this.state(a.userId);
+          s.misses++;
+          persistence.logEvent(call.callId, call.organizationId, 'AGENT_NO_ANSWER', { queueId: queue.id, reason, misses: s.misses }, a.userId);
+          if (shouldAutoBreakAgent(s.misses)) {
+            s.misses = 0;
+            telemetry.log('WARN', `${a.name} no contestó dos llamadas seguidas: queda en pausa`);
+            await this.store.setAgentStatus(call.organizationId, a.userId, 'BREAK', 'No contestó dos llamadas seguidas').catch(() => {});
+            await broadcaster
+              .publishToUser(a.userId, { event: 'voice.agent_auto_paused', userId: a.userId, reason: 'No contestó dos llamadas seguidas', timestamp: new Date().toISOString() } as any)
+              .catch(() => {});
+          }
+        }
+        if (this.isWaiting(call.callId)) void this.dispatch(queue.id);
+      },
+      { number: call.fromNumber, name: `Cola ${queue.name}` }
+    );
   }
 
-  /**
-   * Un supervisor toma directamente una llamada en espera.
-   */
-  public async supervisorTakeCall(
-    queueId: string,
-    callId: string,
-    supervisorUserId: string,
-    supervisorExtension: string
-  ): Promise<boolean> {
-    const call = callRegistry.getCallById(callId);
-    if (!call) return false;
+  // --- Mientras espera ----------------------------------------------------------
 
-    const waitingList = this.waitingCallsByQueue.get(queueId) || [];
-    const item = waitingList.find((w) => w.callId === callId);
-    if (!item) return false;
-
-    telemetry.log('INFO', `Supervisor ${supervisorUserId} tomando llamada ${callId} de cola ${queueId}`);
-
-    // Limpiar timers
-    if (item.announceTimer) clearInterval(item.announceTimer);
-    if (item.overflowTimer) clearTimeout(item.overflowTimer);
-
-    // Originar al supervisor
-    const supervisorChannel = await this.ari.originateChannel({
-      endpoint: `PJSIP/${supervisorExtension}`,
-      app: 'fusion-voz',
-      callerId: `SUPERVISIÓN: ${item.callerNumber}`,
-    });
-
-    const mixingBridge = await this.ari.createBridge('mixing', `mixing-sup-${callId}`);
-    call.bridgeId = mixingBridge.id;
-
+  private async startMoh(item: Waiting) {
     try {
-      await this.ari.stopMusicOnHold(call.channelId);
-      await this.ari.removeChannelFromBridge(item.holdingBridgeId, call.channelId);
-      await this.ari.destroyBridge(item.holdingBridgeId);
-    } catch (e) {}
+      await this.deps.ari.startMusicOnHold(item.call.channelId, item.queue.musicOnHold || 'default');
+      item.mohOn = true;
+    } catch (err: any) {
+      telemetry.log('WARN', `Sin música de espera en ${item.call.callId}: ${err.message}`);
+    }
+  }
 
-    await this.ari.addChannelToBridge(mixingBridge.id, call.channelId);
-    await this.ari.addChannelToBridge(mixingBridge.id, supervisorChannel.id);
+  private async announce(item: Waiting) {
+    if (!this.isWaiting(item.call.callId) || this.deps.media.isPlaying(item.call.channelId)) return;
+    const position = this.list(item.queue.id).indexOf(item) + 1;
+    if (position <= 0) return;
+    const media = positionMedia(position);
+    if (item.queue.periodicMedia) media.push(item.queue.periodicMedia);
+    if (item.mohOn) {
+      await this.deps.ari.stopMusicOnHold(item.call.channelId).catch(() => {});
+      item.mohOn = false;
+    }
+    persistence.logEvent(item.call.callId, item.call.organizationId, 'QUEUE_ANNOUNCE', { position });
+    await this.deps.media.play(item.call.channelId, media);
+    if (this.isWaiting(item.call.callId)) await this.startMoh(item);
+  }
 
-    const transition = transitionCall(call.machine, 'CONNECTED', {
-      actorUserId: supervisorUserId,
-      reason: 'SUPERVISOR_PICKUP',
-    });
-    call.machine = transition.snapshot;
-    call.handledByUserId = supervisorUserId;
-    persistence.persistCallTransition(call.callId, call.organizationId, transition.event, transition.snapshot);
-
-    this.removeWaitingCall(queueId, callId);
-    await this.broadcastQueueState(queueId, call.organizationId);
-
+  /** DTMF de quien espera. Devuelve true si la llamada estaba en una cola. */
+  public async handleDigit(channelId: string, digit: string): Promise<boolean> {
+    const item = this.findByChannel(channelId);
+    if (!item) return false;
+    if (digit === QUEUE_EXIT_KEY) {
+      telemetry.log('INFO', `Llamada ${item.call.callId} sale de la cola ${item.queue.name} al buzón`);
+      this.leave(item);
+      this.deps.tracker.cancel(item.call.callId);
+      await this.deps.media.stopChannel(channelId);
+      await this.deps.ari.stopMusicOnHold(channelId).catch(() => {});
+      await this.deps.voicemail.start(item.call, { queueId: item.queue.id });
+      void this.publish(item.queue);
+    }
     return true;
   }
 
-  /**
-   * Vigilancia periódica de colas (voice:queue-watchdog) cada 60 segundos:
-   *  - voz.cola_saturada: más de X esperando
-   *  - voz.cola_sin_agentes: ningún agente disponible y hay llamadas
-   *  - voz.espera_excesiva: alguien lleva más de Y minutos
-   */
-  private startWatchdog(): void {
-    this.watchdogTimer = setInterval(async () => {
-      for (const [queueId, waitingCalls] of this.waitingCallsByQueue.entries()) {
-        if (waitingCalls.length === 0) continue;
+  // --- Desborde ------------------------------------------------------------------
 
-        const orgId = waitingCalls[0]?.organizationId || 'default';
-        const availableAgents = this.getAvailableAgents(queueId);
+  public async overflow(call: ActiveCall, queue: QueueConfig, reason: string): Promise<void> {
+    const item = this.find(call.callId);
+    if (item) this.leave(item);
+    this.deps.tracker.cancel(call.callId);
+    if (!callRegistry.getCallById(call.callId)) return;
+    await this.deps.media.stopChannel(call.channelId);
+    await this.deps.ari.stopMusicOnHold(call.channelId).catch(() => {});
+    telemetry.log('INFO', `Desborde de ${call.callId} en ${queue.name} (${reason}) → ${queue.overflowTarget}`);
+    persistence.logEvent(call.callId, call.organizationId, 'QUEUE_ANNOUNCE', { overflow: reason, target: queue.overflowTarget });
+    void this.publish(queue);
 
-        // 1. voz.cola_saturada (más de 5 personas esperando)
-        if (waitingCalls.length >= 5) {
-          telemetry.log('WARN', `WATCHDOG: voz.cola_saturada en cola ${queueId} (${waitingCalls.length} esperando)`);
-          await broadcaster.publishToOrg(orgId, {
-            event: 'voice.orphan_call_cleaned',
-            organizationId: orgId,
-            payload: { event: 'voz.cola_saturada', queueId, waitingCount: waitingCalls.length },
-            timestamp: new Date().toISOString(),
-          });
+    switch (queue.overflowTarget) {
+      case 'ANOTHER_QUEUE': {
+        call.queueHops = (call.queueHops ?? 0) + 1;
+        if (!queue.overflowTargetId || queue.overflowTargetId === queue.id || call.queueHops > MAX_QUEUE_BOUNCES) {
+          await this.deps.voicemail.start(call, { queueId: queue.id });
+          return;
         }
-
-        // 2. voz.cola_sin_agentes (llamadas en espera y 0 agentes disponibles)
-        if (availableAgents.length === 0) {
-          telemetry.log('WARN', `WATCHDOG: voz.cola_sin_agentes en cola ${queueId}`);
-          await broadcaster.publishToOrg(orgId, {
-            event: 'voice.orphan_call_cleaned',
-            organizationId: orgId,
-            payload: { event: 'voz.cola_sin_agentes', queueId, waitingCount: waitingCalls.length },
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        // 3. voz.espera_excesiva (alguien lleva más de 3 minutos)
-        const now = Date.now();
-        const longestWait = Math.max(...waitingCalls.map((w) => (now - w.enteredAt.getTime()) / 1000));
-        if (longestWait > 180) {
-          telemetry.log('WARN', `WATCHDOG: voz.espera_excesiva en cola ${queueId} (${Math.round(longestWait)}s)`);
-          await broadcaster.publishToOrg(orgId, {
-            event: 'voice.orphan_call_cleaned',
-            organizationId: orgId,
-            payload: { event: 'voz.espera_excesiva', queueId, longestWaitSeconds: Math.round(longestWait) },
-            timestamp: new Date().toISOString(),
-          });
-        }
+        await this.enqueueCall(call, queue.overflowTargetId);
+        return;
       }
-    }, 60000);
-  }
-
-  // --- HELPERS INTERNOS DE ESTADO Y CONSULTAS ---
-
-  public getWaitingCalls(queueId: string): QueueCallItem[] {
-    return this.waitingCallsByQueue.get(queueId) || [];
-  }
-
-  private removeWaitingCall(queueId: string, callId: string): void {
-    const list = this.waitingCallsByQueue.get(queueId);
-    if (!list) return;
-    const filtered = list.filter((i) => i.callId !== callId);
-    this.waitingCallsByQueue.set(queueId, filtered);
-  }
-
-  private recordSlaSample(queueId: string, callId: string, waitSeconds: number, answered: boolean): void {
-    if (!this.slaSamples.has(queueId)) {
-      this.slaSamples.set(queueId, []);
-    }
-    const samples = this.slaSamples.get(queueId)!;
-    samples.push({ callId, waitSeconds, answered });
-    if (samples.length > 200) samples.shift();
-  }
-
-  public getServiceLevel(queueId: string, targetSeconds = 20): number {
-    const samples = this.slaSamples.get(queueId) || [];
-    return calculateServiceLevel(samples, targetSeconds);
-  }
-
-  public getAvailableAgents(queueId: string): QueueAgentCandidate[] {
-    return Array.from(this.agentStates.values()).filter(
-      (a) => a.status === 'AVAILABLE'
-    );
-  }
-
-  public setAgentStatus(
-    userId: string,
-    status: 'AVAILABLE' | 'ON_CALL' | 'WRAP_UP' | 'BREAK' | 'OFFLINE',
-    reason?: string
-  ): void {
-    const state = this.agentStates.get(userId);
-    if (state) {
-      state.status = status;
-      state.availableSince = status === 'AVAILABLE' ? new Date() : null;
+      case 'EXTERNAL_NUMBER': {
+        if (!queue.overflowTargetId) {
+          await this.deps.voicemail.start(call, { queueId: queue.id });
+          return;
+        }
+        await answerCaller(this.deps.ari, call).catch(() => {});
+        await this.deps.ring.ringEndpoints(
+          call,
+          [{ endpoint: trunkDialString(queue.overflowTargetId), label: `externo ${queue.overflowTargetId}` }],
+          30,
+          async (leg) => {
+            await this.deps.connector.connect(call, leg, { reason: 'QUEUE_OVERFLOW_EXTERNAL' });
+          },
+          () => this.deps.voicemail.start(call, { queueId: queue.id })
+        );
+        return;
+      }
+      case 'HANGUP_WITH_MESSAGE': {
+        await this.deps.media.play(call.channelId, ['sound:vm-goodbye']);
+        await this.deps.ari.hangupChannel(call.channelId, 'normal').catch(() => {});
+        // Llamada perdida: queda la tarea de devolverla
+        finishCall(call, 'MISSED', 'QUEUE_OVERFLOW', 'SYSTEM');
+        return;
+      }
+      case 'AI_AGENT':
+      case 'VOICEMAIL':
+      default:
+        // El agente de voz con IA llega en la fase 3; mientras tanto, buzón
+        await this.deps.voicemail.start(call, { queueId: queue.id });
     }
   }
 
-  private updateAgentState(userId: string, partial: Partial<QueueAgentInternalState>): void {
-    const state = this.agentStates.get(userId);
-    if (state) {
-      Object.assign(state, partial);
+  // --- Fin de llamadas -----------------------------------------------------------
+
+  /** Quien esperaba colgó. Devuelve true si estaba en una cola. */
+  public callerLeft(callId: string): boolean {
+    const item = this.find(callId);
+    if (!item) return false;
+    this.leave(item);
+    this.deps.tracker.cancel(callId);
+    for (const s of this.agents.values()) if (s.ringingFor === callId) s.ringingFor = undefined;
+    void this.publish(item.queue);
+    return true;
+  }
+
+  /** Terminó una conversación de cola: el asesor queda en respiro y luego disponible. */
+  public async callEnded(call: ActiveCall): Promise<void> {
+    const userId = call.handledByUserId;
+    if (!userId) return;
+    const s = this.agents.get(userId);
+    if (!s || s.onCall !== call.callId) return;
+    s.onCall = undefined;
+    s.lastCallEndedAt = new Date();
+    s.callsToday++;
+    const wrap = Math.max(0, s.wrapUpSeconds ?? 10);
+    s.wrapUntil = Date.now() + wrap * 1000;
+    await this.store.setAgentStatus(call.organizationId, userId, 'WRAP_UP').catch(() => {});
+    if (s.wrapTimer) clearTimeout(s.wrapTimer);
+    s.wrapTimer = setTimeout(() => void this.endWrapUp(userId), wrap * 1000);
+    s.wrapTimer.unref?.();
+  }
+
+  public async endWrapUp(userId: string): Promise<void> {
+    const s = this.agents.get(userId);
+    if (s) {
+      s.wrapUntil = undefined;
+      if (s.wrapTimer) clearTimeout(s.wrapTimer);
+      s.availableSince = new Date();
+    }
+    await this.store.endWrapUp(userId).catch(() => {});
+    for (const queueId of this.waiting.keys()) void this.dispatch(queueId);
+  }
+
+  // --- Consultas -------------------------------------------------------------------
+
+  public waitingCalls(queueId: string): Array<{ callId: string; fromNumber: string; enteredAt: Date; ringing: boolean }> {
+    return this.list(queueId).map((i) => ({ callId: i.call.callId, fromNumber: i.call.fromNumber, enteredAt: i.enteredAt, ringing: i.ringing }));
+  }
+
+  public isWaiting(callId: string): boolean {
+    return !!this.find(callId);
+  }
+
+  public stop(): void {
+    if (this.retryTimer) clearInterval(this.retryTimer);
+    this.retryTimer = undefined;
+    for (const list of this.waiting.values()) for (const i of list) this.clearTimers(i);
+    for (const s of this.agents.values()) if (s.wrapTimer) clearTimeout(s.wrapTimer);
+  }
+
+  // --- Internos --------------------------------------------------------------------
+
+  private isAvailable(m: QueueMemberRow): boolean {
+    if (m.status === 'OFFLINE' || m.status === 'BREAK') return false;
+    const s = this.agents.get(m.userId);
+    if (s?.ringingFor || s?.onCall) return false;
+    if (s?.wrapUntil && s.wrapUntil > Date.now()) return false;
+    // Ocupado en otra llamada (directa, saliente o interna)
+    return !callRegistry
+      .getAllActiveCalls()
+      .some((c) => c.handledByUserId === m.userId && !c.finished && c.machine.state !== 'IN_QUEUE');
+  }
+
+  private candidate(m: QueueMemberRow): QueueAgentCandidate {
+    const s = this.state(m.userId);
+    return {
+      userId: m.userId,
+      name: m.name,
+      extension: m.extension,
+      penalty: m.penalty,
+      skills: m.skills,
+      status: 'AVAILABLE',
+      lastCallCompletedAt: s.lastCallEndedAt,
+      callsHandledToday: s.callsToday,
+      availableSince: s.availableSince ?? s.lastCallEndedAt,
+      consecutiveMissedCalls: s.misses,
+    };
+  }
+
+  private state(userId: string): AgentState {
+    let s = this.agents.get(userId);
+    if (!s) {
+      s = { misses: 0, lastCallEndedAt: null, callsToday: 0, availableSince: null };
+      this.agents.set(userId, s);
+    }
+    return s;
+  }
+
+  private list(queueId: string): Waiting[] {
+    let l = this.waiting.get(queueId);
+    if (!l) {
+      l = [];
+      this.waiting.set(queueId, l);
+    }
+    return l;
+  }
+
+  private find(callId: string): Waiting | undefined {
+    for (const l of this.waiting.values()) for (const i of l) if (i.call.callId === callId) return i;
+    return undefined;
+  }
+
+  private findByChannel(channelId: string): Waiting | undefined {
+    for (const l of this.waiting.values()) for (const i of l) if (i.call.channelId === channelId) return i;
+    return undefined;
+  }
+
+  private leave(item: Waiting) {
+    this.clearTimers(item);
+    const l = this.list(item.queue.id);
+    const idx = l.indexOf(item);
+    if (idx >= 0) l.splice(idx, 1);
+    if (![...this.waiting.values()].some((x) => x.length) && this.retryTimer) {
+      clearInterval(this.retryTimer);
+      this.retryTimer = undefined;
     }
   }
 
-  private resetAgentMissedCalls(userId: string): void {
-    const state = this.agentStates.get(userId);
-    if (state) {
-      state.consecutiveMissedCalls = 0;
-    }
+  private clearTimers(item: Waiting) {
+    if (item.overflowTimer) clearTimeout(item.overflowTimer);
+    if (item.announceTimer) clearInterval(item.announceTimer);
   }
 
-  private getOrCreateAgentState(userId: string, fallback: QueueAgentCandidate): QueueAgentInternalState {
-    let state = this.agentStates.get(userId);
-    if (!state) {
-      state = {
-        userId: fallback.userId,
-        name: fallback.name,
-        extension: fallback.extension,
-        status: fallback.status,
-        penalty: fallback.penalty,
-        skills: fallback.skills,
-        lastCallCompletedAt: fallback.lastCallCompletedAt,
-        callsHandledToday: fallback.callsHandledToday,
-        availableSince: fallback.availableSince,
-        consecutiveMissedCalls: 0,
-      };
-      this.agentStates.set(userId, state);
-    }
-    return state;
+  private ensureRetry() {
+    if (this.retryTimer) return;
+    this.retryTimer = setInterval(() => {
+      for (const [queueId, l] of this.waiting) if (l.length) void this.dispatch(queueId);
+    }, this.deps.retryMs ?? 3000);
+    this.retryTimer.unref?.();
   }
 
-  private async getQueueConfig(queueId: string, orgId: string): Promise<VoiceQueueRuntimeData | null> {
-    try {
-      const q = await prisma.voiceQueue.findFirst({
-        where: { id: queueId, organizationId: orgId, deletedAt: null },
-      });
-      if (!q) return null;
-      return {
-        id: q.id,
-        organizationId: q.organizationId,
-        name: q.name,
-        extension: q.extension,
-        strategy: q.strategy as QueueStrategyType,
-        ringSeconds: q.ringSeconds,
-        wrapUpSeconds: q.wrapUpSeconds,
-        maxWaitSeconds: q.maxWaitSeconds,
-        maxCallers: q.maxCallers,
-        announcePositionEverySeconds: q.announcePositionEverySeconds,
-        announceHoldTime: q.announceHoldTime,
-        musicOnHold: q.musicOnHold,
-        greetingPromptId: q.greetingPromptId,
-        periodicPromptId: q.periodicPromptId,
-        overflowTarget: q.overflowTarget as any,
-        overflowTargetId: q.overflowTargetId,
-        exitKey: '9',
-        isActive: q.isActive,
-      };
-    } catch (e) {
-      // Fallback a mock en caso de prueba
-      return {
-        id: queueId,
-        organizationId: orgId,
-        name: 'Cola de Atención',
-        strategy: 'RINGALL',
-        ringSeconds: 20,
-        wrapUpSeconds: 10,
-        maxWaitSeconds: 180,
-        maxCallers: 20,
-        announcePositionEverySeconds: 45,
-        announceHoldTime: true,
-        musicOnHold: 'default',
-        overflowTarget: 'VOICEMAIL',
-        exitKey: '9',
-        isActive: true,
-      };
-    }
-  }
-
-  private async getQueueCandidates(queueId: string): Promise<QueueAgentCandidate[]> {
-    try {
-      const members = await prisma.voiceQueueMember.findMany({
-        where: { queueId, isActive: true, deletedAt: null },
-      });
-
-      return members.map((m) => {
-        const state = this.agentStates.get(m.userId);
-        return {
-          userId: m.userId,
-          name: `Asesor ${m.userId.slice(-4)}`,
-          extension: '101',
-          penalty: m.penalty,
-          skills: m.skills,
-          status: state ? state.status : 'AVAILABLE',
-          lastCallCompletedAt: state ? state.lastCallCompletedAt : null,
-          callsHandledToday: state ? state.callsHandledToday : 0,
-          availableSince: state ? state.availableSince : new Date(),
-          consecutiveMissedCalls: state ? state.consecutiveMissedCalls : 0,
-        };
-      });
-    } catch (e) {
-      return Array.from(this.agentStates.values());
-    }
-  }
-
-  private async broadcastQueueState(queueId: string, orgId: string): Promise<void> {
-    const waiting = this.getWaitingCalls(queueId);
-    const available = this.getAvailableAgents(queueId);
+  private async publish(queue: QueueConfig) {
+    const l = this.list(queue.id);
     const now = Date.now();
-    const longestWait = waiting.length > 0 ? Math.max(...waiting.map((w) => (now - w.enteredAt.getTime()) / 1000)) : 0;
-
-    await broadcaster.publishToQueue(queueId, {
-      event: 'voice.queue_updated',
-      queueId,
-      organizationId: orgId,
-      waitingCallsCount: waiting.length,
-      longestWaitSeconds: Math.round(longestWait),
-      activeAgentsCount: available.length,
-      timestamp: new Date().toISOString(),
-    });
+    await broadcaster
+      .publishToQueue(queue.id, {
+        event: 'voice.queue_updated',
+        queueId: queue.id,
+        organizationId: queue.organizationId,
+        waitingCallsCount: l.length,
+        longestWaitSeconds: l.length ? Math.round(Math.max(...l.map((i) => now - i.enteredAt.getTime())) / 1000) : 0,
+        activeAgentsCount: [...this.agents.values()].filter((s) => s.onCall).length,
+        timestamp: new Date().toISOString(),
+      })
+      .catch(() => {});
   }
 }

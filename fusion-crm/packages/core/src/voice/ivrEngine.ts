@@ -139,6 +139,8 @@ export interface IvrExecutionContext {
   legalNoticePlayed: boolean;
   activeMenuDepth: number;
   currentVirtualTimeBogota?: Date; // Para simulación
+  /** Estado de atención ya calculado con el calendario laboral de la empresa (lo usa el nodo HORARIO). */
+  businessStatus?: 'abierto' | 'cerrado' | 'festivo';
 }
 
 export interface IvrStepResult {
@@ -605,6 +607,47 @@ export async function executeCrmLookup(
   };
 }
 
+/** Menú sin respuesta válida tras los intentos: la opción 0 (persona), la salida configurada, buzón o colgar. */
+function menuExhausted(
+  currentNode: IvrNode,
+  nodeMap: Map<string, IvrNode>,
+  nextContext: IvrExecutionContext,
+  maxRetries: number
+): IvrStepResult {
+  const zeroOutput = currentNode.data.outputs.find((o) => o.label === '0');
+  const fallbackNode = nodeMap.get(zeroOutput?.targetNodeId || currentNode.data.exhaustedTargetId || '');
+  nextContext.currentRetries[currentNode.id] = 0;
+  if (fallbackNode) {
+    nextContext.currentNodeId = fallbackNode.id;
+    return {
+      action: 'JUMP',
+      nodeId: currentNode.id,
+      nodeType: 'MENU',
+      nextContext,
+      humanReadableLog: `Agotó reintentos de menú (${maxRetries}). Derivando a salida por defecto "${fallbackNode.data.label}".`,
+      ended: false,
+    };
+  }
+  if (currentNode.data.exhaustedAction === 'VOICEMAIL') {
+    return {
+      action: 'RECORD_VOICEMAIL',
+      nodeId: currentNode.id,
+      nodeType: 'MENU',
+      nextContext,
+      humanReadableLog: `Agotó reintentos de menú (${maxRetries}). Pasando al buzón.`,
+      ended: true,
+    };
+  }
+  return {
+    action: 'HANGUP',
+    nodeId: currentNode.id,
+    nodeType: 'MENU',
+    nextContext,
+    humanReadableLog: `Agotó reintentos de menú (${maxRetries}) sin salida configurada. Colgando.`,
+    ended: true,
+  };
+}
+
 /**
  * INTÉRPRETE DEL FLUJO (Puro y Testeable sin Asterisk)
  * runFlowStep avanza exactamente un paso en el grafo
@@ -689,8 +732,10 @@ export function runFlowStep(
     const holidays = getColombianHolidays(parseInt(yyyy, 10));
     const isHoliday = holidays.some((h) => h.date === isoDate);
 
-    let branch = 'abierto';
-    if (isHoliday) {
+    let branch: string = context.businessStatus ?? 'abierto';
+    if (context.businessStatus) {
+      // Calendario de la empresa (horario, festivos y excepciones)
+    } else if (isHoliday) {
       branch = 'festivo';
     } else {
       const dayOfWeek = new Date(Date.UTC(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10))).getUTCDay();
@@ -765,6 +810,28 @@ export function runFlowStep(
   if (currentNode.type === 'MENU') {
     nextContext.activeMenuDepth = (context.activeMenuDepth || 0) + 1;
 
+    // Nadie marcó: se repite el menú hasta agotar los intentos
+    if (inputEvent?.type === 'TIMEOUT') {
+      const retries = (nextContext.currentRetries[currentNode.id] || 0) + 1;
+      nextContext.currentRetries[currentNode.id] = retries;
+      const maxRetries = currentNode.data.maxRetries || 3;
+      if (retries >= maxRetries) return menuExhausted(currentNode, nodeMap, nextContext, maxRetries);
+      return {
+        action: 'WAIT_DTMF',
+        nodeId: currentNode.id,
+        nodeType: 'MENU',
+        prompt: {
+          id: currentNode.data.timeoutPromptId || currentNode.data.promptId,
+          filename: currentNode.data.asteriskFilename || 'fusion/saludo_general',
+          text: currentNode.data.promptText,
+          interruptible: true,
+        },
+        nextContext,
+        humanReadableLog: `Sin respuesta en el menú "${currentNode.data.label}". Repitiendo (${retries}/${maxRetries}).`,
+        ended: false,
+      };
+    }
+
     // Si viene DTMF
     if (inputEvent?.type === 'DTMF' && inputEvent.dtmf) {
       const pressed = inputEvent.dtmf;
@@ -791,21 +858,7 @@ export function runFlowStep(
 
       if (currentRetries >= maxRetries) {
         // Agotó reintentos -> acción configurada (por defecto humano o salida de error)
-        const zeroOutput = currentNode.data.outputs.find((o) => o.label === '0');
-        const fallbackTargetId = zeroOutput?.targetNodeId || currentNode.data.exhaustedTargetId;
-        const fallbackNode = nodeMap.get(fallbackTargetId || '');
-
-        if (fallbackNode) {
-          nextContext.currentNodeId = fallbackNode.id;
-          return {
-            action: 'JUMP',
-            nodeId: currentNode.id,
-            nodeType: 'MENU',
-            nextContext,
-            humanReadableLog: `Agotó reintentos de menú (${maxRetries}). Derivando a salida por defecto "${fallbackNode.data.label}".`,
-            ended: false,
-          };
-        }
+        return menuExhausted(currentNode, nodeMap, nextContext, maxRetries);
       }
 
       return {
@@ -844,6 +897,23 @@ export function runFlowStep(
   // 5. CAPTURA
   if (currentNode.type === 'CAPTURA') {
     const varName = currentNode.data.captureVariable || 'capturedData';
+    if (inputEvent?.type === 'TIMEOUT') {
+      // Dejó de marcar: se toma lo que alcanzó a digitar y se sigue
+      nextContext.variables[varName] = (nextContext.dtmfBuffer || '').replace('#', '');
+      nextContext.dtmfBuffer = '';
+      const targetNode = nodeMap.get(currentNode.data.outputs[0]?.targetNodeId || '');
+      if (targetNode) {
+        nextContext.currentNodeId = targetNode.id;
+        return {
+          action: 'JUMP',
+          nodeId: currentNode.id,
+          nodeType: 'CAPTURA',
+          nextContext,
+          humanReadableLog: `Captura por tiempo: ${varName} = "${nextContext.variables[varName]}".`,
+          ended: false,
+        };
+      }
+    }
     if (inputEvent?.type === 'DTMF' && inputEvent.dtmf) {
       let buffer = (nextContext.dtmfBuffer || '') + inputEvent.dtmf;
       if (inputEvent.dtmf === '#' || (currentNode.data.maxLength && buffer.length >= currentNode.data.maxLength)) {

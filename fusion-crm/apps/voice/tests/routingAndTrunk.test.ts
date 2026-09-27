@@ -41,7 +41,10 @@ describe('Enrutamiento de StasisStart', () => {
       } as any,
       { handleInternalCall: async (_id: string, from: string, to: string) => void seen.push(`internal:${from}->${to}`) } as any,
       {} as any,
-      {} as any
+      {} as any,
+      {
+        tracker: { answered: (id: string) => (seen.push(`leg-answered:${id}`), true) },
+      } as any
     );
     return { seen, dispatcher };
   };
@@ -62,5 +65,11 @@ describe('Enrutamiento de StasisStart', () => {
     const { seen, dispatcher } = make();
     await dispatcher.dispatch({ type: 'StasisStart', args: ['inbound', '6068801234'], channel: channel({ name: 'PJSIP/trunk-endpoint-00000001', caller: { name: '', number: '3009998877' }, dialplan: { context: 'fusion-entrante', exten: '6068801234', priority: 1 } }) } as any);
     assert.deepEqual(seen, ['inbound']);
+  });
+
+  it('una pierna que timbraba y contesta va al control de timbrado, no se toma como llamada nueva', async () => {
+    const { seen, dispatcher } = make();
+    await dispatcher.dispatch({ type: 'StasisStart', args: ['ring_leg', 'call_1'], channel: channel({ id: 'leg-9', dialplan: { context: 'default', exten: 's', priority: 1 } }) } as any);
+    assert.deepEqual(seen, ['leg-answered:leg-9']);
   });
 });

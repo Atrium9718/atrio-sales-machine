@@ -8,6 +8,12 @@ import { InternalCallHandler } from './handlers/internal';
 import { VoiceRingService } from './services/ring';
 import { VoiceBridgeService } from './services/bridge';
 import { VoiceRecordService } from './services/record';
+import { MediaController } from './services/media';
+import { RingTracker } from './services/ringGroups';
+import { CallConnector } from './services/connect';
+import { VoiceVoicemailService } from './services/voicemail';
+import { VoiceQueueService } from './services/queue';
+import { VoiceIvrService } from './services/ivr';
 import { callRegistry } from './state/registry';
 import { prisma, persistence } from './services/persist';
 import { broadcaster } from './services/broadcast';
@@ -20,7 +26,11 @@ const ASTERISK_ARI_URL = process.env.ASTERISK_ARI_URL || 'http://127.0.0.1:8088'
 const ASTERISK_ARI_WS_URL =
   process.env.ASTERISK_ARI_WS_URL || 'ws://127.0.0.1:8088/ari/events?app=fusion-voz&subscribeAll=false';
 const ASTERISK_ARI_USERNAME = process.env.ASTERISK_ARI_USERNAME || 'fusion';
-const ASTERISK_ARI_PASSWORD = process.env.ASTERISK_ARI_PASSWORD || 'fusion_secret_ari_2026';
+// Sin valor por defecto: una contraseña conocida dejaría la central abierta
+const ASTERISK_ARI_PASSWORD = process.env.ASTERISK_ARI_PASSWORD || '';
+if (!ASTERISK_ARI_PASSWORD) {
+  telemetry.log('ERROR', 'Falta ASTERISK_ARI_PASSWORD: el servicio de voz no puede conectarse a Asterisk.');
+}
 const ASTERISK_APP_NAME = 'fusion-voz';
 
 const LOCK_KEY = 'fusion:voice:master-lock';
@@ -42,22 +52,28 @@ const ariClient = new AriClient({
   appName: ASTERISK_APP_NAME,
 });
 
-const ringService = new VoiceRingService(ariClient);
+const media = new MediaController(ariClient);
+const tracker = new RingTracker((channelId) => ariClient.hangupChannel(channelId, 'normal'));
+const ringService = new VoiceRingService(ariClient, tracker);
 const bridgeService = new VoiceBridgeService(ariClient);
 const recordService = new VoiceRecordService(ariClient);
+const connector = new CallConnector(ariClient, media, recordService);
+const voicemailService = new VoiceVoicemailService(ariClient, media);
+const queueService = new VoiceQueueService({ ari: ariClient, ring: ringService, tracker, connector, voicemail: voicemailService, media });
 
-const inboundHandler = new InboundCallHandler(ariClient, ringService, bridgeService, recordService);
+const inboundHandler = new InboundCallHandler({ ari: ariClient, ring: ringService, connector, media, queue: queueService, voicemail: voicemailService });
+const ivrService = new VoiceIvrService(ariClient, media, inboundHandler);
+inboundHandler.setIvr(ivrService);
 const outboundHandler = new OutboundCallHandler(ariClient, bridgeService, recordService);
-const internalHandler = new InternalCallHandler(ariClient, ringService, bridgeService);
+const internalHandler = new InternalCallHandler(ariClient, ringService, connector);
 
-const dispatcher = new AriEventDispatcher(
-  ariClient,
-  inboundHandler,
-  outboundHandler,
-  internalHandler,
-  recordService,
-  bridgeService
-);
+const dispatcher = new AriEventDispatcher(ariClient, inboundHandler, outboundHandler, internalHandler, recordService, bridgeService, {
+  media,
+  tracker,
+  queue: queueService,
+  voicemail: voicemailService,
+  ivr: ivrService,
+});
 
 ariClient.onEvent(async (event) => {
   await dispatcher.dispatch(event);
@@ -354,6 +370,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   if (lockRenewalInterval) clearInterval(lockRenewalInterval);
   if (orphanCallsInterval) clearInterval(orphanCallsInterval);
+  queueService.stop();
   if (healthCheckInterval) clearInterval(healthCheckInterval);
 
   // 1. Dejar de aceptar llamadas nuevas

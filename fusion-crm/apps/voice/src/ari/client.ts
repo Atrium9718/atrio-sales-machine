@@ -274,6 +274,27 @@ export class AriClient {
     });
   }
 
+  /**
+   * POST /channels/{id}/play con varios `media` en orden (una sola reproducción y un solo
+   * PlaybackFinished al terminar). El id de reproducción lo fija el puente para poder detenerla.
+   */
+  public async play(channelId: string, media: string[], playbackId?: string): Promise<{ id: string }> {
+    const query = new URLSearchParams();
+    for (const m of media) query.append('media', m);
+    if (playbackId) query.set('playbackId', playbackId);
+    return this.request(`/channels/${channelId}/play?${query.toString()}`, { method: 'POST' });
+  }
+
+  /** DELETE /playbacks/{id}: detiene una reproducción (p. ej. cuando marcan una opción). */
+  public async stopPlayback(playbackId: string): Promise<void> {
+    await this.request(`/playbacks/${encodeURIComponent(playbackId)}`, { method: 'DELETE' });
+  }
+
+  /** DELETE /channels/{id}/ring: deja de indicar timbrado a quien llama. */
+  public async stopRinging(channelId: string): Promise<void> {
+    await this.request(`/channels/${channelId}/ring`, { method: 'DELETE' });
+  }
+
   public async getChannels(): Promise<AriChannel[]> {
     return this.request<AriChannel[]>('/channels');
   }
