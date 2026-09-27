@@ -2,11 +2,23 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { employeeService, type Employee } from '../services/employeeService';
 import { getAdminAuth } from './firebaseAdmin';
 import { requestContext, type RequestAuthContext } from './requestContext';
+import { sessionRegistry } from './sessionRegistry';
+import { systemConfig } from '../services/systemConfig';
 
 export const SESSION_COOKIE = 'fusion_session';
 export const IMPERSONATE_COOKIE = 'fusion_impersonate';
 
-const SESSION_DURATION_MS = 5 * 24 * 60 * 60 * 1000;
+/** Duración de la sesión según la política de seguridad (Administración → Política de seguridad). */
+const sessionDurationMs = () => systemConfig().security().sessionDays * 24 * 60 * 60 * 1000;
+
+/** Si la política limita los dominios, ¿este correo está permitido? */
+export function emailDomainAllowed(email: string | undefined, allowedDomains: string[]): boolean {
+  if (!allowedDomains.length) return true;
+  const domain = String(email || '').toLowerCase().split('@')[1] || '';
+  return allowedDomains.includes(domain);
+}
+
+const clientIp = (req: Request) => String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
 const MAX_SIGN_IN_AGE_S = 5 * 60;
 
 /**
@@ -80,16 +92,30 @@ export async function resolveRequestAuth(req: Request): Promise<RequestAuthConte
   const adminAuth = getAdminAuth();
   if (!adminAuth) return null;
 
+  // Cerrada por el usuario o por un administrador
+  if (sessionRegistry().isEnded(sessionCookie)) return null;
+
   let email: string | undefined;
+  let expiresAtMs = 0;
   try {
     const decoded = await adminAuth.verifySessionCookie(sessionCookie);
     email = decoded.email;
+    expiresAtMs = Number(decoded.exp) * 1000 || Date.now() + sessionDurationMs();
   } catch {
     return null;
   }
 
+  if (!emailDomainAllowed(email, systemConfig().security().allowedDomains)) return null;
   const realUser = findActiveEmployeeByEmail(email);
   if (!realUser) return null;
+  sessionRegistry().seen(sessionCookie, {
+    employeeId: realUser.id,
+    name: realUser.name,
+    email: realUser.email,
+    userAgent: String(req.headers['user-agent'] || ''),
+    ip: clientIp(req),
+    expiresAtMs,
+  });
 
   let user = realUser;
   const impersonatedId = cookies[IMPERSONATE_COOKIE];
@@ -153,19 +179,30 @@ authRouter.post('/session', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'Inicio de sesión demasiado antiguo, vuelva a ingresar' });
     }
     if (!decoded.email || decoded.email_verified === false) {
+      await sessionRegistry().denied(decoded.email, 'Correo de Google sin verificar', clientIp(req));
       return res.status(403).json({ error: 'La cuenta de Google no tiene un correo verificado' });
+    }
+
+    if (!emailDomainAllowed(decoded.email, systemConfig().security().allowedDomains)) {
+      await sessionRegistry().denied(decoded.email, 'Dominio de correo no permitido por la política', clientIp(req));
+      return res.status(403).json({ error: `Solo se permite entrar con correos de: ${systemConfig().security().allowedDomains.join(', ')}`, code: 'DOMAIN_NOT_ALLOWED' });
     }
 
     const employee = findActiveEmployeeByEmail(decoded.email);
     if (!employee) {
+      await sessionRegistry().denied(decoded.email, 'No es un colaborador activo', clientIp(req));
       return res.status(403).json({
         error: `El correo ${decoded.email} no corresponde a un colaborador activo`,
         code: 'NOT_AN_EMPLOYEE',
       });
     }
 
-    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_DURATION_MS });
-    res.cookie(SESSION_COOKIE, sessionCookie, cookieOptions(SESSION_DURATION_MS));
+    const durationMs = sessionDurationMs();
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn: durationMs });
+    res.cookie(SESSION_COOKIE, sessionCookie, cookieOptions(durationMs));
+    await sessionRegistry()
+      .started({ cookie: sessionCookie, employeeId: employee.id, name: employee.name, email: employee.email, userAgent: String(req.headers['user-agent'] || ''), ip: clientIp(req), durationMs })
+      .catch((err) => console.warn('[auth] No se pudo registrar la sesión:', err?.message || err));
     res.clearCookie(IMPERSONATE_COOKIE, cookieOptions());
     return res.json({ user: employee, realUser: employee, isImpersonating: false });
   } catch (err: any) {
@@ -174,7 +211,9 @@ authRouter.post('/session', async (req: Request, res: Response) => {
   }
 });
 
-authRouter.post('/logout', (_req: Request, res: Response) => {
+authRouter.post('/logout', async (req: Request, res: Response) => {
+  const cookie = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  if (cookie) await sessionRegistry().end(cookie).catch(() => undefined);
   clearAuthCookies(res);
   res.json({ ok: true });
 });
@@ -210,6 +249,6 @@ export function setImpersonation(req: Request, res: Response): Response {
   if (!target || target.status !== 'ACTIVO') {
     return res.status(404).json({ error: 'Usuario no encontrado' });
   }
-  res.cookie(IMPERSONATE_COOKIE, target.id, cookieOptions(SESSION_DURATION_MS));
+  res.cookie(IMPERSONATE_COOKIE, target.id, cookieOptions(sessionDurationMs()));
   return res.json(target);
 }

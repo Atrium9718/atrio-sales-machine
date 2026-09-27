@@ -13,6 +13,10 @@ export const GENERIC_COLLECTIONS = [
   'system_settings',
   'master_catalogs',
   'tariff_versions',
+  'system_config',
+  'access_reviews',
+  'auth_sessions',
+  'security_events',
   // Comercial y producción
   'appointments',
   'opportunities',

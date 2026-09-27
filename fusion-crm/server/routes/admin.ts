@@ -173,25 +173,6 @@ adminRouter.post('/invitations', async (req, res) => {
   });
 });
 
-adminRouter.get('/access-reviews', async (req, res) => {
-  res.json([
-    {
-      id: 'rev-01',
-      date: new Date().toISOString(),
-      performedBy: 'Super Administrador',
-      totalUsers: employeeService.getEmployees().length,
-      activeUsers: employeeService.getEmployees().filter(e => e.status === 'ACTIVO').length,
-      supernumerarios: employeeService.getEmployees().filter(e => e.contractType === 'SUPERNUMERARIO').length,
-      planta: employeeService.getEmployees().filter(e => e.contractType === 'PLANTA').length,
-      status: 'CONFORME',
-    }
-  ]);
-});
-
-adminRouter.post('/access-reviews', async (req, res) => {
-  res.json({ success: true, timestamp: new Date().toISOString() });
-});
-
 adminRouter.get('/audit-logs', async (req, res) => {
   res.json(inMemoryAuditLogs || []);
 });

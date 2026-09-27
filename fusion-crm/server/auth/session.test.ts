@@ -9,6 +9,7 @@ const employees = [
 const sessions: Record<string, string> = {
   'cookie-admin': 'admin@fusion.test',
   'cookie-planta': 'planta@fusion.test',
+  'cookie-planta-movil': 'planta@fusion.test',
   'cookie-baja': 'baja@fusion.test',
 };
 
@@ -27,6 +28,14 @@ vi.mock('../services/employeeService', () => ({
     getEmployeeById: (id: string) => employees.find((e) => e.id === id),
   },
 }));
+
+const { createSessionRegistry, __setSessionRegistry } = await import('./sessionRegistry');
+const { createMemoryRepository } = await import('../repositories/documentStore');
+const registry = createSessionRegistry({ sessions: createMemoryRepository() as any, events: createMemoryRepository() as any, now: () => new Date() });
+__setSessionRegistry(registry);
+const { createSystemConfig, __setSystemConfig } = await import('../services/systemConfig');
+const config = createSystemConfig({ repo: createMemoryRepository() as any, existingQuoteNumbers: async () => [], now: () => new Date() });
+__setSystemConfig(config);
 
 const { requireAuth, parseCookies, setImpersonation } = await import('./session');
 const { getRequestAuth } = await import('./requestContext');
@@ -88,6 +97,23 @@ describe('requireAuth', () => {
       expect(nextCalled).toBe(false);
       expect(res.statusCode).toBe(401);
     }
+  });
+
+  it('rechaza una sesión cerrada por un administrador', async () => {
+    const cookie = 'fusion_session=cookie-planta-movil';
+    expect((await run(mockReq('/api/quotes', { cookie }))).nextCalled).toBe(true);
+    const id = registry.fingerprint('cookie-planta-movil');
+    expect(registry.activeSessions().some((s) => s.id === id)).toBe(true);
+    await registry.revoke({ id }, 'Admin');
+    expect((await run(mockReq('/api/quotes', { cookie }))).res.statusCode).toBe(401);
+  });
+
+  it('con dominios permitidos, rechaza correos de otros dominios', async () => {
+    await config.setSecurity({ allowedDomains: ['otra.co'] }, 'Admin');
+    expect((await run(mockReq('/api/quotes', { cookie: 'fusion_session=cookie-admin' }))).res.statusCode).toBe(401);
+    await config.setSecurity({ allowedDomains: ['fusion.test'] }, 'Admin');
+    expect((await run(mockReq('/api/quotes', { cookie: 'fusion_session=cookie-admin' }))).nextCalled).toBe(true);
+    await config.setSecurity({ allowedDomains: [] }, 'Admin');
   });
 
   it('sobrescribe los headers de identidad enviados por el cliente', async () => {

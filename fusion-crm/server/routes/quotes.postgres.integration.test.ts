@@ -22,6 +22,7 @@ suite('rutas de cotizaciones con Postgres (integración)', () => {
     await db.quoteItem.deleteMany({});
     await db.quote.deleteMany({});
     await db.productionProject.deleteMany({});
+    await db.storedDocument.deleteMany({ where: { collection: 'system_config' } });
 
     const { quotesRouter } = await import('./quotes');
     const { dataRouter } = await import('./data');
@@ -108,5 +109,27 @@ suite('rutas de cotizaciones con Postgres (integración)', () => {
   it('elimina la cotización', async () => {
     expect((await call('DELETE', '/api/quotes/q-http-1')).status).toBe(200);
     expect((await call('GET', '/api/quotes')).body.quotes).toEqual([]);
+  });
+
+  it('numera en el servidor: consecutivo sin repetir y la OT lleva el mismo número', async () => {
+    const item = { id: 'i1', description: 'Volantes', quantity: 1000, unitPrice: 150, applyVat: true, vatRate: 0.19 };
+    const a = await call('POST', '/api/quotes', { id: 'q-num-a', status: 'Borrador', clientName: 'A', items: [item] });
+    const b = await call('POST', '/api/quotes', { id: 'q-num-b', number: 'COT-00001', status: 'Borrador', clientName: 'B', items: [item] });
+    expect(a.body.quote.number).toBe('COT-00001');
+    // Número ocupado: el servidor asigna el siguiente
+    expect(b.body.quote.number).toBe('COT-00002');
+    // Una cotización existente conserva su número aunque el navegador envíe otro
+    const again = await call('POST', '/api/quotes', { id: 'q-num-a', number: 'FCG-99999', status: 'Borrador', items: [item] });
+    expect(again.body.quote.number).toBe('COT-00001');
+    const reserved = await call('POST', '/api/quotes/issue-number');
+    expect(reserved.body.number).toBe('COT-00003');
+
+    const approved = await call('POST', '/api/quotes/q-num-b/approve', { deliveryTime: '3 a 5 días hábiles' });
+    expect(approved.body.project.number).toBe('OT-00002');
+    expect(approved.body.project.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(approved.body.project).toMatchObject({ approvedScaleUnits: 1000, deliveryTime: '3 a 5 días hábiles' });
+    await call('DELETE', '/api/quotes/q-num-a');
+    await call('DELETE', '/api/quotes/q-num-b');
+    await call('DELETE', `/api/quotes/projects/${approved.body.project.id}`, { quoteId: 'q-num-b' });
   });
 });

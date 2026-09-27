@@ -1,5 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import crypto from 'crypto';
+import { closedByCalendar } from '../services/workCalendarCheck';
 import { isWithinBusinessHours } from '../../packages/core/src/omnichannel';
 import { loadOmnichannelConfig, omnichannel } from '../omnichannel/runtime';
 import { conversationId } from '../omnichannel/service';
@@ -59,7 +60,7 @@ function tokenFrom(value: unknown): string | null {
 widgetRouter.get('/config', async (req, res) => {
   if (!validKey(req.query.key)) return res.status(404).json({ error: 'Widget no encontrado' });
   const config = await loadOmnichannelConfig();
-  const within = isWithinBusinessHours(config.businessHours);
+  const within = isWithinBusinessHours(config.businessHours, new Date(), closedByCalendar);
   res.json({
     organizationName: config.businessName,
     primaryColor: process.env.WEBCHAT_PRIMARY_COLOR || '#2563eb',

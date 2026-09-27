@@ -1,3 +1,5 @@
+import { orderNumberFor } from '../../../../packages/core/src/numbering/numbering';
+import { DEFAULT_WORK_CALENDAR, dueDateFor } from '../../../../packages/core/src/calendar/workCalendar';
 import { createServerCollection, dataApiAdapter } from '@/lib/serverCollection';
 import { getQuotes, quotesCollection } from './quotesStore';
 
@@ -14,9 +16,9 @@ export interface ProductionItemDetail {
 }
 
 export function buildProjectFromQuote(quote: any, additional?: any) {
-  const quoteNumber = quote.number || `COT-${Date.now().toString().slice(-4)}`;
-  const cleanNumber = quoteNumber.replace(/\D/g, '') || Math.floor(1000 + Math.random() * 9000).toString();
-  const projectNumber = `OT-${cleanNumber}`;
+  // Respaldo cuando el servidor no devolvió la OT: mismo número que la cotización con prefijo OT-
+  const quoteNumber = quote.number || 'N/A';
+  const projectNumber = orderNumberFor(quoteNumber);
   const firstItem = quote.items?.[0];
   const projectName = firstItem?.name || firstItem?.description || `Producción ${quoteNumber}`;
   const clientName = quote.clientName || quote.client || 'Cliente General';
@@ -54,7 +56,8 @@ export function buildProjectFromQuote(quote: any, additional?: any) {
     client: clientName,
     stageId: '1', // "Por Revisar" (Etapa 1)
     priority: 'MEDIUM',
-    dueDate: additional?.deliveryTime || quote.deliveryTime || null,
+    dueDate: dueDateFor(new Date(), additional?.deliveryTime || quote.deliveryTime, DEFAULT_WORK_CALENDAR),
+    deliveryTime: additional?.deliveryTime || quote.deliveryTime || null,
     progress: 0,
     hasPO: false,
     // Sin responsable hasta que producción lo asigne

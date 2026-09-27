@@ -107,8 +107,10 @@ export const DEFAULT_OMNICHANNEL_CONFIG: OmnichannelConfig = {
 };
 
 /** ¿Está dentro del horario de atención humana? (zona horaria de Bogotá, UTC-5 sin horario de verano). */
-export function isWithinBusinessHours(hours: OmnichannelConfig['businessHours'], now = new Date()): boolean {
+export function isWithinBusinessHours(hours: OmnichannelConfig['businessHours'], now = new Date(), isClosedDay?: (ymd: string) => boolean): boolean {
   const bogota = new Date(now.getTime() - 5 * 60 * 60 * 1000);
+  // Festivos y cierres del calendario laboral
+  if (isClosedDay?.(bogota.toISOString().slice(0, 10))) return false;
   const day = bogota.getUTCDay();
   if (!hours.days.includes(day)) return false;
   const minutes = bogota.getUTCHours() * 60 + bogota.getUTCMinutes();

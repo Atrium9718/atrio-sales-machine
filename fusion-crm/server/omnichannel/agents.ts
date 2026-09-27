@@ -15,6 +15,7 @@ import {
   type OmnichannelConfig,
 } from '../../packages/core/src/omnichannel';
 import { projectBelongsToClient, toClientProjectView } from '../../packages/core/src/portal/clientProgress';
+import { closedByCalendar } from '../services/workCalendarCheck';
 import { examplesBlock } from './learning';
 import type { ChatTurn, LlmClient, ToolCallRecord, ToolDeclaration } from './llm';
 
@@ -198,7 +199,7 @@ const FALLBACK_REPLY = 'Gracias por escribirnos. Una persona de nuestro equipo t
  * usando sus herramientas. Nunca lanza: ante cualquier error, deja el caso a una persona.
  */
 export async function runAgentTurn(conv: Conversation, text: string, config: OmnichannelConfig, deps: AgentDeps): Promise<AgentOutcome> {
-  const withinHours = isWithinBusinessHours(config.businessHours, deps.now());
+  const withinHours = isWithinBusinessHours(config.businessHours, deps.now(), closedByCalendar);
   const outcome: AgentOutcome = {
     intent: 'otro',
     agent: 'recepcionista',

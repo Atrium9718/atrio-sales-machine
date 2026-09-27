@@ -6,7 +6,6 @@ import * as React from "react";
 import { useLocation } from "react-router-dom";
 import { searchCustomers } from "@/lib/customerService";
 import { z } from "zod";
-import { addProject } from "../../../../lib/projectsStore";
 import { getQuotes, addQuote, updateQuoteStatus, approveQuote, syncQuotesFromApi } from "../../../../lib/quotesStore";
 import { generateQuotePDF, sendQuoteWhatsApp, sendQuoteEmail } from "../../../../lib/quoteSharing";
 import PrecotizacionesView from "../comercial/precotizaciones/PrecotizacionesView";
@@ -148,7 +147,7 @@ export default function CotizadorPage({ defaultTab }: { defaultTab?: 'quote' | '
               <Plus className="w-3.5 h-3.5" /> Nueva Cotización
             </button>
             <div className="px-4 py-1.5 bg-background border border-border rounded-full flex items-center gap-2 shadow-sm w-fit">
-              <span className="font-bold text-sm text-foreground">{editingQuote?.number || "FCG-00142"}</span>
+              <span className="font-bold text-sm text-foreground">{editingQuote?.number || 'Nueva cotización'}</span>
               <span className="w-1 h-1 rounded-full bg-muted-foreground"></span>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                 editingQuote?.status === 'Finalizada' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' :
@@ -317,7 +316,27 @@ function QuoteEditor({
 
   // Quote identifiers and status
   const [quoteId, setQuoteId] = React.useState<string>(editingQuote?.id || `cot-${Date.now()}`);
-  const [quoteNumber, setQuoteNumber] = React.useState<string>(editingQuote?.number || `FCG-${Math.floor(10000 + Math.random() * 90000)}`);
+  // Vacío hasta que el servidor emita el consecutivo (al guardar, generar el PDF o enviar)
+  const [quoteNumber, setQuoteNumber] = React.useState<string>(editingQuote?.number || '');
+  const issuingNumber = React.useRef<Promise<string | null> | null>(null);
+  const ensureQuoteNumber = async (): Promise<string | null> => {
+    if (quoteNumber) return quoteNumber;
+    issuingNumber.current ??= fetch('/api/quotes/issue-number', { method: 'POST' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+        setQuoteNumber(data.number);
+        return data.number as string;
+      })
+      .catch((err) => {
+        notify('No se pudo asignar el número de la cotización: ' + (err?.message || err), 'error');
+        return null;
+      })
+      .finally(() => {
+        issuingNumber.current = null;
+      });
+    return issuingNumber.current;
+  };
   const [quoteStatus, setQuoteStatus] = React.useState<string>(editingQuote?.status || 'Borrador');
   const [isTerminada, setIsTerminada] = React.useState<boolean>(
     editingQuote?.status === 'Finalizada' || 
@@ -523,7 +542,7 @@ function QuoteEditor({
     if (editingQuote) {
       setQuoteTariffVersionId(editingQuote.tariffVersionId);
       setQuoteId(editingQuote.id || `cot-${Date.now()}`);
-      setQuoteNumber(editingQuote.number || `FCG-${Math.floor(10000 + Math.random() * 90000)}`);
+      setQuoteNumber(editingQuote.number || '');
       setQuoteStatus(editingQuote.status || 'Borrador');
       setIsTerminada(
         editingQuote.status === 'Finalizada' || 
@@ -678,7 +697,7 @@ function QuoteEditor({
   const grandTotal = items.reduce((sum, item) => sum + (item.total || 0), 0);
 
   // Handler: Save and continue later (Saves draft to Cotizaciones Históricas)
-  const handleSaveDraftQuote = () => {
+  const handleSaveDraftQuote = async () => {
     setAttemptedSave(true);
     setSaveError(null);
     setSaveSuccessMsg(null);
@@ -696,9 +715,13 @@ function QuoteEditor({
         address: selectedClientData?.address?.trim() || "Bogotá D.C."
       };
 
+      // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
+      const number = await ensureQuoteNumber();
+      if (!number) return;
+
       const currentQuote = {
         id: quoteId,
-        number: quoteNumber,
+        number,
         clientName: effectiveClientName,
         clientNit: effectiveClientData.nit,
         clientPhone: effectiveClientData.phone,
@@ -727,7 +750,7 @@ function QuoteEditor({
       };
 
       addQuote(currentQuote);
-      setSaveSuccessMsg(`✓ Cotización ${quoteNumber} guardada exitosamente en Cotizaciones Históricas.`);
+      setSaveSuccessMsg(`✓ Cotización ${number} guardada exitosamente en Cotizaciones Históricas.`);
     } catch (err: any) {
       setSaveError("Error al guardar la cotización: " + (err.message || "Error desconocido"));
     } finally {
@@ -736,7 +759,7 @@ function QuoteEditor({
   };
 
   // Handler: Finalize quote (Activates PDF, WhatsApp, and Email)
-  const handleFinishQuote = () => {
+  const handleFinishQuote = async () => {
     setAttemptedSave(true);
     setAttemptedFinish(true);
     setSaveError(null);
@@ -764,9 +787,13 @@ function QuoteEditor({
         address: selectedClientData?.address?.trim() || "Bogotá D.C."
       };
 
+      // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
+      const number = await ensureQuoteNumber();
+      if (!number) return;
+
       const currentQuote = {
         id: quoteId,
-        number: quoteNumber,
+        number,
         clientName: effectiveClientName,
         clientNit: effectiveClientData.nit,
         clientPhone: effectiveClientData.phone,
@@ -795,7 +822,7 @@ function QuoteEditor({
       };
 
       addQuote(currentQuote);
-      setSaveSuccessMsg(`🎉 ¡Cotización ${quoteNumber} Finalizada con éxito! Guardada en Cotizaciones Históricas.`);
+      setSaveSuccessMsg(`🎉 ¡Cotización ${number} Finalizada con éxito! Guardada en Cotizaciones Históricas.`);
     } catch (err: any) {
       setSaveError("Error al finalizar la cotización: " + (err.message || "Error desconocido"));
     } finally {
@@ -815,9 +842,13 @@ function QuoteEditor({
       address: selectedClientData?.address?.trim() || "Bogotá D.C."
     };
 
+    // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
+    const number = await ensureQuoteNumber();
+    if (!number) return;
+
     const currentQuote = {
       id: quoteId,
-      number: quoteNumber,
+      number,
       clientName: effectiveClientName,
       clientNit: effectiveClientData.nit,
       clientPhone: effectiveClientData.phone,
@@ -848,7 +879,7 @@ function QuoteEditor({
     addQuote(currentQuote);
 
     const result = await generateQuotePDF({
-      number: quoteNumber,
+      number,
       clientName: effectiveClientName,
       clientNit: effectiveClientData.nit,
       clientPhone: effectiveClientData.phone,
@@ -878,13 +909,13 @@ function QuoteEditor({
       if (quoteStatus === 'Borrador') {
         setQuoteStatus('Finalizada');
       }
-      setSaveSuccessMsg(`📄 ¡PDF Oficial de la cotización ${quoteNumber} generado y descargado exitosamente!`);
+      setSaveSuccessMsg(`📄 ¡PDF Oficial de la cotización ${number} generado y descargado exitosamente!`);
       setSaveError(null);
     }
   };
 
   // Handler: Send via WhatsApp
-  const handleSendWhatsApp = () => {
+  const handleSendWhatsApp = async () => {
     const effectiveClientName = selectedClientData?.name?.trim() || clientSearchQuery.trim() || "Cliente General";
     const effectiveClientData = {
       ...selectedClientData,
@@ -895,9 +926,13 @@ function QuoteEditor({
       address: selectedClientData?.address?.trim() || "Bogotá D.C."
     };
 
+    // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
+    const number = await ensureQuoteNumber();
+    if (!number) return;
+
     const currentQuote = {
       id: quoteId,
-      number: quoteNumber,
+      number,
       clientName: effectiveClientName,
       clientNit: effectiveClientData.nit,
       clientPhone: effectiveClientData.phone,
@@ -927,7 +962,7 @@ function QuoteEditor({
     addQuote(currentQuote);
 
     sendQuoteWhatsApp({
-      number: quoteNumber,
+      number,
       clientName: effectiveClientName,
       clientPhone: effectiveClientData.phone,
       clientData: effectiveClientData,
@@ -943,7 +978,7 @@ function QuoteEditor({
   };
 
   // Handler: Send via Email
-  const handleSendEmail = () => {
+  const handleSendEmail = async () => {
     const effectiveClientName = selectedClientData?.name?.trim() || clientSearchQuery.trim() || "Cliente General";
     const effectiveClientData = {
       ...selectedClientData,
@@ -954,9 +989,13 @@ function QuoteEditor({
       address: selectedClientData?.address?.trim() || "Bogotá D.C."
     };
 
+    // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
+    const number = await ensureQuoteNumber();
+    if (!number) return;
+
     const currentQuote = {
       id: quoteId,
-      number: quoteNumber,
+      number,
       clientName: effectiveClientName,
       clientNit: effectiveClientData.nit,
       clientPhone: effectiveClientData.phone,
@@ -986,7 +1025,7 @@ function QuoteEditor({
     addQuote(currentQuote);
 
     sendQuoteEmail({
-      number: quoteNumber,
+      number,
       clientName: effectiveClientName,
       clientEmail: effectiveClientData.email,
       clientData: effectiveClientData,
@@ -1022,47 +1061,16 @@ function QuoteEditor({
         `¿Confirmas la escala pactada con el cliente para generar la Orden de Trabajo (OT) en Producción?`
       );
       if (confirmApprove) {
-          const newProject = {
-            id: `proj-${quoteId || Date.now()}`,
-            quoteId: quoteId,
-            quoteNumber: quoteNumber || 'N/A',
-            number: 'OT-' + Math.floor(1000 + Math.random() * 9000),
-            name: `${items[0]?.description || 'Nuevo Proyecto Aprobado'} [Escala: ${totalQuantity.toLocaleString()} uds]`,
-            client: clientName,
-            stageId: '1',
-            priority: 'MEDIUM',
-            dueDate: new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0],
-            progress: 0,
-            hasPO: false,
-            assignments: [],
-            daysLeft: 7,
-            stageEnteredAt: new Date().toISOString(),
-            totalRealHours: 0,
-            timeEntries: [],
-            consumedMaterials: [],
-            artworkKeys: [],
-            completedAt: null,
-            qualityApprovals: [],
-            partialDeliveries: [],
-            quoteTotal: totalAmount,
-            approvedScaleUnits: totalQuantity,
-            scaleApprovalCertified: true,
-            scaleApprovalCertifiedAt: new Date().toISOString(),
-            laborCost: 0,
-            materialCost: 0,
-            outsourcedCost: 0,
-            otherCost: 0,
-            isBilled: false
-          };
-         approveQuote(quoteId, { status: 'Aprobada', items })
-           .then(() => {
-             addProject(newProject);
-             notify(`¡Éxito! La Orden de Trabajo (${newProject.number}) fue enviada a Planta/Producción con escala blindada (${totalQuantity.toLocaleString()} uds).`);
-           })
-           .catch((err) => {
-             setQuoteStatus(previousStatus);
-             notify(err.message, 'error');
-           });
+        // El servidor revisa precios, aprueba y crea la OT con su número (el de la cotización)
+        approveQuote(quoteId, { status: 'Aprobada', items })
+          .then((approved: any) => {
+            if (approved?.number) setQuoteNumber(approved.number);
+            notify(`La cotización ${approved?.number || ''} fue aprobada y su Orden de Trabajo pasó a Producción con escala blindada (${totalQuantity.toLocaleString()} uds).`, 'success');
+          })
+          .catch((err) => {
+            setQuoteStatus(previousStatus);
+            notify(err.message, 'error');
+          });
       }
     } else {
       updateQuoteStatus(quoteId, newStatus);

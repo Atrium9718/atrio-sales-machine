@@ -7,6 +7,9 @@ import { eventBus } from '../events/DomainEventBus';
 import { reviewQuote, approvalBlockReason } from '../services/quoteReviewService';
 import { isApprovedStatus } from '../../packages/core/src/pricing/quoteReview';
 import { repositories, writeContextFrom } from '../repositories';
+import { systemConfig } from '../services/systemConfig';
+import { orderNumberFor } from '../../packages/core/src/numbering/numbering';
+import { dueDateFor } from '../../packages/core/src/calendar/workCalendar';
 
 import { initializeApp as initAdmin, getApps as getAdminApps } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
@@ -84,16 +87,38 @@ quotesRouter.get('/', async (req, res) => {
   }
 });
 
+async function isQuoteNumberTaken(number: string, exceptId: string) {
+  const target = String(number).trim().toUpperCase();
+  return (await repositories().quotes.list()).some((q: any) => q.id !== exceptId && String(q.number || '').trim().toUpperCase() === target);
+}
+
+// POST /api/quotes/issue-number - Reserva el siguiente consecutivo (p. ej. para el PDF de una cotización nueva)
+quotesRouter.post('/issue-number', async (_req, res) => {
+  try {
+    res.json({ success: true, number: await systemConfig().issueQuoteNumber() });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // POST /api/quotes - Guardar o actualizar cotización en Firestore
 quotesRouter.post('/', async (req, res) => {
   try {
     const quote = req.body;
-    if (!quote || !quote.number) {
+    if (!quote || typeof quote !== 'object' || Array.isArray(quote)) {
       return res.status(400).json({ success: false, error: 'Datos de cotización inválidos' });
     }
 
     const quoteId = quote.id || `quote-${Date.now()}`;
     const previous: any = await repositories().quotes.get(quoteId);
+
+    // El número lo pone el servidor: una cotización existente conserva el suyo y una nueva
+    // recibe el siguiente consecutivo (salvo que traiga uno emitido antes y libre)
+    if (previous?.number) {
+      quote.number = previous.number;
+    } else if (!quote.number || (await isQuoteNumberTaken(quote.number, quoteId))) {
+      quote.number = await systemConfig().issueQuoteNumber();
+    }
 
     const dataToSave: any = {
       ...quote,
@@ -192,7 +217,7 @@ quotesRouter.post('/:id/approve', async (req, res) => {
     } else {
       quoteData = {
         id,
-        number: req.body.number || `COT-${Date.now().toString().slice(-4)}`,
+        number: req.body.number || (await systemConfig().issueQuoteNumber()),
         clientName: req.body.clientName || 'Cliente General',
         items: items || [],
         total: total || 0,
@@ -233,20 +258,22 @@ quotesRouter.post('/:id/approve', async (req, res) => {
       const existingProjects = (await repositories().projects.list()).filter((p: any) => p.quoteId === id);
 
       if (existingProjects.length === 0) {
-        const numberParts = (updates.number || quoteData.number || "").split('-');
-        const numberPart = numberParts.length > 1 ? numberParts.pop() : (updates.number || Date.now());
-        const projectNumber = `OT-${numberPart}`;
+        const quoteNumber = updates.number || quoteData.number || (await systemConfig().issueQuoteNumber());
+        const projectNumber = orderNumberFor(quoteNumber, systemConfig().numbering());
+        const deliveryText = updates.deliveryTime || quoteData.deliveryTime || null;
         
         newProject = {
           id: `proj-${id || Date.now()}`,
           quoteId: id,
-          quoteNumber: updates.number || quoteData.number || 'N/A',
+          quoteNumber,
           number: projectNumber,
           name: updates.items?.[0]?.name || updates.items?.[0]?.description || 'Proyecto desde Cotización',
           client: updates.clientName || quoteData.clientName || 'Cliente General',
           stageId: '1', // "Por Revisar" (Etapa 1)
           priority: 'MEDIUM',
-          dueDate: updates.deliveryTime || quoteData.deliveryTime || null,
+          // Fecha real según el calendario laboral ("3 a 5 días hábiles" → 5 días hábiles desde hoy)
+          dueDate: dueDateFor(new Date(), deliveryText, systemConfig().calendar()),
+          deliveryTime: deliveryText,
           progress: 0,
           hasPO: false,
           // Sin responsable hasta que producción lo asigne
@@ -263,6 +290,10 @@ quotesRouter.post('/:id/approve', async (req, res) => {
           systemComments: [`Orden de trabajo generada automáticamente desde cotización ${updates.number || quoteData.number}`],
           itemsDetail: updates.items || quoteData.items || [],
           quoteTotal: updates.total || quoteData.total || 0,
+          // Escala aprobada con el cliente (lo que se debe producir)
+          approvedScaleUnits: (updates.items || quoteData.items || []).reduce((sum: number, it: any) => sum + (Number(it.quantity) || 0), 0),
+          scaleApprovalCertified: true,
+          scaleApprovalCertifiedAt: new Date().toISOString(),
           productType: updates.productType || quoteData.productType || 'Impresión Digital',
           tasks: (updates.items || quoteData.items || []).map((it: any, idx: number) => ({
             id: `t-auto-${it.id || idx + 1}-${Date.now()}`,
@@ -515,9 +546,8 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
     parsed = JSON.parse(cleanJson);
   }
 
-  // Generar consecutivo formal de Pre-cotización
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const preQuoteNumber = `PRE-2026-${randomSuffix}`;
+  // Consecutivo de la serie de cotizaciones (la pre-cotización es una cotización en borrador)
+  const preQuoteNumber = await systemConfig().issueQuoteNumber();
   const quoteId = `quote-pre-${Date.now()}`;
 
   // Estructurar ítems compatibles con el Cotizador oficial

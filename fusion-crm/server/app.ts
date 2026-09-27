@@ -9,6 +9,9 @@ import { voiceRouter } from './routes/voice';
 import { checkMetaTokens } from './metaCron';
 import { settingsRouter } from './routes/settings';
 import { adminRouter } from './routes/admin';
+import { adminConfigRouter } from './routes/adminConfig';
+import { loadSystemConfig } from './services/systemConfig';
+import { loadSessionRegistry } from './auth/sessionRegistry';
 import { opsRouter } from './routes/ops';
 import { maestrosRouter } from './routes/maestros';
 import { homeRouter } from './routes/home';
@@ -72,6 +75,7 @@ export async function startServer() {
   app.use('/api/omnichannel', omnichannelRouter);
   app.use('/api/voice', voiceRouter);
   app.use('/api/settings', settingsRouter);
+  app.use('/api/admin', adminConfigRouter);
   app.use('/api/admin', adminRouter);
   app.use('/api/ops', opsRouter);
   app.use('/api/maestros', maestrosRouter);
@@ -133,6 +137,8 @@ export async function startServer() {
   await loadEmployees();
   await loadSettingsStore();
   await loadTariffStore();
+  await loadSystemConfig();
+  await loadSessionRegistry();
   await loadStateFromFirestore();
   startStateSync();
 
