@@ -1,3 +1,4 @@
+import { recordGeminiUsage } from '../omnichannel/usage';
 import { Router } from 'express';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, limit, where, addDoc } from 'firebase/firestore';
@@ -511,6 +512,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
     }
   });
 
+  recordGeminiUsage(response, 'gemini-3.8-flash', 'precotizaciones');
   const responseText = response.text || '{}';
   let parsed: any = {};
   try {

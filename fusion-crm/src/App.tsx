@@ -249,6 +249,8 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     ]),
     group('Comunicaciones', 'comunicaciones', [
       { name: 'Bandeja de entrada', path: '/dashboard/inbox', icon: MessageCircle },
+      { name: 'Salud de canales', path: '/dashboard/canales-config/meta', icon: Activity },
+      { name: 'Costos de IA y mensajería', path: '/dashboard/costos-omnicanal', icon: DollarSign, sensitiveModuleKey: 'costos' },
     ]),
     ...(hasVoiceUse && voiceStatus.enabled ? [
       group('Voz y Telefonía', 'voz', [
@@ -284,8 +286,6 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     ]),
     ...(isAdmin ? [
       group('En construcción', 'configuracion', [
-        { name: 'Salud de canales', path: '/dashboard/canales-config/meta', icon: Activity },
-        { name: 'Costos de mensajería', path: '/dashboard/costos-omnicanal', icon: DollarSign },
         { name: 'Identidades (triage)', path: '/dashboard/identidades', icon: Users },
         { name: 'Ritual V.E.A.', path: '/dashboard/vea', icon: Calendar },
         ...(!voiceStatus.enabled ? [{ name: 'Voz y telefonía', path: '/voz', icon: Phone }] : []),

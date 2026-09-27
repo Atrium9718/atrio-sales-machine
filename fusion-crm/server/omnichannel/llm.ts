@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { aiUsage, type UsageSample } from './usage';
 
 /**
  * Cliente de modelo de lenguaje usado por los agentes. Es una interfaz para poder probar los
@@ -42,9 +43,25 @@ export function geminiModel(): string {
   return process.env.GEMINI_MODEL_FAST || 'gemini-flash-latest';
 }
 
-export function createGeminiClient(apiKey = process.env.GEMINI_API_KEY): LlmClient {
+export interface GeminiClientOptions {
+  /** Origen del gasto para el control de costos (agentes, simulador…). */
+  source?: string;
+  onUsage?: (sample: UsageSample) => unknown;
+}
+
+export function createGeminiClient(apiKey = process.env.GEMINI_API_KEY, opts: GeminiClientOptions = {}): LlmClient {
   if (!apiKey) throw new Error('GEMINI_API_KEY no está configurada');
   const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: Number(process.env.GEMINI_TIMEOUT_MS) || 30000 } });
+  const onUsage = opts.onUsage ?? ((s: UsageSample) => aiUsage().record(s));
+  const track = (res: any) => {
+    const u = res?.usageMetadata;
+    if (!u) return;
+    try {
+      onUsage({ promptTokens: u.promptTokenCount || 0, outputTokens: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0), model: geminiModel(), source: opts.source || 'agentes' });
+    } catch {
+      /* el registro de consumo nunca rompe una respuesta */
+    }
+  };
 
   return {
     async complete(system, prompt) {
@@ -53,6 +70,7 @@ export function createGeminiClient(apiKey = process.env.GEMINI_API_KEY): LlmClie
         contents: prompt,
         config: { systemInstruction: system, temperature: 0 },
       });
+      track(res);
       return res.text || '';
     },
 
@@ -69,6 +87,7 @@ export function createGeminiClient(apiKey = process.env.GEMINI_API_KEY): LlmClie
 
       const toolCalls: ToolCallRecord[] = [];
       let response = await chat.sendMessage({ message });
+      track(response);
       for (let step = 0; step < maxSteps && response.functionCalls?.length; step++) {
         const parts: any[] = [];
         for (const call of response.functionCalls) {
@@ -83,6 +102,7 @@ export function createGeminiClient(apiKey = process.env.GEMINI_API_KEY): LlmClie
           parts.push({ functionResponse: { name: call.name, response: { result } } });
         }
         response = await chat.sendMessage({ message: parts });
+        track(response);
       }
       return { text: (response.text || '').trim(), toolCalls };
     },

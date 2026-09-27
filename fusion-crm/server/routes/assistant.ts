@@ -1,3 +1,4 @@
+import { recordGeminiUsage } from '../omnichannel/usage';
 import { Router } from 'express';
 import { GoogleGenAI } from '@google/genai';
 import { getApps, initializeApp } from 'firebase/app';
@@ -167,6 +168,7 @@ ${JSON.stringify(context || {})}
         );
         
         response = await Promise.race([fetchPromise, timeoutPromise]);
+        recordGeminiUsage(response, 'gemini-3.6-flash', 'asistente');
         break; // Success!
       } catch (error: any) {
         lastError = error;

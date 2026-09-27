@@ -10,6 +10,9 @@ import { createMemoryRepository } from '../repositories/documentStore';
 import { loadOmnichannelConfig, omnichannel, resetOmnichannelRuntime, saveOmnichannelConfig, stageNotifier } from '../omnichannel/runtime';
 import { createOmnichannelService, type OmnichannelService } from '../omnichannel/service';
 import { createGeminiClient } from '../omnichannel/llm';
+import { createMetaSender } from '../omnichannel/senders';
+import { computeChannelHealth, computeMonthlyCosts } from '../omnichannel/health';
+import { aiPrices, aiUsage } from '../omnichannel/usage';
 import { repositories } from '../repositories';
 import type { ChannelSender } from '../omnichannel/senders';
 
@@ -208,6 +211,50 @@ omnichannelRouter.put('/config', async (req, res) => {
   }
 });
 
+// ── Salud de canales y costos ──────────────────────────────────
+
+omnichannelRouter.get('/health', async (_req, res) => {
+  try {
+    const sender = createMetaSender();
+    const configured: Record<string, boolean> = {
+      whatsapp: sender.isConfigured('whatsapp'),
+      messenger: sender.isConfigured('messenger'),
+      instagram: sender.isConfigured('instagram'),
+      webchat: true,
+    };
+    const [conversations, notices] = await Promise.all([omnichannel().list(), stageNotifier().list()]);
+    const pendingNotices = notices.filter((n) => n.status === 'scheduled').length;
+    const failedNotices = notices.filter((n) => n.status === 'failed').length;
+    res.json({
+      success: true,
+      channels: computeChannelHealth(conversations, configured),
+      checks: {
+        ai: !!process.env.GEMINI_API_KEY,
+        webhookSignature: !!process.env.META_APP_SECRET,
+        webhookVerifyToken: !!(process.env.META_WEBHOOK_VERIFY_TOKEN || process.env.META_VERIFY_TOKEN),
+        notices: { pending: pendingNotices, failed: failedNotices },
+      },
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+omnichannelRouter.get('/costs', async (req, res) => {
+  try {
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : new Date(Date.now() - 5 * 3600_000).toISOString().slice(0, 7);
+    const [usage, notices, conversations] = await Promise.all([aiUsage().month(month), stageNotifier().list(), omnichannel().list()]);
+    const prices = {
+      ...aiPrices(),
+      templateUsd: Number(process.env.WHATSAPP_TEMPLATE_PRICE_USD) || 0.0008,
+      usdCop: Number(process.env.USD_COP) || 4000,
+    };
+    res.json({ success: true, prices, costs: computeMonthlyCosts({ month, usage, notices, conversations, prices }) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
 // ── Avisos de cambio de etapa ──────────────────────────────────
 
 omnichannelRouter.get('/notifications', async (_req, res) => {
@@ -257,7 +304,7 @@ omnichannelRouter.post('/simulate', async (req, res) => {
       loadConfig: async () => ({ ...config, aiMode: 'auto', autoIntents: [] }),
       sender: noSend,
       agentDeps: () => ({
-        llm: createGeminiClient(),
+        llm: createGeminiClient(undefined, { source: 'simulador' }),
         listClients: () => repositories().clients.list() as any,
         listProjects: () => repositories().projects.list(),
         listQuotes: () => repositories().quotes.list(),
