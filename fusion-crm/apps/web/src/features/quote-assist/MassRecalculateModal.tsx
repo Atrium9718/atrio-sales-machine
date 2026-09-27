@@ -14,6 +14,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { calculatePressQuote, DEFAULT_OFFICIAL_TARIFF } from '../../../../../packages/core/src/pricing/press';
+import { toPercent } from './ResultsPanel';
 import { notify } from '@/lib/notify';
 
 export interface MassRecalcReportItem {
@@ -122,7 +123,7 @@ export const MassRecalculateModal: React.FC<MassRecalculateModalProps> = ({
                 total: Math.round(newItemTotal * 100) / 100,
                 lineTotal: Math.round(newItemTotal * 100) / 100,
                 internalCost: Number(matchingRun.internalCost),
-                marginPercent: Number(matchingRun.marginPercent),
+                marginPercent: toPercent(matchingRun.marginPercent),
                 assistRunId: `recalc_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
               };
             }

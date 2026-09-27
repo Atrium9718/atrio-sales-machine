@@ -8,6 +8,7 @@ import {
   ManualLithoCalculationResult,
 } from '../../../../../packages/core/src/pricing/press/manual-litho';
 import { DEFAULT_OFFICIAL_TARIFF } from '../../../../../packages/core/src/pricing/press/defaultTariff';
+import type { TariffSnapshot } from '../../../../../packages/core/src/pricing/press/types';
 import {
   AlertTriangle,
   Plus,
@@ -26,12 +27,15 @@ interface ManualLithoAssistProps {
   onApplyToQuote?: (items: any[], tariffVersionId: string, notesAppendix?: string) => void;
   tariffVersionId?: string;
   tariffVersionCode?: string;
+  /** Tarifario vigente (el de la versión activa); por defecto el oficial de fábrica. */
+  tariff?: TariffSnapshot;
 }
 
 export const ManualLithoAssist: React.FC<ManualLithoAssistProps> = ({
   onApplyToQuote,
   tariffVersionId = 'tariff-press-2025-01',
   tariffVersionCode = 'VIGENTE-2025-01',
+  tariff = DEFAULT_OFFICIAL_TARIFF,
 }) => {
   // 1. Datos generales
   const [jobDescription, setJobDescription] = useState('Volantes 1/4 pliego 4x4');
@@ -66,13 +70,13 @@ export const ManualLithoAssist: React.FC<ManualLithoAssistProps> = ({
   // Papeles disponibles en el tarifario
   const availablePapers = useMemo(() => {
     const names = new Set<string>();
-    DEFAULT_OFFICIAL_TARIFF.papers.forEach((p) => names.add(p.name));
+    tariff.papers.forEach((p) => names.add(p.name));
     return Array.from(names);
-  }, []);
+  }, [tariff]);
 
   // Helper para buscar precio en tarifario
   const getTariffPaperPrice = (paperName: string, format: 'S70X100' | 'S60X90'): number | null => {
-    const item = DEFAULT_OFFICIAL_TARIFF.papers.find(
+    const item = tariff.papers.find(
       (p) => p.name === paperName && p.sheetFormat === format
     );
     if (!item) return null;

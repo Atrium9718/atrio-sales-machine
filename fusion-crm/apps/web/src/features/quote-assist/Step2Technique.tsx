@@ -10,6 +10,8 @@ interface Step2Props {
   artWidthCm: number;
   artHeightCm: number;
   applyBleed: boolean;
+  /** En la pantalla única la técnica se elige arriba; aquí se oculta el selector. */
+  showTechniqueSelector?: boolean;
 }
 
 export const Step2Technique: React.FC<Step2Props> = ({
@@ -19,6 +21,7 @@ export const Step2Technique: React.FC<Step2Props> = ({
   artWidthCm,
   artHeightCm,
   applyBleed,
+  showTechniqueSelector = true,
 }) => {
   const showDigital = form.technique === 'DIGITAL' || form.technique === 'BOTH';
   const showLitho = form.technique === 'LITHO' || form.technique === 'BOTH';
@@ -32,6 +35,7 @@ export const Step2Technique: React.FC<Step2Props> = ({
   return (
     <div className="space-y-6">
       {/* Selector de Técnica Global */}
+      {showTechniqueSelector && (
       <div className="space-y-2">
         <label className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
           <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
@@ -81,6 +85,7 @@ export const Step2Technique: React.FC<Step2Props> = ({
           </button>
         </div>
       </div>
+      )}
 
       {/* BLOQUE DIGITAL */}
       {showDigital && (

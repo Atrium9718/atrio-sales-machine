@@ -29,6 +29,7 @@ export interface UnifiedRun {
   platesCount: number | null;
   parentSheetsToBuy: number | null;
   internalCost: number;
+  /** En porcentaje (30 = 30 %), como en los ítems de la cotización. */
   marginPercent: number;
   marginAmount: number;
   subtotalBeforeMargin: number;
@@ -39,6 +40,9 @@ export interface UnifiedRun {
   lines: { key: string; label: string; amount: number }[];
   productionSpec: string;
 }
+
+/** El motor da el margen como fracción (0,3); la app lo maneja en porcentaje. */
+export const toPercent = (fraction: unknown) => Math.round(Number(fraction || 0) * 1000) / 10;
 
 export function getResultRuns(
   result: PressQuoteResult | null,
@@ -60,7 +64,7 @@ export function getResultRuns(
         platesCount: q.plateCount,
         parentSheetsToBuy: q.paperSheets,
         internalCost: Number(q.internalCost),
-        marginPercent: Number(q.marginPercent),
+        marginPercent: toPercent(q.marginPercent),
         marginAmount: Number(q.margin),
         subtotalBeforeMargin: Number(q.subtotalBeforeMargin),
         discounts: Number(q.discounts),
@@ -86,7 +90,7 @@ export function getResultRuns(
         platesCount: q.plateCount,
         parentSheetsToBuy: q.paperSheets,
         internalCost: Number(q.internalCost),
-        marginPercent: Number(q.marginPercent),
+        marginPercent: toPercent(q.marginPercent),
         marginAmount: Number(q.margin),
         subtotalBeforeMargin: Number(q.subtotalBeforeMargin),
         discounts: Number(q.discounts),
@@ -334,7 +338,11 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
               </div>
 
               {/* Costo interno y margen (Gated por quote:assist_cost) */}
-              {hasCostPermission ? (
+              {hasCostPermission && run.technique === 'DIGITAL' ? (
+                <div className="p-2.5 rounded-lg border border-border/70 bg-card/60 text-xs text-muted-foreground">
+                  Precio de lista del tarifario digital: <strong className="font-mono text-foreground">${Math.round(run.internalCost).toLocaleString('es-CO')}</strong> antes de impuestos (el margen ya viene incluido en la tarifa).
+                </div>
+              ) : hasCostPermission ? (
                 <div className="p-2.5 rounded-lg border border-border/70 bg-card/60 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex items-center gap-3">
                     <div>
