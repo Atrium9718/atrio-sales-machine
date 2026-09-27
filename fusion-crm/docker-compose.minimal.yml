@@ -12,6 +12,7 @@ networks:
 
 volumes:
   postgres_data:
+  uploads:
   traefik_certificates:
   backups:
 
@@ -58,6 +59,8 @@ services:
       - ./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
       # Respaldos (solo lectura) para la pantalla Administración → Respaldos
       - backups:/backups:ro
+      # Archivos subidos (adjuntos del portal); se incluyen en el respaldo diario
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,6 +107,7 @@ services:
       RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
     volumes:
       - backups:/backups
+      - uploads:/uploads:ro
       - ./secrets/rclone:/config/rclone:ro
     depends_on:
       postgres:

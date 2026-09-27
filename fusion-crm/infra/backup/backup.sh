@@ -28,16 +28,27 @@ mv "$FILE.part" "$FILE"
 pg_restore --list "$FILE" > /dev/null
 echo "[respaldo] listo ($(du -h "$FILE" | cut -f1))"
 
+# Archivos subidos (adjuntos del portal), si hay
+UPLOADS_SRC="${UPLOADS_SRC:-/uploads}"
+FILES_ARCHIVE=""
+if [ -d "$UPLOADS_SRC" ] && [ -n "$(ls -A "$UPLOADS_SRC" 2>/dev/null)" ]; then
+  FILES_ARCHIVE="$BACKUP_DIR/fusion-uploads-${STAMP}.tar.gz"
+  tar -czf "$FILES_ARCHIVE.part" -C "$UPLOADS_SRC" .
+  mv "$FILES_ARCHIVE.part" "$FILES_ARCHIVE"
+  echo "[respaldo] archivos subidos: $(du -h "$FILES_ARCHIVE" | cut -f1)"
+fi
+
 # Borra los respaldos locales más viejos que KEEP_DAYS días
-find "$BACKUP_DIR" -name 'fusion-*.dump' -type f -mtime "+$KEEP_DAYS" -print -delete | sed 's/^/[respaldo] borrado /'
+find "$BACKUP_DIR" \( -name 'fusion-*.dump' -o -name 'fusion-uploads-*.tar.gz' \) -type f -mtime "+$KEEP_DAYS" -print -delete | sed 's/^/[respaldo] borrado /'
 
 REMOTE_OK=false
 if [ -n "${RCLONE_REMOTE:-}" ]; then
   echo "[respaldo] copiando a $RCLONE_REMOTE"
-  if rclone copy "$FILE" "$RCLONE_REMOTE" --config "${RCLONE_CONFIG:-/config/rclone/rclone.conf}"; then
+  if rclone copy "$FILE" "$RCLONE_REMOTE" --config "${RCLONE_CONFIG:-/config/rclone/rclone.conf}" \
+    && { [ -z "$FILES_ARCHIVE" ] || rclone copy "$FILES_ARCHIVE" "$RCLONE_REMOTE" --config "${RCLONE_CONFIG:-/config/rclone/rclone.conf}"; }; then
     REMOTE_OK=true
     # Misma retención en el remoto
-    rclone delete "$RCLONE_REMOTE" --min-age "${KEEP_DAYS}d" --include 'fusion-*.dump' --config "${RCLONE_CONFIG:-/config/rclone/rclone.conf}" || true
+    rclone delete "$RCLONE_REMOTE" --min-age "${KEEP_DAYS}d" --include 'fusion-*' --config "${RCLONE_CONFIG:-/config/rclone/rclone.conf}" || true
     echo "[respaldo] copia externa lista"
   else
     echo "[respaldo] ERROR copiando a $RCLONE_REMOTE (el respaldo local sí quedó)"

@@ -7,10 +7,16 @@ import path from 'path';
  */
 export const backupDir = () => process.env.BACKUP_DIR || '/backups';
 
-const FILE_RE = /^fusion-[A-Za-z0-9_]+-(\d{8})-(\d{6})\.dump$/;
+const DUMP_RE = /^fusion-[A-Za-z0-9_]+-(\d{8})-(\d{6})\.dump$/;
+const FILES_RE = /^fusion-uploads-(\d{8})-(\d{6})\.tar\.gz$/;
+/** Fecha del nombre (AAAAMMDDHHMMSS): ordena aunque el archivo se haya copiado después. */
+const stampOf = (f: string) => { const m = f.match(DUMP_RE) || f.match(FILES_RE); return m ? m[1] + m[2] : ''; };
+const isBackupName = (f: string) => DUMP_RE.test(f) || FILES_RE.test(f);
 
 export interface BackupFile {
   id: string;
+  /** Base de datos o archivos subidos (adjuntos). */
+  kind: 'database' | 'files';
   date: string;
   sizeBytes: number;
 }
@@ -28,12 +34,12 @@ export function listBackups(dir = backupDir()): BackupFile[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
-    .filter((f) => FILE_RE.test(f))
+    .filter(isBackupName)
     .map((f) => {
       const stat = fs.statSync(path.join(dir, f));
-      return { id: f, date: stat.mtime.toISOString(), sizeBytes: stat.size };
+      return { id: f, kind: FILES_RE.test(f) ? ('files' as const) : ('database' as const), date: stat.mtime.toISOString(), sizeBytes: stat.size };
     })
-    .sort((a, b) => b.id.localeCompare(a.id));
+    .sort((a, b) => stampOf(b.id).localeCompare(stampOf(a.id)) || a.kind.localeCompare(b.kind));
 }
 
 export function readBackupStatus(dir = backupDir()): BackupStatus | null {
@@ -46,7 +52,7 @@ export function readBackupStatus(dir = backupDir()): BackupStatus | null {
 
 /** Ruta del archivo si el nombre es válido y existe (evita salir de la carpeta). */
 export function resolveBackupFile(name: string, dir = backupDir()): string | null {
-  if (!FILE_RE.test(name)) return null;
+  if (!isBackupName(name)) return null;
   const file = path.join(dir, name);
   return fs.existsSync(file) ? file : null;
 }

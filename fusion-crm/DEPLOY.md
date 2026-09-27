@@ -123,6 +123,10 @@ El servicio `backup` hace un respaldo **al arrancar** y luego **todos los días 
 docker compose -f docker-compose.minimal.yml logs backup   # ver cuándo se hizo el último
 ```
 
+Cada respaldo incluye también los **archivos adjuntos** que suben los clientes en el portal
+(`fusion-uploads-….tar.gz`; se guardan en el volumen `uploads`, sin depender de Firebase
+Storage). Se restauran con `./scripts/restore-db.sh --files fusion-uploads-AAAAMMDD-HHMMSS.tar.gz`.
+
 También se ve en la aplicación: **Administración → Respaldos** muestra el último respaldo, si la
 copia externa funcionó y permite descargar cada archivo (solo administradores). Avisa en rojo si
 el último respaldo falló o tiene más de un día.

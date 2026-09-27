@@ -12,9 +12,11 @@ suite('portal del cliente con Postgres (integración)', () => {
   let base = '';
   let prismaMod: typeof import('../repositories/prisma/client');
   const saved = { ...process.env };
+  let uploads = '';
 
   beforeAll(async () => {
-    Object.assign(process.env, { DATABASE_URL: url, DATA_BACKEND: 'postgres' });
+    uploads = (await import('fs')).mkdtempSync(require('path').join(require('os').tmpdir(), 'portal-uploads-'));
+    Object.assign(process.env, { DATABASE_URL: url, DATA_BACKEND: 'postgres', FILE_STORAGE: 'local', UPLOADS_DIR: uploads });
     prismaMod = await import('../repositories/prisma/client');
     await prismaMod.getPrisma().storedDocument.deleteMany({ where: { collection: { in: ['client_portal_links', 'client_requests'] } } });
     const { portalPublicRouter, clientPortalRouter } = await import('./clientPortal');
@@ -53,8 +55,20 @@ suite('portal del cliente con Postgres (integración)', () => {
     expect(view.status).toBe(200);
     expect(view.body.client.name).toBe('Portal Prueba SAS');
 
-    const sent = await call('POST', `/api/portal/${token}/requests`, { description: 'Necesito 500 cajas iguales al pedido anterior', quantity: 500 });
+    const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n');
+    const sent = await call('POST', `/api/portal/${token}/requests`, {
+      description: 'Necesito 500 cajas iguales al pedido anterior',
+      quantity: 500,
+      attachments: [{ name: 'arte final.pdf', dataBase64: pdf.toString('base64') }],
+    });
     expect(sent.status).toBe(201);
+    expect(sent.body.request.attachments).toEqual([expect.objectContaining({ name: 'arte final.pdf', contentType: 'application/pdf' })]);
+    // El adjunto queda en disco y el cliente (y el equipo) lo pueden descargar
+    const file = await fetch(`${base}/api/portal/${token}/requests/${sent.body.request.id}/attachments/0`);
+    expect(file.status).toBe(200);
+    expect(Buffer.from(await file.arrayBuffer()).equals(pdf)).toBe(true);
+    const internal = await fetch(`${base}/api/client-portal/requests/${sent.body.request.id}/attachments/0`);
+    expect(internal.status).toBe(200);
     expect((await call('GET', '/api/client-portal/requests/summary')).body.newCount).toBe(1);
 
     const list = await call('GET', '/api/client-portal/requests');

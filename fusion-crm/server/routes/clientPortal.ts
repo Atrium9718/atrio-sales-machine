@@ -1,9 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
-import { getStorage } from 'firebase-admin/storage';
-import { loadFirebaseConfig } from '../auth/firebaseConfig';
-import { getAdminApp } from '../auth/firebaseAdmin';
+import { fileStorage, readStoredFile } from '../services/fileStorage';
 import { eventBus } from '../events/DomainEventBus';
 import { repositories } from '../repositories';
 import { documentRepository } from '../repositories/documentStore';
@@ -140,17 +138,7 @@ export function toClientRequestView(r: ClientRequest) {
   };
 }
 
-// ── Adjuntos (Firebase Storage) ─────────────────────────────────
-
-function getBucket() {
-  const app = getAdminApp();
-  if (!app || !loadFirebaseConfig().storageBucket) return null;
-  try {
-    return getStorage(app).bucket();
-  } catch {
-    return null;
-  }
-}
+// ── Adjuntos (disco del servidor o Firebase Storage: ver services/fileStorage) ──
 
 export interface IncomingAttachment {
   name: string;
@@ -183,10 +171,9 @@ export function parseIncomingAttachments(raw: unknown): { ok: true; files: Incom
 }
 
 async function streamAttachment(res: Response, attachment: ClientRequestAttachment | undefined) {
-  const bucket = getBucket();
-  if (!attachment || !bucket) return res.status(404).json({ success: false, error: 'Archivo no encontrado' });
+  if (!attachment) return res.status(404).json({ success: false, error: 'Archivo no encontrado' });
   try {
-    const [buffer] = await bucket.file(attachment.storagePath).download();
+    const buffer = await readStoredFile(attachment.storagePath);
     res.setHeader('Content-Type', attachment.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFileName(attachment.name)}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -268,13 +255,6 @@ portalPublicRouter.post('/:token/requests', async (req: Request, res: Response) 
     }
     const incoming = parseIncomingAttachments(req.body?.attachments);
     if ('error' in incoming) return res.status(400).json({ success: false, error: incoming.error });
-    const bucket = incoming.files.length > 0 ? getBucket() : null;
-    if (incoming.files.length > 0 && !bucket) {
-      return res.status(503).json({
-        success: false,
-        error: 'En este momento no podemos recibir archivos. Envía la solicitud sin adjuntos y tu asesor te los pedirá.',
-      });
-    }
     if (!allowRequest(link.id)) {
       return res.status(429).json({ success: false, error: 'Has enviado muchas solicitudes. Intenta de nuevo más tarde.' });
     }
@@ -286,7 +266,7 @@ portalPublicRouter.post('/:token/requests', async (req: Request, res: Response) 
     const attachments: ClientRequestAttachment[] = [];
     for (const [i, file] of incoming.files.entries()) {
       const storagePath = `client-requests/${requestId}/${i + 1}-${sanitizeFileName(file.name)}`;
-      await bucket!.file(storagePath).save(file.bytes, { contentType: file.mime, resumable: false });
+      await fileStorage().save(storagePath, file.bytes, file.mime);
       attachments.push({ name: file.name, contentType: file.mime, size: file.bytes.length, storagePath });
     }
 

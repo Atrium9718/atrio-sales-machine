@@ -3,6 +3,7 @@ import { DatabaseBackup, Download, ShieldCheck, ShieldAlert, Clock, Info, Cloud,
 
 interface BackupFile {
   id: string;
+  kind?: 'database' | 'files';
   date: string;
   sizeBytes: number;
 }
@@ -46,7 +47,7 @@ export default function RespaldosPage() {
 
   useEffect(load, []);
 
-  const latest = data?.backups[0];
+  const latest = data?.backups.find((b) => b.kind !== 'files');
   const status = data?.status;
   const stale = latest ? hoursSince(latest.date) > 26 : true;
   const healthy = !!latest && !stale && (status?.ok ?? true);
@@ -126,6 +127,7 @@ export default function RespaldosPage() {
             <thead className="bg-muted/50 border-b border-border">
               <tr>
                 <th className="px-4 py-3 font-semibold">Fecha y hora</th>
+                <th className="px-4 py-3 font-semibold">Contenido</th>
                 <th className="px-4 py-3 font-semibold hidden md:table-cell">Archivo</th>
                 <th className="px-4 py-3 font-semibold text-right">Tamaño</th>
                 <th className="px-4 py-3 font-semibold text-right">Descargar</th>
@@ -140,6 +142,7 @@ export default function RespaldosPage() {
                       {new Date(b.date).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })}
                     </div>
                   </td>
+                  <td className="px-4 py-3 text-xs">{b.kind === 'files' ? 'Archivos adjuntos' : 'Base de datos'}</td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground hidden md:table-cell">{b.id}</td>
                   <td className="px-4 py-3 text-right font-mono">{formatSize(b.sizeBytes)}</td>
                   <td className="px-4 py-3 text-right">
@@ -173,6 +176,10 @@ export default function RespaldosPage() {
             </li>
             <li>El script detiene la aplicación, restaura la base y la vuelve a encender. Pide confirmación antes de borrar nada.</li>
           </ol>
+          <p>
+            Los archivos adjuntos (<code className="bg-muted px-1 rounded text-xs">fusion-uploads-….tar.gz</code>) se restauran con:{' '}
+            <code className="bg-muted px-1 rounded text-xs">./scripts/restore-db.sh --files fusion-uploads-AAAAMMDD-HHMMSS.tar.gz</code>
+          </p>
           <p>La guía completa está en DEPLOY.md, sección de respaldos.</p>
         </div>
       </div>
