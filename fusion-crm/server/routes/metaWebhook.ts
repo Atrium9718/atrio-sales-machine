@@ -3,6 +3,7 @@ import { getApps, initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import fs from 'fs';
 import path from 'path';
+import { metaVerifyToken, requireMetaSignature } from '../security/metaSignature';
 
 export const metaWebhookRouter = Router();
 
@@ -34,11 +35,11 @@ metaWebhookRouter.get('/', (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  // This should match the token configured in the Meta App Dashboard
-  const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'fusion_secure_token_2026';
+  // Debe coincidir con el token configurado en el panel de la app de Meta
+  const VERIFY_TOKEN = metaVerifyToken();
 
   if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    if (mode === 'subscribe' && VERIFY_TOKEN && token === VERIFY_TOKEN) {
       console.log('WEBHOOK_VERIFIED');
       res.status(200).send(challenge);
     } else {
@@ -50,7 +51,7 @@ metaWebhookRouter.get('/', (req, res) => {
 });
 
 // Receive Messages
-metaWebhookRouter.post('/', async (req, res) => {
+metaWebhookRouter.post('/', requireMetaSignature, async (req, res) => {
   try {
     const body = req.body;
 
