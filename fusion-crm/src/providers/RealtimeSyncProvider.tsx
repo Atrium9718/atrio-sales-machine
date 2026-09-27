@@ -178,6 +178,12 @@ export const RealtimeSyncProvider: React.FC<RealtimeSyncProviderProps> = ({ chil
             break;
           }
 
+          // --- BANDEJA OMNICANAL ---
+          case 'OMNICHANNEL_CONVERSATION_UPDATED': {
+            window.dispatchEvent(new CustomEvent('fusion_omnichannel_updated', { detail: payload }));
+            break;
+          }
+
           // --- PORTAL DEL CLIENTE ---
           case 'CLIENT_REQUEST_CREATED': {
             window.dispatchEvent(new CustomEvent('fusion_client_request_created', { detail: payload }));

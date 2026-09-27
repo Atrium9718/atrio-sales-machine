@@ -130,6 +130,7 @@ const ArquitecturaIAPage = React.lazy(() => import('../apps/web/src/app/(dashboa
 const IATestingPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/ia/testing/page'));
 const KioskoPlantaPage = React.lazy(() => import('../apps/web/src/app/kiosko-planta/page'));
 import { ClientRequestToasts, useNewClientRequestsCount } from './components/portal/ClientRequestAlerts';
+import { InboxAttentionNotifier, useInboxAttentionCount } from './components/omnichannel/InboxAttention';
 
 function useCompanyIdentity() {
   const [identity, setIdentity] = React.useState<{ name: string; logoUrl?: string }>({
@@ -198,7 +199,8 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const voiceStatus = useVoiceStatus();
   const { canSeeModule, isSuperAdmin } = useFusionAuth();
   const newClientRequests = useNewClientRequestsCount(canSeeModule('comercial'));
-  const itemBadges: Record<string, number> = { '/dashboard/portal-clientes': newClientRequests };
+  const inboxAttention = useInboxAttentionCount(canSeeModule('comunicaciones'));
+  const itemBadges: Record<string, number> = { '/dashboard/portal-clientes': newClientRequests, '/dashboard/inbox': inboxAttention };
   const permissions = isSuperAdmin ? ['*'] : ((window as any).__FUSION_USER_PERMISSIONS__ || ['*']);
   const hasVoiceUse = isSuperAdmin || can(permissions, 'voice:use');
   const canSupervise = isSuperAdmin || can(permissions, 'voice:supervise');
@@ -484,6 +486,8 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
   // En el chat interno los botones flotantes tapaban la caja de mensaje: ahí se ocultan
   // y la página ocupa todo el alto disponible.
   const isChatRoute = /^(\/dashboard)?\/chat(\/|$)/.test(location.pathname);
+  // En la bandeja el botón flotante tapaba el botón de enviar
+  const hidesQuickActions = isChatRoute || /^\/dashboard\/inbox(\/|$)/.test(location.pathname);
 
   const mobileTabs = [
     { name: 'Inicio', path: '/dashboard', icon: HomeIcon },
@@ -551,10 +555,11 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* FLOATING ACTION BUTTONS GLOBALLY (EXCLUSIVOS PARA SUPER ADMIN) */}
-        {isSuperAdmin && !isChatRoute && (
+        {isSuperAdmin && !hidesQuickActions && (
           <QuickActionsDock onNewOpportunity={() => setIsNewModalOpen(true)} />
         )}
         {isSuperAdmin && <ClientRequestToasts />}
+        <InboxAttentionNotifier />
 
         {/* Modales y Paneles de Telefonía (Etapa 17.4) */}
         <VoiceIncomingCallModal />
