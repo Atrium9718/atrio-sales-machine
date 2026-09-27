@@ -11,38 +11,14 @@ import { AnimatePresence } from 'framer-motion';
 import { NewOpportunityModal } from './components/NewOpportunityModal';
 import { Link2, Network, Beaker, LayoutDashboard, MessageCircle, Plus, Users, TrendingUp, Calendar, FileText, Menu, X, Play, Package, Activity, DollarSign, Settings, Shield, ShieldAlert, FileCheck, Building, Database, Hash, Target, KeyRound, Blocks, DatabaseBackup, Wrench, Send, History , Bot, Home as HomeIcon, Megaphone, MessageSquare, PhoneCall, Sparkles, Calculator } from 'lucide-react';
 
-import { HomePage } from './pages/colaboracion/HomePage';
-import { AdminHomeLayoutPage } from './pages/colaboracion/AdminHomeLayoutPage';
-import { AnunciosPage } from './pages/colaboracion/AnunciosPage';
-import { AnuncioNuevoPage } from './pages/colaboracion/AnuncioNuevoPage';
-import { AnuncioDetallePage } from './pages/colaboracion/AnuncioDetallePage';
-import { AnuncioLecturasPage } from './pages/colaboracion/AnuncioLecturasPage';
-import { ChatPage } from './pages/colaboracion/ChatPage';
-import { LlamadaRoomPage } from './pages/colaboracion/LlamadaRoomPage';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { useGlobalCalls } from './hooks/useGlobalCalls';
-import { MiRendimientoPage } from './pages/colaboracion/MiRendimientoPage';
-import { EquipoRendimientoPage } from './pages/colaboracion/EquipoRendimientoPage';
-import { MetasPage } from './pages/colaboracion/MetasPage';
 import { getPostLoginRedirect } from './lib/authRedirect';
 import { can, FusionModuleKey } from '../packages/core/src/auth/permissions';
 import { useVoiceStatus } from './hooks/useVoiceStatus';
 import { FusionAuthProvider, useFusionAuth } from './context/FusionAuthContext';
 import { UserPersonaSwitcher, ImpersonationBanner } from './components/auth/UserPersonaSwitcher';
 
-import { VozDashboardPage } from './pages/voz/VozDashboardPage';
-import { VozLlamadasPage } from './pages/voz/VozLlamadasPage';
-import { VozLlamadaDetallePage } from './pages/voz/VozLlamadaDetallePage';
-import { VozColasPage } from './pages/voz/VozColasPage';
-import { VozBuzonPage } from './pages/voz/VozBuzonPage';
-import { VozIvrPage } from './pages/voz/VozIvrPage';
-import { VozIvrEditorPage } from './pages/voz/VozIvrEditorPage';
-import { VozLocucionesPage } from './pages/voz/VozLocucionesPage';
-import { VozAgenteIaPage } from './pages/voz/VozAgenteIaPage';
-import { VozCampanasPage } from './pages/voz/VozCampanasPage';
-import { VozSupervisionPage } from './pages/voz/VozSupervisionPage';
-import { VozInformesPage } from './pages/voz/VozInformesPage';
-import { VozConfiguracionPage } from './pages/voz/VozConfiguracionPage';
 
 import { SoftphoneProvider } from '../apps/web/src/features/voice/sip/SoftphoneContext';
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -58,8 +34,35 @@ import {
   VoiceMobileConfigModal,
 } from '../apps/web/src/features/voice/components';
 
-import WebchatConfigPage from './app/(dashboard)/dashboard/canales-config/chat-web/page';
-import SimulatorPage from './app/(dashboard)/dashboard/simulator/page';
+
+// Páginas cargadas bajo demanda: cada módulo se descarga solo cuando se abre.
+const HomePage = React.lazy(() => import('./pages/colaboracion/HomePage').then((m) => ({ default: m.HomePage })));
+const AdminHomeLayoutPage = React.lazy(() => import('./pages/colaboracion/AdminHomeLayoutPage').then((m) => ({ default: m.AdminHomeLayoutPage })));
+const AnunciosPage = React.lazy(() => import('./pages/colaboracion/AnunciosPage').then((m) => ({ default: m.AnunciosPage })));
+const AnuncioNuevoPage = React.lazy(() => import('./pages/colaboracion/AnuncioNuevoPage').then((m) => ({ default: m.AnuncioNuevoPage })));
+const AnuncioDetallePage = React.lazy(() => import('./pages/colaboracion/AnuncioDetallePage').then((m) => ({ default: m.AnuncioDetallePage })));
+const AnuncioLecturasPage = React.lazy(() => import('./pages/colaboracion/AnuncioLecturasPage').then((m) => ({ default: m.AnuncioLecturasPage })));
+const ChatPage = React.lazy(() => import('./pages/colaboracion/ChatPage').then((m) => ({ default: m.ChatPage })));
+const LlamadaRoomPage = React.lazy(() => import('./pages/colaboracion/LlamadaRoomPage').then((m) => ({ default: m.LlamadaRoomPage })));
+const MiRendimientoPage = React.lazy(() => import('./pages/colaboracion/MiRendimientoPage').then((m) => ({ default: m.MiRendimientoPage })));
+const EquipoRendimientoPage = React.lazy(() => import('./pages/colaboracion/EquipoRendimientoPage').then((m) => ({ default: m.EquipoRendimientoPage })));
+const MetasPage = React.lazy(() => import('./pages/colaboracion/MetasPage').then((m) => ({ default: m.MetasPage })));
+const VozDashboardPage = React.lazy(() => import('./pages/voz/VozDashboardPage').then((m) => ({ default: m.VozDashboardPage })));
+const VozLlamadasPage = React.lazy(() => import('./pages/voz/VozLlamadasPage').then((m) => ({ default: m.VozLlamadasPage })));
+const VozLlamadaDetallePage = React.lazy(() => import('./pages/voz/VozLlamadaDetallePage').then((m) => ({ default: m.VozLlamadaDetallePage })));
+const VozColasPage = React.lazy(() => import('./pages/voz/VozColasPage').then((m) => ({ default: m.VozColasPage })));
+const VozBuzonPage = React.lazy(() => import('./pages/voz/VozBuzonPage').then((m) => ({ default: m.VozBuzonPage })));
+const VozIvrPage = React.lazy(() => import('./pages/voz/VozIvrPage').then((m) => ({ default: m.VozIvrPage })));
+const VozIvrEditorPage = React.lazy(() => import('./pages/voz/VozIvrEditorPage').then((m) => ({ default: m.VozIvrEditorPage })));
+const VozLocucionesPage = React.lazy(() => import('./pages/voz/VozLocucionesPage').then((m) => ({ default: m.VozLocucionesPage })));
+const VozAgenteIaPage = React.lazy(() => import('./pages/voz/VozAgenteIaPage').then((m) => ({ default: m.VozAgenteIaPage })));
+const VozCampanasPage = React.lazy(() => import('./pages/voz/VozCampanasPage').then((m) => ({ default: m.VozCampanasPage })));
+const VozSupervisionPage = React.lazy(() => import('./pages/voz/VozSupervisionPage').then((m) => ({ default: m.VozSupervisionPage })));
+const VozInformesPage = React.lazy(() => import('./pages/voz/VozInformesPage').then((m) => ({ default: m.VozInformesPage })));
+const VozConfiguracionPage = React.lazy(() => import('./pages/voz/VozConfiguracionPage').then((m) => ({ default: m.VozConfiguracionPage })));
+const InterventoriaPage = React.lazy(() => import('./pages/admin/InterventoriaPage').then((m) => ({ default: m.InterventoriaPage })));
+const WebchatConfigPage = React.lazy(() => import('./app/(dashboard)/dashboard/canales-config/chat-web/page'));
+const SimulatorPage = React.lazy(() => import('./app/(dashboard)/dashboard/simulator/page'));
 
 const IdentidadesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/identidades/page'));
 const TarifarioProduccionPage = React.lazy(() => import('../apps/web/src/app/(app)/cotizaciones/tarifario/page'));
@@ -126,7 +129,6 @@ const PropuestasAgentesPage = React.lazy(() => import('../apps/web/src/app/(dash
 const ArquitecturaIAPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/ia/arquitectura/page'));
 const IATestingPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/ia/testing/page'));
 const KioskoPlantaPage = React.lazy(() => import('../apps/web/src/app/kiosko-planta/page'));
-import { InterventoriaPage } from './pages/admin/InterventoriaPage';
 import { ClientRequestToasts, useNewClientRequestsCount } from './components/portal/ClientRequestAlerts';
 
 function useCompanyIdentity() {
@@ -529,7 +531,9 @@ function DashboardLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         <div className={isChatRoute ? 'flex-1 min-h-0 overflow-hidden md:p-4 pb-16 md:pb-4' : 'flex-1 overflow-auto p-4 md:p-6 pb-24 md:pb-6'}>
-          {children}
+          <React.Suspense fallback={<div className="flex items-center justify-center p-12 text-muted-foreground animate-pulse">Cargando sección...</div>}>
+            {children}
+          </React.Suspense>
         </div>
         
         {/* MOBILE BOTTOM NAV */}

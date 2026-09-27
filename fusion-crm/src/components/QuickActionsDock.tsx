@@ -1,7 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Bot, ChevronLeft, EyeOff, MessageSquare, Plus, X, Zap } from 'lucide-react';
-import ChatWidget from './ChatWidget';
-import { InterventorFloatingButton } from './interventoria/InterventorFloatingButton';
+
+// Los paneles se descargan la primera vez que se abren (el asistente trae un renderizador de markdown pesado).
+const ChatWidget = React.lazy(() => import('./ChatWidget'));
+const InterventorFloatingButton = React.lazy(() =>
+  import('./interventoria/InterventorFloatingButton').then((m) => ({ default: m.InterventorFloatingButton }))
+);
 
 const HIDDEN_KEY = 'fusion_quick_actions_hidden';
 
@@ -34,6 +38,8 @@ export function QuickActionsDock({ onNewOpportunity }: { onNewOpportunity: () =>
   const [expanded, setExpanded] = useState(false);
   const [hidden, setHidden] = useState<boolean>(readHidden);
   const [panel, setPanel] = useState<Panel>('none');
+  // Una vez abierto, el panel queda montado para conservar su conversación
+  const [loaded, setLoaded] = useState<{ assistant: boolean; interventor: boolean }>({ assistant: false, interventor: false });
 
   useEffect(() => {
     if (!expanded) return;
@@ -42,8 +48,9 @@ export function QuickActionsDock({ onNewOpportunity }: { onNewOpportunity: () =>
     return () => window.removeEventListener('keydown', onKey);
   }, [expanded]);
 
-  const openPanel = (p: Panel) => {
+  const openPanel = (p: Exclude<Panel, 'none'>) => {
     setExpanded(false);
+    setLoaded((prev) => ({ ...prev, [p]: true }));
     setPanel(p);
   };
 
@@ -66,8 +73,14 @@ export function QuickActionsDock({ onNewOpportunity }: { onNewOpportunity: () =>
 
   return (
     <>
-      <ChatWidget hideLauncher open={panel === 'assistant'} onOpenChange={(v) => setPanel(v ? 'assistant' : 'none')} />
-      <InterventorFloatingButton hideLauncher open={panel === 'interventor'} onOpenChange={(v) => setPanel(v ? 'interventor' : 'none')} />
+      <React.Suspense fallback={null}>
+        {loaded.assistant && (
+          <ChatWidget hideLauncher open={panel === 'assistant'} onOpenChange={(v) => setPanel(v ? 'assistant' : 'none')} />
+        )}
+        {loaded.interventor && (
+          <InterventorFloatingButton hideLauncher open={panel === 'interventor'} onOpenChange={(v) => setPanel(v ? 'interventor' : 'none')} />
+        )}
+      </React.Suspense>
 
       {panel === 'none' && hidden && (
         <button

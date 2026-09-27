@@ -1,11 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// El navegador no usa Firestore: todos los datos pasan por la API del servidor.
 
 // Global suppression of background retry errors for exhausted quotas to prevent unhandled rejection crashes
 if (typeof window !== 'undefined') {

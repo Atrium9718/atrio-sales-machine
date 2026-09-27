@@ -1,4 +1,16 @@
-import { UserAgent, Registerer, Inviter, Invitation, SessionState, UserAgentOptions } from 'sip.js';
+import type { UserAgent, Registerer, Inviter, Invitation, SessionState, UserAgentOptions } from 'sip.js';
+
+// sip.js (~0,7 MB) se carga solo cuando el softphone se usa de verdad, no al abrir la app.
+type SipModule = typeof import('sip.js');
+let sipModule: SipModule | null = null;
+async function loadSip(): Promise<SipModule> {
+  if (!sipModule) sipModule = await import('sip.js');
+  return sipModule;
+}
+function SIP(): SipModule {
+  if (!sipModule) throw new Error('sip.js aún no está cargado');
+  return sipModule;
+}
 import {
   ActiveCallInfo,
   CallQualityMetrics,
@@ -132,6 +144,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
    * Registro SIP contra Asterisk usando credenciales efímeras
    */
   public async register(): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) return;
 
     this.setState('CONNECTING');
@@ -142,7 +155,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
       this.credentials = credentials;
       this.registeredExtension = credentials.extension;
 
-      const uri = UserAgent.makeURI(`sip:${credentials.sipUsername}@${credentials.sipDomain}`);
+      const uri = SIP().UserAgent.makeURI(`sip:${credentials.sipUsername}@${credentials.sipDomain}`);
       if (!uri) throw new Error('URI SIP inválida');
 
       const userAgentOptions: UserAgentOptions = {
@@ -162,7 +175,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
         logBuiltinEnabled: false,
       };
 
-      this.userAgent = new UserAgent(userAgentOptions);
+      this.userAgent = new (SIP().UserAgent)(userAgentOptions);
 
       // Escuchar invitaciones entrantes de SIP.js
       this.userAgent.delegate = {
@@ -173,7 +186,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
 
       await this.userAgent.start();
 
-      this.registerer = new Registerer(this.userAgent, {
+      this.registerer = new (SIP().Registerer)(this.userAgent, {
         expires: 300,
       });
 
@@ -261,6 +274,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
    * Realizar llamada saliente (Outbound / Click-to-call)
    */
   public async makeCall(destination: string, displayName?: string, linkedContext?: any): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('MAKE_CALL', { destination, displayName, linkedContext });
       return;
@@ -304,10 +318,10 @@ export class SipSoftphoneClient implements SoftphoneClient {
     }
 
     try {
-      const targetUri = UserAgent.makeURI(`sip:${cleanDest}@${this.credentials?.sipDomain}`);
+      const targetUri = SIP().UserAgent.makeURI(`sip:${cleanDest}@${this.credentials?.sipDomain}`);
       if (!targetUri) throw new Error('URI destino inválida');
 
-      const inviter = new Inviter(this.userAgent, targetUri, {
+      const inviter = new (SIP().Inviter)(this.userAgent, targetUri, {
         sessionDescriptionHandlerOptions: {
           constraints: {
             audio: { deviceId: deviceManager.getSelectedMicId() },
@@ -330,6 +344,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
   }
 
   public async answerCall(): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('ANSWER');
       return;
@@ -346,7 +361,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
       return;
     }
 
-    if (this.currentSession instanceof Invitation) {
+    if (this.currentSession instanceof SIP().Invitation) {
       try {
         await this.currentSession.accept({
           sessionDescriptionHandlerOptions: {
@@ -363,12 +378,13 @@ export class SipSoftphoneClient implements SoftphoneClient {
   }
 
   public async rejectCall(): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('REJECT');
       return;
     }
 
-    if (this.currentSession instanceof Invitation) {
+    if (this.currentSession instanceof SIP().Invitation) {
       try {
         await this.currentSession.reject();
       } catch {}
@@ -378,6 +394,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
   }
 
   public async hangupCall(): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('HANGUP');
       return;
@@ -385,7 +402,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
 
     if (this.currentSession) {
       try {
-        if (this.currentSession.state === SessionState.Established) {
+        if (this.currentSession.state === SIP().SessionState.Established) {
           await this.currentSession.bye();
         } else {
           if ('cancel' in this.currentSession) {
@@ -401,6 +418,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
   }
 
   public async holdCall(): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('HOLD');
       return;
@@ -417,6 +435,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
   }
 
   public async unholdCall(): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('UNHOLD');
       return;
@@ -469,6 +488,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
   }
 
   public async blindTransfer(target: string): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('TRANSFER', { target, type: 'BLIND' });
       return;
@@ -481,6 +501,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
   }
 
   public async attendedTransfer(target: string): Promise<void> {
+    await loadSip();
     if (!this.isMasterTab) {
       this.tabCoordinator.sendCommandToMaster('TRANSFER', { target, type: 'ATTENDED' });
       return;
@@ -528,13 +549,13 @@ export class SipSoftphoneClient implements SoftphoneClient {
 
   private handleSessionStateChange(sessionState: SessionState, call: ActiveCallInfo): void {
     switch (sessionState) {
-      case SessionState.Establishing:
+      case SIP().SessionState.Establishing:
         call.state = call.direction === 'INBOUND' ? 'RINGING_INBOUND' : 'RINGING_OUTBOUND';
         this.emit('callStateChange', call);
         this.syncStateToMirrors();
         break;
 
-      case SessionState.Established:
+      case SIP().SessionState.Established:
         call.state = 'ACTIVE';
         call.connectedAt = new Date().toISOString();
         this.attachMediaStream();
@@ -543,7 +564,7 @@ export class SipSoftphoneClient implements SoftphoneClient {
         this.syncStateToMirrors();
         break;
 
-      case SessionState.Terminated:
+      case SIP().SessionState.Terminated:
         this.terminateActiveCall('SESSION_TERMINATED');
         break;
     }
