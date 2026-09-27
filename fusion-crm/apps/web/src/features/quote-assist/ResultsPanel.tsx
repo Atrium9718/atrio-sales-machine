@@ -477,7 +477,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
           <span>Agregar a la cotización</span>
         </button>
 
-        {/* Si estamos en página independiente /cotizaciones/calculadora */}
+        {/* Solo si quien lo usa ofrece guardar como borrador */}
         {isStandalonePage && onSaveAsDraft && (
           <button
             type="button"

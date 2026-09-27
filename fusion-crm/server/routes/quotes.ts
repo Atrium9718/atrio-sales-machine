@@ -1,4 +1,5 @@
 import { recordGeminiUsage } from '../omnichannel/usage';
+import { geminiModel } from '../omnichannel/llm';
 import { Router } from 'express';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, getDoc, query, orderBy, limit, where, addDoc } from 'firebase/firestore';
@@ -16,7 +17,6 @@ import { dueDateFor } from '../../packages/core/src/calendar/workCalendar';
 
 import { initializeApp as initAdmin, getApps as getAdminApps } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
-import { getStorage as getAdminStorage } from 'firebase-admin/storage';
 import fs from 'fs';
 import path from 'path';
 
@@ -90,6 +90,13 @@ quotesRouter.get('/', async (req, res) => {
   }
 });
 
+/** OT creada a partir de la cotización (si la hay). */
+async function orderForQuote(quoteId: string) {
+  return (await repositories().projects.list()).find((p: any) => p.quoteId === quoteId) ?? null;
+}
+const orderLockMessage = (order: any) =>
+  `La cotización ya tiene la orden de trabajo ${order.number || order.id} en Producción. Elimina o cancela la OT primero.`;
+
 async function isQuoteNumberTaken(number: string, exceptId: string) {
   const target = String(number).trim().toUpperCase();
   return (await repositories().quotes.list()).some((q: any) => q.id !== exceptId && String(q.number || '').trim().toUpperCase() === target);
@@ -130,6 +137,12 @@ quotesRouter.post('/', async (req, res) => {
       createdAt: quote.createdAt || new Date().toISOString()
     };
 
+    // Una cotización aprobada con OT no vuelve a otro estado desde aquí
+    if (isApprovedStatus(previous?.status) && quote.status !== undefined && !isApprovedStatus(quote.status)) {
+      const order = await orderForQuote(quoteId);
+      if (order) return res.status(409).json({ success: false, code: 'HAS_ORDER', error: orderLockMessage(order) });
+    }
+
     // Los montos los calcula el servidor a partir de los ítems (no se confía en los del navegador)
     const itemsToReview = Array.isArray(quote.items) ? quote.items : previous?.items;
     if (Array.isArray(itemsToReview)) {
@@ -144,6 +157,11 @@ quotesRouter.post('/', async (req, res) => {
 
       const becomingApproved = isApprovedStatus(quote.status) && !isApprovedStatus(previous?.status);
       if (becomingApproved) {
+        // Aprobar crea la OT y reserva el papel: eso lo hace POST /:id/approve
+        if (!quote.allowWithoutOrder) {
+          return res.status(400).json({ success: false, code: 'USE_APPROVE', error: 'Para aprobar usa "Aprobar" (crea la orden de trabajo).' });
+        }
+        delete dataToSave.allowWithoutOrder;
         const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
         if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
         Object.assign(dataToSave, { approvedBy: actor(req).name, approvedById: actor(req).id, approvedAt: new Date().toISOString() });
@@ -176,7 +194,16 @@ quotesRouter.patch('/:id/status', async (req, res) => {
       updatedAt: new Date().toISOString()
     };
 
+    if (isApprovedStatus(snap.data().status) && status && !isApprovedStatus(status)) {
+      const order = await orderForQuote(id);
+      if (order) return res.status(409).json({ success: false, code: 'HAS_ORDER', error: orderLockMessage(order) });
+    }
+
     if (isApprovedStatus(status) && !isApprovedStatus(snap.data().status)) {
+      // Aprobar crea la OT: eso lo hace POST /:id/approve
+      if (!req.body?.allowWithoutOrder) {
+        return res.status(400).json({ success: false, code: 'USE_APPROVE', error: 'Para aprobar usa "Aprobar" (crea la orden de trabajo).' });
+      }
       const { totals, pricingReview } = await reviewQuote(snap.data().items);
       const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
       if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
@@ -361,8 +388,10 @@ quotesRouter.post('/:id/send', async (req, res) => {
     }
     const snap = { data: () => current };
 
+    // Reenviar una cotización ya aprobada o rechazada registra el envío sin cambiar su estado
+    const keepStatus = isApprovedStatus(current.status) || current.status === 'Rechazada';
     const updates: any = {
-      status: 'Enviada',
+      ...(keepStatus ? {} : { status: 'Enviada' }),
       sentAt: new Date().toISOString(),
       sentVia: channel,
       sentDestination: destination || snap.data().clientPhone || snap.data().clientEmail,
@@ -383,6 +412,8 @@ quotesRouter.post('/:id/send', async (req, res) => {
 quotesRouter.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const order = await orderForQuote(id);
+    if (order) return res.status(409).json({ success: false, code: 'HAS_ORDER', error: orderLockMessage(order) });
     await repositories().quotes.delete(id);
     res.json({ success: true, message: 'Cotización eliminada correctamente' });
   } catch (err: any) {
@@ -391,99 +422,9 @@ quotesRouter.delete('/:id', async (req, res) => {
   }
 });
 
-// POST /api/quotes/upload-pdf - Subir PDF a Firebase Storage para compartir
-quotesRouter.post('/upload-pdf', async (req, res) => {
-  try {
-    const { pdfBase64, fileName, quoteId } = req.body;
-    if (!pdfBase64) {
-      return res.status(400).json({ success: false, error: 'No se recibió el contenido del PDF' });
-    }
-
-    console.log(`Uploading PDF via Admin SDK: quotes/${quoteId}/${fileName}`);
-    
-    try {
-      const apps = getAdminApps();
-      if (apps.length === 0) throw new Error('Firebase Admin not initialized');
-      const app = apps[0];
-      const bucket = getAdminStorage(app).bucket();
-      const file = bucket.file(`quotes/${quoteId || Date.now()}/${fileName || 'cotizacion.pdf'}`);
-      const pdfBuffer = Buffer.from(pdfBase64, 'base64');
-
-      // Save file to bucket
-      await file.save(pdfBuffer, {
-        metadata: {
-          contentType: 'application/pdf',
-        },
-        resumable: false
-      });
-
-      let url = '';
-      try {
-        // Try to generate a signed URL (requires service account credentials or signing ability)
-        const [signedUrl] = await file.getSignedUrl({
-          action: 'read',
-          expires: '03-01-2500' 
-        });
-        url = signedUrl;
-      } catch (signErr) {
-        console.warn('Could not sign URL, attempting public access:', signErr);
-        // Fallback: Make public and use storage.googleapis.com URL
-        await file.makePublic();
-        url = `https://storage.googleapis.com/${bucket.name}/${file.name}`;
-      }
-
-      console.log('Admin SDK Upload successful. URL:', url);
-      res.json({ success: true, url });
-    } catch (uploadErr: any) {
-      console.error('Detailed Admin Storage Error:', uploadErr);
-      res.status(500).json({ 
-        success: false, 
-        error: `Admin Storage Error: ${uploadErr.message}`,
-        details: uploadErr 
-      });
-    }
-  } catch (err: any) {
-    console.error('Error in upload-pdf route:', err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
 
 // Función centralizada para generar la Pre-cotización con IA y persistirla
-export async function generatePreQuoteInternal({
-  conversation = [],
-  customer = null,
-  channel = 'WhatsApp',
-  manualText = ''
-}: {
-  conversation?: any[];
-  customer?: any;
-  channel?: string;
-  manualText?: string;
-}) {
-  const ai = new GoogleGenAI({ 
-    apiKey: process.env.GEMINI_API_KEY,
-    httpOptions: {
-      timeout: 45000
-    }
-  });
-
-  // Formatear el historial para el análisis de la IA
-  let transcript = '';
-  if (Array.isArray(conversation) && conversation.length > 0) {
-    transcript = conversation.map((m: any) => {
-      const sender = m.sender === 'user' ? 'CLIENTE' : (m.agentName || m.sender || 'AGENTE');
-      return `${sender}: ${m.content}`;
-    }).join('\n');
-  }
-
-  if (manualText) {
-    transcript += `\nINFORMACIÓN ADICIONAL:\n${manualText}`;
-  }
-
-  if (!transcript.trim()) {
-    throw new Error('No hay conversación o datos suficientes para generar la pre-cotización.');
-  }
-
+function extractionPrompt(transcript: string, customer: any) {
   const prompt = `Actúas como el Director Técnico y de Costeo de Fusión Comunicación Gráfica y Empaques (Colombia).
 Tu tarea es analizar detalladamente la conversación con un cliente y extraer una PRE-COTIZACIÓN COMERCIAL precisa en formato JSON.
 
@@ -536,66 +477,43 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
   "internalNotes": "Instrucción para el comercial: completar costo unitario y margen",
   "summary": "Resumen en una frase de la solicitud"
 }`;
+  return prompt;
+}
 
+/** Llama a Gemini (con un PDF o imagen opcional) y devuelve el JSON de la solicitud. */
+async function runExtraction(prompt: string, attachment?: { mimeType: string; data: string }) {
+  if (!process.env.GEMINI_API_KEY) throw Object.assign(new Error('La IA no está configurada (falta GEMINI_API_KEY)'), { status: 503 });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { timeout: 45000 } });
+  const model = geminiModel();
   const response = await ai.models.generateContent({
-    model: 'gemini-3.8-flash',
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      temperature: 0.1
-    }
+    model,
+    contents: attachment ? [{ role: 'user', parts: [{ inlineData: attachment }, { text: prompt }] }] : prompt,
+    config: { responseMimeType: 'application/json', temperature: 0.1 },
   });
-
-  recordGeminiUsage(response, 'gemini-3.8-flash', 'precotizaciones');
-  const responseText = response.text || '{}';
-  let parsed: any = {};
+  recordGeminiUsage(response, model, 'precotizaciones');
+  const text = response.text || '{}';
   try {
-    parsed = JSON.parse(responseText);
-  } catch (parseErr) {
-    console.error('Error parsing JSON from Gemini pre-quote:', parseErr, responseText);
-    const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-    parsed = JSON.parse(cleanJson);
+    return JSON.parse(text);
+  } catch {
+    return JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
   }
+}
 
-  // Consecutivo de la serie de cotizaciones (la pre-cotización es una cotización en borrador)
-  const preQuoteNumber = await systemConfig().issueQuoteNumber();
-  const quoteId = `quote-pre-${Date.now()}`;
-
-  // Estructurar ítems compatibles con el Cotizador oficial
-  const formattedItems = (parsed.items || []).map((it: any, index: number) => ({
-    id: `it-${Date.now()}-${index + 1}`,
-    order: index + 1,
-    description: it.description || 'Ítem de producción',
-    productionMode: it.productionMode || 'IN_HOUSE',
-    size: it.size || '',
-    inks: it.inks || 'Sin impresión',
-    material: it.material || 'Cartón corrugado',
-    finishes: it.finishes || 'Estándar',
-    quantity: Number(it.quantity) || 1000,
-    unitPrice: 0,
-    subtotal: 0,
-    applyVat: true,
-    vatAmount: 0,
-    total: 0,
-    laborHours: 0,
-    rawMaterialCost: 0,
-    marginPercent: 30,
-    showCalcPanel: false,
-    isManuallyAdjusted: false,
-    lastEditedField: 'quantity'
-  }));
-
-  if (formattedItems.length === 0) {
-    formattedItems.push({
-      id: `it-${Date.now()}-1`,
-      order: 1,
-      description: parsed.summary || 'Cajas corrugadas según especificación WhatsApp',
-      productionMode: 'IN_HOUSE',
-      size: 'Estándar',
-      inks: 'Sin impresión',
-      material: 'Cartón Kraft',
-      finishes: 'Pegue lineal',
-      quantity: 1000,
+/** Ítems en el formato del cotizador, sin inventar datos que el cliente no dio. */
+function extractedItems(parsed: any) {
+  return (Array.isArray(parsed?.items) ? parsed.items : [])
+    .filter((it: any) => it && (it.description || it.size || it.material))
+    .map((it: any, index: number) => ({
+      id: `it-${Date.now()}-${index + 1}`,
+      order: index + 1,
+      description: String(it.description || 'Ítem').trim(),
+      productionMode: it.productionMode === 'OUTSOURCED' ? 'OUTSOURCED' : 'IN_HOUSE',
+      size: String(it.size || '').trim(),
+      inks: String(it.inks || '').trim(),
+      material: String(it.material || '').trim(),
+      finishes: String(it.finishes || '').trim(),
+      quantity: Math.max(1, Math.round(Number(it.quantity) || 1)),
+      quantityAssumed: !(Number(it.quantity) > 0),
       unitPrice: 0,
       subtotal: 0,
       applyVat: true,
@@ -606,9 +524,91 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
       marginPercent: 30,
       showCalcPanel: false,
       isManuallyAdjusted: false,
-      lastEditedField: 'quantity'
+      lastEditedField: 'quantity',
+      aiSuggested: true,
+    }));
+}
+
+const EXTRACT_MIME = /^(application\/pdf|image\/(png|jpeg|webp)|text\/plain)$/;
+
+// POST /api/quotes/extract-items - La IA lee un chat, un PDF o una imagen y propone los ítems (no guarda nada)
+quotesRouter.post('/extract-items', async (req, res) => {
+  try {
+    const { text, fileBase64, mimeType, fileName } = req.body ?? {};
+    let transcript = typeof text === 'string' ? text.slice(0, 30000) : '';
+    let attachment: { mimeType: string; data: string } | undefined;
+    if (fileBase64) {
+      const mt = String(mimeType || '');
+      if (!EXTRACT_MIME.test(mt)) return res.status(400).json({ success: false, error: 'Sube un PDF, una imagen (JPG, PNG) o un .txt' });
+      if (String(fileBase64).length > 14_000_000) return res.status(413).json({ success: false, error: 'El archivo supera 10 MB' });
+      if (mt === 'text/plain') transcript += `\n${Buffer.from(fileBase64, 'base64').toString('utf8').slice(0, 30000)}`;
+      else attachment = { mimeType: mt, data: fileBase64 };
+    }
+    if (!transcript.trim() && !attachment) return res.status(400).json({ success: false, error: 'Pega el texto o sube un archivo' });
+    const source = attachment ? `(la solicitud está en el archivo adjunto${fileName ? ` "${fileName}"` : ''})\n${transcript}` : transcript;
+    const parsed = await runExtraction(extractionPrompt(source, null), attachment);
+    const items = extractedItems(parsed);
+    if (!items.length) return res.status(422).json({ success: false, error: 'La IA no encontró productos para cotizar en ese contenido' });
+    res.json({
+      success: true,
+      items,
+      client: { name: parsed.clientName || '', nit: parsed.clientNit || '', phone: parsed.clientPhone || '', email: parsed.clientEmail || '', address: parsed.clientAddress || '' },
+      deliveryTime: parsed.deliveryTime || '',
+      notes: parsed.notes || '',
+      summary: parsed.summary || '',
     });
+  } catch (err: any) {
+    console.error('Error extrayendo ítems con IA:', err);
+    res.status(err.status || 500).json({ success: false, error: err.message || 'No se pudo leer con la IA' });
   }
+});
+
+export async function generatePreQuoteInternal({
+  conversation = [],
+  customer = null,
+  channel = 'WhatsApp',
+  manualText = ''
+}: {
+  conversation?: any[];
+  customer?: any;
+  channel?: string;
+  manualText?: string;
+}) {
+
+
+  // Formatear el historial para el análisis de la IA
+  let transcript = '';
+  if (Array.isArray(conversation) && conversation.length > 0) {
+    transcript = conversation.map((m: any) => {
+      const sender = m.sender === 'user' ? 'CLIENTE' : (m.agentName || m.sender || 'AGENTE');
+      return `${sender}: ${m.content}`;
+    }).join('\n');
+  }
+
+  if (manualText) {
+    transcript += `\nINFORMACIÓN ADICIONAL:\n${manualText}`;
+  }
+
+  if (!transcript.trim()) {
+    throw new Error('No hay conversación o datos suficientes para generar la pre-cotización.');
+  }
+
+  const prompt = extractionPrompt(transcript, customer);
+
+  const parsed = await runExtraction(prompt);
+
+  // Sin productos identificables la solicitud igual queda registrada para el asesor, con una
+  // línea que solo describe lo pedido: no se inventan material, tintas ni cantidades.
+  const formattedItems = extractedItems(parsed);
+  if (formattedItems.length === 0) {
+    formattedItems.push(
+      ...extractedItems({ items: [{ description: `Por definir con el cliente: ${parsed.summary || 'solicitud de cotización'}` }] }),
+    );
+  }
+
+  // Consecutivo de la serie de cotizaciones (la pre-cotización es una cotización en borrador)
+  const preQuoteNumber = await systemConfig().issueQuoteNumber();
+  const quoteId = `quote-pre-${Date.now()}`;
 
   const preQuoteDoc = {
     id: quoteId,
@@ -617,7 +617,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
     isPreQuote: true,
     aiExtracted: true,
     source: 'WHATSAPP_AI',
-    clientId: customer?.id || `cli-${Date.now()}`,
+    clientId: customer?.id || undefined,
     clientName: parsed.clientName || customer?.name || 'Cliente Solicitante',
     clientNit: parsed.clientNit || customer?.nit || '',
     clientEmail: parsed.clientEmail || customer?.email || '',
@@ -632,10 +632,11 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
       address: parsed.clientAddress || customer?.address || ''
     },
     date: new Date().toISOString(),
-    advisorName: 'Álvaro (Agente IA)',
-    advisorRole: 'Precotización automática, pendiente de revisión por un asesor',
-    advisorPhone: '+57 315 474 4830',
-    advisorEmail: 'fusioncg.gerencia@gmail.com',
+    // El asesor que la revise pone sus datos; la IA no firma la cotización
+    advisorName: '',
+    advisorRole: '',
+    advisorPhone: '',
+    advisorEmail: '',
     items: formattedItems,
     deliveryTime: parsed.deliveryTime || '5 a 8 días hábiles',
     paymentTerms: parsed.paymentTerms || '50% anticipo, 50% contra entrega',
@@ -653,12 +654,8 @@ Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown adicional, sin bloques
     updatedAt: new Date().toISOString()
   };
 
-  try {
-    await repositories().quotes.upsert(preQuoteDoc as any);
-    console.log(`Pre-cotización guardada: ${preQuoteNumber} (${quoteId})`);
-  } catch (dbErr) {
-    console.warn('Aviso: no se pudo guardar la pre-cotización, devolviendo documento en memoria:', dbErr);
-  }
+  await repositories().quotes.upsert(preQuoteDoc as any);
+  console.log(`Pre-cotización guardada: ${preQuoteNumber} (${quoteId})`);
 
   return {
     success: true,
@@ -674,7 +671,7 @@ quotesRouter.post('/generate-pre-quote', async (req, res) => {
     res.json(result);
   } catch (err: any) {
     console.error('Error generating pre-quote with AI:', err);
-    res.status(500).json({ 
+    res.status(err.status || 500).json({ 
       success: false, 
       error: err.message || 'Error al generar la pre-cotización con IA' 
     });

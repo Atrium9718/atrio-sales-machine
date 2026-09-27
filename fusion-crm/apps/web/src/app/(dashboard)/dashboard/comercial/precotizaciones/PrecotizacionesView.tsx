@@ -10,10 +10,11 @@ import {
   ExternalLink, Copy, Plus, RefreshCw, UserCheck, Layers, ChevronRight, Calculator
 } from 'lucide-react';
 import { 
-  getQuotes, addQuote, approveQuote, markQuoteAsSent, deleteQuote, 
+  getQuotes, addQuote, markQuoteAsSent, deleteQuote, 
   syncQuotesFromApi, generatePreQuoteWithAI 
 } from '../../../../../lib/quotesStore';
 import { generateQuotePDF, sendQuoteWhatsApp, sendQuoteEmail } from '../../../../../lib/quoteSharing';
+import { itemVatRate } from '../../../../../../../../packages/core/src/pricing/quoteReview';
 
 const formatCOP = (val: number | string | undefined | null): string => {
   const n = typeof val === 'number' ? val : Number(val) || 0;
@@ -33,7 +34,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
   const [quotes, setQuotes] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Borrador' | 'Aprobada' | 'Enviada'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'Borrador' | 'Finalizada' | 'Enviada'>('ALL');
 
   // Abrir pre-cotización en el cotizador normal (con todas las capacidades técnicas, de costos y edición)
   const handleOpenInCotizadorNormal = (quote: any) => {
@@ -97,7 +98,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
   const preQuotes = useMemo(() => {
     return quotes.filter((q: any) => {
       // Prioritize quotes identified as pre-quotes or quotes generated through AI
-      const isPre = q.isPreQuote || q.aiExtracted || (q.number && q.number.startsWith('PRE-')) || q.source === 'WHATSAPP_AI' || (q.subtotal === 0 && q.status === 'Borrador');
+      const isPre = q.isPreQuote || q.aiExtracted || (q.number && q.number.startsWith('PRE-')) || q.source === 'WHATSAPP_AI';
       if (!isPre) return false;
 
       // Status filter
@@ -125,7 +126,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
   const metrics = useMemo(() => {
     const all = quotes.filter((q: any) => q.isPreQuote || (q.number && q.number.startsWith('PRE-')) || q.aiExtracted);
     const drafts = all.filter(q => q.status === 'Borrador');
-    const approved = all.filter(q => q.status === 'Aprobada');
+    const approved = all.filter(q => q.status === 'Finalizada');
     const sent = all.filter(q => q.status === 'Enviada');
     return {
       total: all.length,
@@ -149,7 +150,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
       const qty = Number(item.quantity) || 1;
       const unit = Number(item.unitPrice) || 0;
       const subtotal = qty * unit;
-      const vatAmount = item.applyVat ? Math.round(subtotal * 0.19) : 0;
+      const vatAmount = item.applyVat ? Math.round(subtotal * itemVatRate({ ...item, applyVat: true })) : 0;
       item.subtotal = subtotal;
       item.vatAmount = vatAmount;
       item.total = subtotal + vatAmount;
@@ -185,9 +186,9 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
       deliveryTime: reviewDeliveryTime,
       paymentTerms: reviewPaymentTerms,
       notes: reviewCommercialNotes,
-      status: asApproved ? 'Aprobada' : selectedForReview.status,
-      approvedBy: asApproved ? getCurrentUserName() : selectedForReview.approvedBy,
-      approvedAt: asApproved ? new Date().toISOString() : selectedForReview.approvedAt
+      // Aprobar aquí es la revisión interna (costeada, lista para enviar). La aprobación del
+      // cliente —que crea la OT y reserva el papel— se hace en el cotizador.
+      ...(asApproved ? reviewedStamp() : {}),
     };
 
     addQuote(updatedQuote);
@@ -195,41 +196,32 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
     triggerFeedback(asApproved ? `Pre-cotización ${updatedQuote.number} aprobada con éxito.` : `Cambios guardados en ${updatedQuote.number}.`);
   };
 
-  // Direct approve handler
-  const handleDirectApprove = async (quote: any) => {
-    // If unitPrice of all items is 0, prompt to cost first
+  // Revisión interna: la pre-cotización queda costeada y lista para enviar (no crea OT)
+  const reviewedStamp = () => ({
+    status: 'Finalizada',
+    reviewedBy: getCurrentUserName(),
+    reviewedAt: new Date().toISOString(),
+  });
+
+  const handleDirectApprove = (quote: any) => {
     const hasZeroPrices = (quote.items || []).every((it: any) => !it.unitPrice || it.unitPrice === 0);
     if (hasZeroPrices) {
       handleOpenReview(quote);
-      triggerFeedback('Asigna los precios unitarios a los ítems antes de aprobar la cotización.');
+      triggerFeedback('Asigna los precios unitarios a los ítems antes de aprobar la pre-cotización.');
       return;
     }
-
-    try {
-      await approveQuote(quote.id, {
-        items: quote.items,
-        deliveryTime: quote.deliveryTime,
-        paymentTerms: quote.paymentTerms
-      });
-      triggerFeedback(`¡Pre-cotización ${quote.number} aprobada formalmente para envío!`);
-    } catch (err: any) {
-      triggerFeedback(err.message);
-    }
+    addQuote({ ...quote, ...reviewedStamp() });
+    triggerFeedback(`Pre-cotización ${quote.number} revisada: lista para enviar al cliente.`);
   };
 
   // Direct send handler
   const handleSendWhatsApp = async (quote: any) => {
-    await sendQuoteWhatsApp(quote);
-    
-    // Mark as sent
-    markQuoteAsSent(quote.id, {
-      channel: 'WHATSAPP',
-      destination: quote.clientPhone,
-      sentBy: 'Asesor Comercial Fusión'
-    });
-
+    const { pdfUrl } = await sendQuoteWhatsApp(quote);
+    if (quote.status !== 'Aprobada') {
+      markQuoteAsSent(quote.id, { channel: 'WHATSAPP', destination: quote.clientPhone, sentBy: getCurrentUserName() });
+    }
     setSelectedForSend(null);
-    triggerFeedback(`Cotización ${quote.number} enviada por WhatsApp.`);
+    triggerFeedback(pdfUrl ? `Cotización ${quote.number} enviada por WhatsApp.` : `No se pudo crear el enlace del PDF: se descargó para que lo adjuntes en WhatsApp.`);
   };
 
   // Generate PDF
@@ -359,8 +351,8 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
         </div>
 
         <div 
-          onClick={() => setStatusFilter('Aprobada')}
-          className={`p-4 rounded-xl border transition-all cursor-pointer ${statusFilter === 'Aprobada' ? 'bg-emerald-500/10 border-emerald-500/50 shadow-sm' : 'bg-card border-border hover:border-emerald-500/30'}`}
+          onClick={() => setStatusFilter('Finalizada')}
+          className={`p-4 rounded-xl border transition-all cursor-pointer ${statusFilter === 'Finalizada' ? 'bg-emerald-500/10 border-emerald-500/50 shadow-sm' : 'bg-card border-border hover:border-emerald-500/30'}`}
         >
           <div className="flex items-center justify-between text-emerald-600 text-xs font-bold uppercase mb-1">
             <span>Aprobadas</span>
@@ -410,8 +402,8 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
             Por Costear ({metrics.draftsCount})
           </button>
           <button
-            onClick={() => setStatusFilter('Aprobada')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${statusFilter === 'Aprobada' ? 'bg-emerald-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
+            onClick={() => setStatusFilter('Finalizada')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${statusFilter === 'Finalizada' ? 'bg-emerald-600 text-white shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
           >
             Aprobadas ({metrics.approvedCount})
           </button>
@@ -445,7 +437,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
         <div className="grid grid-cols-1 gap-4">
           {preQuotes.map((quote: any) => {
             const isDraft = quote.status === 'Borrador';
-            const isApproved = quote.status === 'Aprobada';
+            const isApproved = quote.status === 'Finalizada' || quote.status === 'Aprobada';
             const isSent = quote.status === 'Enviada';
             const hasChat = Array.isArray(quote.conversation) && quote.conversation.length > 0;
             const itemsCount = quote.items?.length || 0;
@@ -476,7 +468,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
                       {isApproved && <CheckCircle2 className="w-3.5 h-3.5" />}
                       {isSent && <Send className="w-3.5 h-3.5" />}
                       {isDraft && <Clock className="w-3.5 h-3.5" />}
-                      {isDraft ? 'Pendiente Costeo' : quote.status}
+                      {isDraft ? 'Pendiente Costeo' : quote.status === 'Finalizada' ? 'Lista para enviar' : quote.status}
                     </span>
 
                     {/* Source tag */}
@@ -518,9 +510,9 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
                       </span>
                     )}
 
-                    {quote.approvedBy && isApproved && (
+                    {(quote.reviewedBy || quote.approvedBy) && isApproved && (
                       <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
-                        <UserCheck className="w-3.5 h-3.5" /> Aprobada por: {quote.approvedBy}
+                        <UserCheck className="w-3.5 h-3.5" /> {quote.status === 'Aprobada' ? `Aprobada por: ${quote.approvedBy}` : `Revisada por: ${quote.reviewedBy || quote.approvedBy}`}
                       </span>
                     )}
                   </div>
@@ -1176,14 +1168,12 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
 
                   <button
                     onClick={async () => {
-                      await sendQuoteEmail(selectedForSend);
-                      markQuoteAsSent(selectedForSend.id, {
-                        channel: 'EMAIL',
-                        destination: selectedForSend.clientEmail,
-                        sentBy: 'Asesor Comercial Fusión'
-                      });
+                      const { pdfUrl } = await sendQuoteEmail(selectedForSend);
+                      if (selectedForSend.status !== 'Aprobada') {
+                        markQuoteAsSent(selectedForSend.id, { channel: 'EMAIL', destination: selectedForSend.clientEmail, sentBy: getCurrentUserName() });
+                      }
                       setSelectedForSend(null);
-                      triggerFeedback(`Cotización ${selectedForSend.number} enviada por correo electrónico.`);
+                      triggerFeedback(pdfUrl ? `Cotización ${selectedForSend.number} enviada por correo electrónico.` : 'No se pudo crear el enlace del PDF: se descargó para que lo adjuntes al correo.');
                     }}
                     className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all"
                   >

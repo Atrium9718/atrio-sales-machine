@@ -12,6 +12,7 @@ import PrecotizacionesView from "../comercial/precotizaciones/PrecotizacionesVie
 import { QuoteAssistSheet, AssistRunReadOnlyModal } from "../../../../features/quote-assist";
 import { Calculator, History, Settings, Building2, UserPlus, Search, Package, Plus, GripVertical, Copy, ChevronDown, ChevronUp, UploadCloud, Save, FileText, Mail, MessageCircle, PenLine, X, AlertCircle, CheckCircle2, Trash2, Check, Sparkles } from "lucide-react";
 import { notify } from '@/lib/notify';
+import { useFusionAuth } from '@/context/FusionAuthContext';
 import { catalogCollection, newProductId, searchProducts, withPriceHistory, type CatalogProduct } from '@/lib/catalogStore';
 
 import { calcularCostoInterno, resolverDesdeCampoEditado, type ProductionMode, type QuoteItem, CONFIG, formatCurrency } from './quoteModel';
@@ -43,7 +44,10 @@ export default function CotizadorPage({ defaultTab }: { defaultTab?: 'quote' | '
 
   const [activeTab, setActiveTab] = React.useState<'quote' | 'history' | 'precotizaciones' | 'config'>(getInitialTab());
   const [editingQuote, setEditingQuote] = React.useState<any>(null);
-  const hasCostRead = true; // Simulating permission
+  // Cada "Nueva cotización" monta un editor limpio (antes conservaba la anterior y la sobrescribía)
+  const [newQuoteSeq, setNewQuoteSeq] = React.useState(0);
+  const { canSeeModule } = useFusionAuth();
+  const hasCostRead = canSeeModule('costos');
 
   // Cargar cotización desde parámetros de búsqueda inmediatamente
   React.useEffect(() => {
@@ -86,6 +90,7 @@ export default function CotizadorPage({ defaultTab }: { defaultTab?: 'quote' | '
 
   const handleStartNewQuote = () => {
     setEditingQuote(null);
+    setNewQuoteSeq((n) => n + 1);
     setActiveTab('quote');
   };
 
@@ -164,6 +169,7 @@ export default function CotizadorPage({ defaultTab }: { defaultTab?: 'quote' | '
 
       {activeTab === 'quote' && (
         <QuoteEditor 
+          key={editingQuote?.id ?? `nueva-${newQuoteSeq}`}
           hasCostRead={hasCostRead} 
           editingQuote={editingQuote}
           onStartNewQuote={handleStartNewQuote}
@@ -280,38 +286,89 @@ function QuoteEditor({
   const [aiModalOpen, setAiModalOpen] = React.useState(false);
   const [aiTab, setAiTab] = React.useState<"doc" | "image" | "chat">("doc");
   const [isExtracting, setIsExtracting] = React.useState(false);
+  const [aiText, setAiText] = React.useState("");
+  const [aiFile, setAiFile] = React.useState<File | null>(null);
+  const [aiError, setAiError] = React.useState<string | null>(null);
+  const aiFileInput = React.useRef<HTMLInputElement>(null);
+  const AI_ACCEPT: Record<typeof aiTab, string> = {
+    doc: "application/pdf,.pdf,text/plain,.txt",
+    image: "image/png,image/jpeg,image/webp",
+    chat: "text/plain,.txt",
+  };
+  const closeAiModal = () => {
+    if (isExtracting) return;
+    setAiModalOpen(false);
+    setAiError(null);
+  };
+  const readAsBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo'));
+      reader.readAsDataURL(file);
+    });
   const handleAIExtract = async () => {
+    const text = aiTab === "chat" ? aiText.trim() : "";
+    const file = aiFile;
+    if (!text && !file) {
+      setAiError(aiTab === "chat" ? "Pega la conversación o sube el .txt" : "Selecciona un archivo");
+      return;
+    }
+    if (file && file.size > 10 * 1024 * 1024) {
+      setAiError("El archivo supera 10 MB");
+      return;
+    }
     setIsExtracting(true);
-    setTimeout(() => {
-      const extractedItem: QuoteItem = {
-        id: Math.random().toString(36).substr(2, 9),
-        order: 1,
-        description: "Pendón full color AI",
-        productionMode: "IN_HOUSE",
-        size: "100x150cm",
-        inks: "4x0",
-        material: "Banner 13oz",
-        finishes: "Tubos y cuerda",
-        quantity: 2,
-        unitPrice: 0,
-        subtotal: 0,
+    setAiError(null);
+    try {
+      const mimeType = file ? file.type || (file.name.toLowerCase().endsWith('.txt') ? 'text/plain' : '') : undefined;
+      const body = file ? { text, fileBase64: await readAsBase64(file), mimeType, fileName: file.name } : { text };
+      const res = await fetch('/api/quotes/extract-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || `HTTP ${res.status}`);
+
+      const extracted: QuoteItem[] = (data.items || []).map((it: any) => ({
+        ...it,
+        id: Math.random().toString(36).slice(2, 11),
         applyVat: applyGlobalVat,
-        vatAmount: 0,
-        total: 0,
-        showCalcPanel: false,
-        laborHours: 0,
-        rawMaterialCost: 0,
-        marginPercent: CONFIG.margins.IN_HOUSE,
-        isManuallyAdjusted: false,
-        lastEditedField: "quantity",
-        // @ts-ignore
-        aiSuggested: true,
-        aiReferencePrice: 45000
-      };
-      setItems([extractedItem, ...items].map((it, idx) => ({ ...it, order: idx + 1 })));
-      setIsExtracting(false);
+        marginPercent: it.productionMode === 'OUTSOURCED' ? CONFIG.margins.OUTSOURCED : CONFIG.margins.IN_HOUSE,
+      }));
+      // Una sola línea vacía (cotización nueva) se reemplaza; si ya hay ítems, se agregan al final
+      const isBlank = (it: QuoteItem) => !it.description?.trim() && !it.unitPrice && !it.size && !it.material;
+      setItems((prev) => [...prev.filter((it) => !isBlank(it)), ...extracted].map((it, idx) => ({ ...it, order: idx + 1 })));
+
+      const c = data.client || {};
+      if (!clientId && !selectedClientData?.name && c.name) {
+        setSelectedClientData((prev: any) => ({
+          ...prev,
+          name: c.name,
+          nit: prev?.nit || c.nit || '',
+          phone: prev?.phone || c.phone || '',
+          email: prev?.email || c.email || '',
+          address: prev?.address || c.address || '',
+        }));
+        setClientSearchQuery(c.name);
+      }
+      if (data.deliveryTime) setDeliveryTime(data.deliveryTime);
+      if (data.notes) setNotes((prev: string) => (prev ? `${prev}\n${data.notes}` : data.notes));
+
+      const assumed = extracted.filter((it: any) => it.quantityAssumed).length;
+      notify(
+        `La IA propuso ${extracted.length} ítem(s). Revisa especificaciones y precios${assumed ? `; ${assumed} sin cantidad (se dejó 1)` : ''}.`,
+        'success',
+      );
       setAiModalOpen(false);
-    }, 2000);
+      setAiText("");
+      setAiFile(null);
+    } catch (err: any) {
+      setAiError(err?.message || 'No se pudo leer con la IA');
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   // Quote identifiers and status
@@ -595,7 +652,7 @@ function QuoteEditor({
         }));
         setItems(normalizedItems);
       }
-      setClientId(editingQuote.clientId || 'client-' + Date.now());
+      setClientId(editingQuote.clientId || null);
       const cData = editingQuote.clientData || {
         name: editingQuote.clientName || '',
         tradeName: editingQuote.tradeName || '',
@@ -696,6 +753,38 @@ function QuoteEditor({
   const grandVat = items.reduce((sum, item) => sum + (item.vatAmount || 0), 0);
   const grandTotal = items.reduce((sum, item) => sum + (item.total || 0), 0);
 
+
+  /** La cotización tal como se guarda (una sola forma para guardar, terminar, PDF y envíos). */
+  const buildQuote = (number: string, status: string, clientName: string, clientData: any) => ({
+    id: quoteId,
+    number,
+    clientName,
+    clientNit: clientData.nit,
+    clientPhone: clientData.phone,
+    clientEmail: clientData.email,
+    clientAddress: clientData.address,
+    clientData,
+    clientId: clientId || undefined,
+    date: editingQuote?.date || new Date().toISOString(),
+    subtotal: grandSubtotal,
+    vatAmount: grandVat,
+    total: grandTotal,
+    status,
+    items,
+    deliveryTime,
+    paymentTerms,
+    validityDays,
+    commercialTerms,
+    notes,
+    internalNotes,
+    advisorName,
+    advisorRole,
+    advisorPhone,
+    advisorEmail,
+    sumTotals,
+    tariffVersionId: quoteTariffVersionId,
+  });
+
   // Handler: Save and continue later (Saves draft to Cotizaciones Históricas)
   const handleSaveDraftQuote = async () => {
     setAttemptedSave(true);
@@ -712,42 +801,14 @@ function QuoteEditor({
         nit: selectedClientData?.nit?.trim() || "Por definir",
         email: selectedClientData?.email?.trim() || "",
         phone: selectedClientData?.phone?.trim() || "",
-        address: selectedClientData?.address?.trim() || "Bogotá D.C."
+        address: selectedClientData?.address?.trim() || ""
       };
 
       // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
       const number = await ensureQuoteNumber();
       if (!number) return;
 
-      const currentQuote = {
-        id: quoteId,
-        number,
-        clientName: effectiveClientName,
-        clientNit: effectiveClientData.nit,
-        clientPhone: effectiveClientData.phone,
-        clientEmail: effectiveClientData.email,
-        clientAddress: effectiveClientData.address,
-        clientData: effectiveClientData,
-        clientId: clientId || `client-${Date.now()}`,
-        date: new Date().toISOString(),
-        subtotal: grandSubtotal,
-        vatAmount: grandVat,
-        total: grandTotal,
-        status: quoteStatus === 'Finalizada' || quoteStatus === 'Enviada' || quoteStatus === 'Aprobada' ? quoteStatus : 'Borrador',
-        items,
-        deliveryTime,
-        paymentTerms,
-        validityDays,
-        commercialTerms,
-        notes,
-        internalNotes,
-        advisorName,
-        advisorRole,
-        advisorPhone,
-        advisorEmail,
-        sumTotals,
-        tariffVersionId: quoteTariffVersionId
-      };
+      const currentQuote = buildQuote(number, quoteStatus === 'Finalizada' || quoteStatus === 'Enviada' || quoteStatus === 'Aprobada' ? quoteStatus : 'Borrador', effectiveClientName, effectiveClientData);
 
       addQuote(currentQuote);
       setSaveSuccessMsg(`✓ Cotización ${number} guardada exitosamente en Cotizaciones Históricas.`);
@@ -784,42 +845,14 @@ function QuoteEditor({
         nit: selectedClientData?.nit?.trim() || "Por definir",
         email: selectedClientData?.email?.trim() || "",
         phone: selectedClientData?.phone?.trim() || "",
-        address: selectedClientData?.address?.trim() || "Bogotá D.C."
+        address: selectedClientData?.address?.trim() || ""
       };
 
       // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
       const number = await ensureQuoteNumber();
       if (!number) return;
 
-      const currentQuote = {
-        id: quoteId,
-        number,
-        clientName: effectiveClientName,
-        clientNit: effectiveClientData.nit,
-        clientPhone: effectiveClientData.phone,
-        clientEmail: effectiveClientData.email,
-        clientAddress: effectiveClientData.address,
-        clientData: effectiveClientData,
-        clientId: clientId || `client-${Date.now()}`,
-        date: new Date().toISOString(),
-        subtotal: grandSubtotal,
-        vatAmount: grandVat,
-        total: grandTotal,
-        status: newStatus,
-        items,
-        deliveryTime,
-        paymentTerms,
-        validityDays,
-        commercialTerms,
-        notes,
-        internalNotes,
-        advisorName,
-        advisorRole,
-        advisorPhone,
-        advisorEmail,
-        sumTotals,
-        tariffVersionId: quoteTariffVersionId
-      };
+      const currentQuote = buildQuote(number, newStatus, effectiveClientName, effectiveClientData);
 
       addQuote(currentQuote);
       setSaveSuccessMsg(`🎉 ¡Cotización ${number} Finalizada con éxito! Guardada en Cotizaciones Históricas.`);
@@ -839,68 +872,19 @@ function QuoteEditor({
       nit: selectedClientData?.nit?.trim() || "Por definir",
       email: selectedClientData?.email?.trim() || "",
       phone: selectedClientData?.phone?.trim() || "",
-      address: selectedClientData?.address?.trim() || "Bogotá D.C."
+      address: selectedClientData?.address?.trim() || ""
     };
 
     // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
     const number = await ensureQuoteNumber();
     if (!number) return;
 
-    const currentQuote = {
-      id: quoteId,
-      number,
-      clientName: effectiveClientName,
-      clientNit: effectiveClientData.nit,
-      clientPhone: effectiveClientData.phone,
-      clientEmail: effectiveClientData.email,
-      clientAddress: effectiveClientData.address,
-      clientData: effectiveClientData,
-      clientId: clientId || `client-${Date.now()}`,
-      date: new Date().toISOString(),
-      subtotal: grandSubtotal,
-      vatAmount: grandVat,
-      total: grandTotal,
-      status: quoteStatus || 'Finalizada',
-      items,
-      deliveryTime,
-      paymentTerms,
-      validityDays,
-      commercialTerms,
-      notes,
-      internalNotes,
-      advisorName,
-      advisorRole,
-      advisorPhone,
-      advisorEmail,
-      sumTotals
-    };
+    const currentQuote = buildQuote(number, quoteStatus || 'Finalizada', effectiveClientName, effectiveClientData);
 
     // Auto-save to ensure it's in history
     addQuote(currentQuote);
 
-    const result = await generateQuotePDF({
-      number,
-      clientName: effectiveClientName,
-      clientNit: effectiveClientData.nit,
-      clientPhone: effectiveClientData.phone,
-      clientEmail: effectiveClientData.email,
-      clientAddress: effectiveClientData.address,
-      clientData: effectiveClientData,
-      advisorName,
-      advisorRole,
-      advisorPhone,
-      advisorEmail,
-      items,
-      subtotal: grandSubtotal,
-      vatAmount: grandVat,
-      total: grandTotal,
-      deliveryTime,
-      paymentTerms,
-      validityDays,
-      commercialTerms,
-      notes,
-      sumTotals
-    });
+    const result = await generateQuotePDF(currentQuote);
 
     if (result && !result.success) {
       setSaveError(`No se pudo generar el archivo PDF: ${result.error}`);
@@ -923,55 +907,19 @@ function QuoteEditor({
       nit: selectedClientData?.nit?.trim() || "Por definir",
       email: selectedClientData?.email?.trim() || "",
       phone: selectedClientData?.phone?.trim() || "",
-      address: selectedClientData?.address?.trim() || "Bogotá D.C."
+      address: selectedClientData?.address?.trim() || ""
     };
 
     // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
     const number = await ensureQuoteNumber();
     if (!number) return;
 
-    const currentQuote = {
-      id: quoteId,
-      number,
-      clientName: effectiveClientName,
-      clientNit: effectiveClientData.nit,
-      clientPhone: effectiveClientData.phone,
-      clientEmail: effectiveClientData.email,
-      clientAddress: effectiveClientData.address,
-      clientData: effectiveClientData,
-      clientId: clientId || `client-${Date.now()}`,
-      date: new Date().toISOString(),
-      subtotal: grandSubtotal,
-      vatAmount: grandVat,
-      total: grandTotal,
-      status: 'Enviada',
-      items,
-      deliveryTime,
-      paymentTerms,
-      validityDays,
-      commercialTerms,
-      notes,
-      internalNotes,
-      advisorName,
-      advisorRole,
-      advisorPhone,
-      advisorEmail,
-      sumTotals
-    };
+    const currentQuote = buildQuote(number, 'Enviada', effectiveClientName, effectiveClientData);
 
     addQuote(currentQuote);
 
-    sendQuoteWhatsApp({
-      number,
-      clientName: effectiveClientName,
-      clientPhone: effectiveClientData.phone,
-      clientData: effectiveClientData,
-      advisorName,
-      items,
-      subtotal: grandSubtotal,
-      vatAmount: grandVat,
-      total: grandTotal
-    });
+    const { pdfUrl } = await sendQuoteWhatsApp(currentQuote);
+    if (!pdfUrl) notify('No se pudo crear el enlace del PDF: se descargó para que lo adjuntes a mano.', 'error');
     setQuoteStatus('Enviada');
     setIsTerminada(true);
     updateQuoteStatus(quoteId, 'Enviada');
@@ -986,95 +934,67 @@ function QuoteEditor({
       nit: selectedClientData?.nit?.trim() || "Por definir",
       email: selectedClientData?.email?.trim() || "",
       phone: selectedClientData?.phone?.trim() || "",
-      address: selectedClientData?.address?.trim() || "Bogotá D.C."
+      address: selectedClientData?.address?.trim() || ""
     };
 
     // Consecutivo emitido por el servidor (se pide solo cuando ya se va a guardar o enviar)
     const number = await ensureQuoteNumber();
     if (!number) return;
 
-    const currentQuote = {
-      id: quoteId,
-      number,
-      clientName: effectiveClientName,
-      clientNit: effectiveClientData.nit,
-      clientPhone: effectiveClientData.phone,
-      clientEmail: effectiveClientData.email,
-      clientAddress: effectiveClientData.address,
-      clientData: effectiveClientData,
-      clientId: clientId || `client-${Date.now()}`,
-      date: new Date().toISOString(),
-      subtotal: grandSubtotal,
-      vatAmount: grandVat,
-      total: grandTotal,
-      status: 'Enviada',
-      items,
-      deliveryTime,
-      paymentTerms,
-      validityDays,
-      commercialTerms,
-      notes,
-      internalNotes,
-      advisorName,
-      advisorRole,
-      advisorPhone,
-      advisorEmail,
-      sumTotals
-    };
+    const currentQuote = buildQuote(number, 'Enviada', effectiveClientName, effectiveClientData);
 
     addQuote(currentQuote);
 
-    sendQuoteEmail({
-      number,
-      clientName: effectiveClientName,
-      clientEmail: effectiveClientData.email,
-      clientData: effectiveClientData,
-      advisorName,
-      items,
-      subtotal: grandSubtotal,
-      vatAmount: grandVat,
-      total: grandTotal,
-      validityDays,
-      deliveryTime
-    });
+    const { pdfUrl } = await sendQuoteEmail(currentQuote);
+    if (!pdfUrl) notify('No se pudo crear el enlace del PDF: se descargó para que lo adjuntes a mano.', 'error');
     setQuoteStatus('Enviada');
     setIsTerminada(true);
     updateQuoteStatus(quoteId, 'Enviada');
   };
 
-  const handleStatusChange = (newStatus: string) => {
-    const previousStatus = quoteStatus;
-    setQuoteStatus(newStatus);
-    if (newStatus === 'Finalizada' || newStatus === 'Enviada' || newStatus === 'Aprobada') {
-      setIsTerminada(true);
-    }
+  const handleStatusChange = async (newStatus: string) => {
+    if (newStatus === quoteStatus) return;
+    const clientName = selectedClientData?.name?.trim() || clientSearchQuery.trim() || 'Cliente General';
+    const clientData = { ...selectedClientData, name: clientName };
+
     if (newStatus === 'Aprobada') {
-      const totalAmount = items.reduce((sum, item) => sum + (item.total || 0), 0);
-      const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-      const clientName = selectedClientData?.name || clientSearchQuery || 'Cliente General';
-      
-      const confirmApprove = window.confirm(
-        `🛡️ BLINDAJE DE ESCALA Y APROBACIÓN DE COTIZACIÓN\n\n` +
-        `Cliente: ${clientName}\n` +
-        `Escala/Tiraje Aprobado: ${totalQuantity.toLocaleString()} unidades\n` +
-        `Valor Total Pactado: $${Math.round(totalAmount).toLocaleString()} COP\n\n` +
-        `¿Confirmas la escala pactada con el cliente para generar la Orden de Trabajo (OT) en Producción?`
-      );
-      if (confirmApprove) {
-        // El servidor revisa precios, aprueba y crea la OT con su número (el de la cotización)
-        approveQuote(quoteId, { status: 'Aprobada', items })
-          .then((approved: any) => {
-            if (approved?.number) setQuoteNumber(approved.number);
-            notify(`La cotización ${approved?.number || ''} fue aprobada y su Orden de Trabajo pasó a Producción con escala blindada (${totalQuantity.toLocaleString()} uds).`, 'success');
-          })
-          .catch((err) => {
-            setQuoteStatus(previousStatus);
-            notify(err.message, 'error');
-          });
+      if (itemsValidationErrors.length > 0) {
+        setSaveError(`Para aprobar completa los ítems: ${itemsValidationErrors.join(', ')}.`);
+        return;
       }
-    } else {
-      updateQuoteStatus(quoteId, newStatus);
+      const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      const ok = window.confirm(
+        `Aprobar la cotización y pasarla a Producción\n\n` +
+          `Cliente: ${clientName}\n` +
+          `Cantidad aprobada: ${totalQuantity.toLocaleString('es-CO')} unidades\n` +
+          `Valor total: $${Math.round(grandTotal).toLocaleString('es-CO')}\n\n` +
+          `¿El cliente confirmó estas cantidades y este valor? Se creará la Orden de Trabajo.`,
+      );
+      if (!ok) return;
+      const number = await ensureQuoteNumber();
+      if (!number) return;
+      // El servidor revisa precios, aprueba y crea la OT con el número de la cotización
+      approveQuote(quoteId, { status: 'Aprobada', items, quote: buildQuote(number, 'Aprobada', clientName, clientData) })
+        .then(() => {
+          setQuoteStatus('Aprobada');
+          setIsTerminada(true);
+          notify(`Cotización ${number} aprobada: su Orden de Trabajo pasó a Producción (${totalQuantity.toLocaleString('es-CO')} uds).`, 'success');
+        })
+        .catch((err) => notify(err.message, 'error'));
+      return;
     }
+
+    let extra: Record<string, unknown> = {};
+    if (newStatus === 'Rechazada') {
+      const reason = window.prompt('¿Por qué no se ganó? (precio, tiempo de entrega, el cliente no respondió, otro proveedor…)', '');
+      if (reason === null) return;
+      extra = { lostReason: reason.trim() || 'Sin motivo', lostAt: new Date().toISOString() };
+    }
+    const number = await ensureQuoteNumber();
+    if (!number) return;
+    setQuoteStatus(newStatus);
+    setIsTerminada(newStatus !== 'Borrador');
+    addQuote({ ...buildQuote(number, newStatus, clientName, clientData), ...extra });
   };
 
   const handleGlobalVatToggle = () => {
@@ -1169,7 +1089,7 @@ function QuoteEditor({
       const effectiveQty = (!item.quantity || item.quantity <= 0) ? 1 : item.quantity;
       const unitPrice = calc.suggestedUnitPrice;
       const lineSubtotal = effectiveQty * unitPrice;
-      const vatAmount = item.applyVat ? lineSubtotal * CONFIG.vatRate : 0;
+      const vatAmount = item.applyVat ? lineSubtotal * (item.vatRate ?? CONFIG.vatRate) : 0;
       const lineTotal = lineSubtotal + vatAmount;
 
       return {
@@ -1202,7 +1122,7 @@ function QuoteEditor({
       const effectiveQty = (!item.quantity || item.quantity <= 0) ? 1 : item.quantity;
       const unitPrice = res.suggestedUnitPrice;
       const subtotal = effectiveQty * unitPrice;
-      const vatAmount = item.applyVat ? subtotal * CONFIG.vatRate : 0;
+      const vatAmount = item.applyVat ? subtotal * (item.vatRate ?? CONFIG.vatRate) : 0;
       const total = subtotal + vatAmount;
 
       return {
@@ -1281,7 +1201,7 @@ function QuoteEditor({
         const effectiveQty = (!item.quantity || item.quantity <= 0) ? 1 : item.quantity;
         const unitPrice = calc.suggestedUnitPrice;
         const subtotal = effectiveQty * unitPrice;
-        const vatAmount = item.applyVat ? subtotal * CONFIG.vatRate : 0;
+        const vatAmount = item.applyVat ? subtotal * (item.vatRate ?? CONFIG.vatRate) : 0;
         const total = subtotal + vatAmount;
         return {
           ...item,
@@ -1319,7 +1239,10 @@ function QuoteEditor({
     }));
   };
 
+  // Costo interno: el del motor para ítems de la Ayuda para cotizar (es de toda la línea);
+  // el de la calculadora de costos (por unidad) para los demás
   const totalInternalCost = items.reduce((acc, it) => {
+    if (it.assistRunId && Number(it.internalCost) > 0) return acc + Number(it.internalCost);
     const c = calcularCostoInterno({
       laborHours: it.laborHours, laborRatePerHour: CONFIG.tarifaHoraMO, dailyDivisor: CONFIG.divisorJornada,
       rawMaterialCost: it.rawMaterialCost, marginPercent: it.marginPercent
@@ -2580,35 +2503,72 @@ function QuoteEditor({
 
       {/* MODAL / PANEL CATÁLOGO */}
       {aiModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !isExtracting && setAiModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeAiModal}>
           <div className="bg-card w-full max-w-lg rounded-xl shadow-xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-border flex justify-between items-center bg-muted/20">
               <h2 className="font-bold text-foreground flex items-center gap-2">
                 <UploadCloud className="w-5 h-5 text-amber-600" /> Pre-cotizar con IA
               </h2>
-              <button onClick={() => !isExtracting && setAiModalOpen(false)} className="text-muted-foreground hover:bg-muted p-1 rounded-md">
+              <button onClick={closeAiModal} className="text-muted-foreground hover:bg-muted p-1 rounded-md">
                 <X className="w-5 h-5" />
               </button>
             </div>
             
             <div className="flex border-b border-border">
-              <button onClick={() => setAiTab("doc")} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${aiTab === "doc" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>Documento</button>
-              <button onClick={() => setAiTab("image")} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${aiTab === "image" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>Imagen</button>
-              <button onClick={() => setAiTab("chat")} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${aiTab === "chat" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>Chat WhatsApp</button>
+              <button onClick={() => { setAiTab("doc"); setAiFile(null); setAiError(null); }} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${aiTab === "doc" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>Documento</button>
+              <button onClick={() => { setAiTab("image"); setAiFile(null); setAiError(null); }} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${aiTab === "image" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>Imagen</button>
+              <button onClick={() => { setAiTab("chat"); setAiFile(null); setAiError(null); }} className={`flex-1 py-3 text-sm font-bold text-center border-b-2 transition-colors ${aiTab === "chat" ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>Chat WhatsApp</button>
             </div>
 
             <div className="p-6">
-              {aiTab === "chat" ? (
-                <div className="space-y-4">
-                  <label className="block text-sm font-bold text-muted-foreground">Pega la conversación o sube el .txt</label>
-                  <textarea disabled={isExtracting} className="w-full h-32 p-3 border border-input rounded-md text-sm resize-none focus:ring-2 focus:ring-primary/20 outline-none" placeholder="[10:15, 12/09/2026] Cliente: Hola, necesito 2 pendones de 100x150cm en banner..."></textarea>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center bg-muted/10 cursor-pointer hover:bg-muted/20 transition-colors">
-                  <UploadCloud className="w-8 h-8 text-muted-foreground mb-3" />
-                  <p className="text-sm font-bold text-foreground">Arrastra o selecciona tu {aiTab === "doc" ? "documento (PDF/Word)" : "imagen (JPG/PNG)"}</p>
+              <input
+                ref={aiFileInput}
+                type="file"
+                className="hidden"
+                accept={AI_ACCEPT[aiTab]}
+                onChange={(e) => {
+                  setAiFile(e.target.files?.[0] ?? null);
+                  setAiError(null);
+                  e.target.value = '';
+                }}
+              />
+              {aiTab === "chat" && (
+                <div className="space-y-2 mb-4">
+                  <label className="block text-sm font-bold text-muted-foreground">Pega la conversación o sube el .txt exportado de WhatsApp</label>
+                  <textarea
+                    value={aiText}
+                    onChange={(e) => setAiText(e.target.value)}
+                    disabled={isExtracting}
+                    className="w-full h-32 p-3 border border-input rounded-md text-sm resize-none focus:ring-2 focus:ring-primary/20 outline-none bg-background"
+                    placeholder="[10:15, 12/09/2026] Cliente: Hola, necesito 2 pendones de 100x150cm en banner..."
+                  />
                 </div>
               )}
+              <button
+                type="button"
+                disabled={isExtracting}
+                onClick={() => aiFileInput.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) { setAiFile(f); setAiError(null); }
+                }}
+                className={`w-full border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center bg-muted/10 hover:bg-muted/20 transition-colors ${aiTab === "chat" ? "p-4" : "p-8"}`}
+              >
+                <UploadCloud className="w-8 h-8 text-muted-foreground mb-2" />
+                <span className="text-sm font-bold text-foreground">
+                  {aiFile ? aiFile.name : `Arrastra o selecciona ${aiTab === "doc" ? "el documento (PDF o .txt)" : aiTab === "image" ? "la imagen (JPG, PNG o WEBP)" : "el .txt del chat"}`}
+                </span>
+                {aiFile && <span className="text-xs text-muted-foreground mt-1">{Math.ceil(aiFile.size / 1024)} KB · clic para cambiar</span>}
+              </button>
+
+              {aiError && (
+                <p className="mt-4 text-sm font-medium text-destructive flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {aiError}
+                </p>
+              )}
+              <p className="mt-4 text-xs text-muted-foreground">La IA propone los ítems con sus especificaciones; los precios los calculas tú en el editor.</p>
 
               {isExtracting && (
                 <div className="mt-6 space-y-2">
@@ -2621,7 +2581,7 @@ function QuoteEditor({
             </div>
             
             <div className="p-4 border-t border-border bg-muted/10 flex justify-end gap-3">
-              <button onClick={() => setAiModalOpen(false)} disabled={isExtracting} className="px-4 py-2 font-bold text-sm text-muted-foreground hover:bg-muted rounded-md transition-colors disabled:opacity-50">Cancelar</button>
+              <button onClick={closeAiModal} disabled={isExtracting} className="px-4 py-2 font-bold text-sm text-muted-foreground hover:bg-muted rounded-md transition-colors disabled:opacity-50">Cancelar</button>
               <button onClick={handleAIExtract} disabled={isExtracting} className="px-4 py-2 bg-primary text-primary-foreground font-bold text-sm rounded-md shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2 disabled:opacity-50">
                 {isExtracting ? "Procesando..." : "Extraer Ítems"}
               </button>

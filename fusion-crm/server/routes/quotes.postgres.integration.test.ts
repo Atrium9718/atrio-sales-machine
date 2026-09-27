@@ -100,9 +100,17 @@ suite('rutas de cotizaciones con Postgres (integración)', () => {
   });
 
   it('registra el envío y conserva los demás campos', async () => {
-    const sent = await call('POST', '/api/quotes/q-http-1/send', { channel: 'WHATSAPP', destination: '3001234567' });
+    // Ya aprobada: el envío queda registrado sin cambiar su estado
+    const resent = await call('POST', '/api/quotes/q-http-1/send', { channel: 'EMAIL' });
+    expect(resent.body.quote).toMatchObject({ status: 'Aprobada', sentVia: 'EMAIL', sentBy: 'Carolina Ruiz' });
+
+    await call('POST', '/api/quotes', { id: 'q-http-2', status: 'Finalizada', clientName: 'Grupo Éxito', items: [{ id: 'i1', description: 'Volantes', quantity: 1000, unitPrice: 150 }] });
+    const sent = await call('POST', '/api/quotes/q-http-2/send', { channel: 'WHATSAPP', destination: '3001234567' });
     expect(sent.body.quote).toMatchObject({ status: 'Enviada', sentBy: 'Carolina Ruiz', clientName: 'Grupo Éxito' });
-    expect((await prismaMod.getPrisma().quote.findUnique({ where: { id: 'q-http-1' } }))!.status).toBe('SENT');
+    expect((await prismaMod.getPrisma().quote.findUnique({ where: { id: 'q-http-2' } }))!.status).toBe('SENT');
+    await call('DELETE', '/api/quotes/q-http-2');
+    // El consecutivo vuelve a empezar para la prueba de numeración
+    await prismaMod.getPrisma().storedDocument.deleteMany({ where: { collection: 'system_config' } });
     expect((await call('PATCH', '/api/quotes/no-existe/status', { status: 'Enviada' })).status).toBe(404);
   });
 

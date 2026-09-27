@@ -27,6 +27,7 @@ import { tariffRouter } from './routes/tariff';
 import { dataRouter } from './routes/data';
 import { filesRouter } from './routes/files';
 import { inventoryRouter } from './routes/inventory';
+import { quoteShareRouter, quotePublicRouter } from './routes/quoteShare';
 import { portalPublicRouter, clientPortalRouter } from './routes/clientPortal';
 import { callsService } from './services/callsService';
 import { loadStateFromFirestore, startStateSync, saveStateToFirestore, persistAfterWrites } from './services/persistenceService';
@@ -88,12 +89,14 @@ export async function startServer() {
   app.use('/api/chat', chatRouter);
   app.use('/api/calls', callsRouter);
   app.use('/api/inbox', inboxRouter);
+  app.use('/api/quotes', quoteShareRouter);
   app.use('/api/quotes', quotesRouter);
   app.use('/api/clients', clientsRouter);
   app.use('/api/tariff', tariffRouter);
   app.use('/api/data', dataRouter);
   app.use('/api/files', filesRouter);
   app.use('/api/inventory', inventoryRouter);
+  app.use('/api/portal', quotePublicRouter); // público: PDF de cotización por token
   app.use('/api/portal', portalPublicRouter); // público: acceso por token del cliente
   app.use('/api/client-portal', clientPortalRouter);
 

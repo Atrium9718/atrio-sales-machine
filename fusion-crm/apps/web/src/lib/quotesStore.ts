@@ -14,7 +14,10 @@ async function postQuote(quote: any) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(quote),
   });
-  if (!res.ok) throw new Error(`POST /api/quotes: HTTP ${res.status}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `No se pudo guardar la cotización (HTTP ${res.status})`);
+  }
 }
 
 /** Cotizaciones: fuente de verdad en el servidor (/api/quotes), caché en memoria en el navegador. */
@@ -34,7 +37,10 @@ export const quotesCollection = createServerCollection<any>({
     },
     async remove(id) {
       const res = await fetch(`/api/quotes/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(`DELETE /api/quotes/${id}: HTTP ${res.status}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `No se pudo eliminar la cotización (HTTP ${res.status})`);
+      }
     },
   },
 });
@@ -61,8 +67,9 @@ export const addQuote = (quote: any) => {
   const merged = existing ? { ...existing, ...quote } : quote;
   const normStatus = (quote.status || '').toLowerCase().trim();
 
-  // Aprobar (o finalizar) pasa por el servidor, que revisa precios y puede rechazarlo
-  if ((normStatus === 'finalizada' || isApprovedStatus(normStatus)) && !isApprovedStatus(existing?.status)) {
+  // Aprobar pasa por el servidor, que revisa precios, crea la OT y puede rechazarlo.
+  // "Finalizada" (lista para enviar) es un guardado normal: no aprueba ni crea OT.
+  if (isApprovedStatus(normStatus) && !isApprovedStatus(existing?.status)) {
     upsertLocal({ ...merged, status: existing?.status || 'Borrador' });
     approveQuote(merged.id, merged).catch((err) => notify(err.message, 'error'));
     return;
@@ -70,7 +77,11 @@ export const addQuote = (quote: any) => {
 
   upsertLocal(merged);
   if (isApprovedStatus(normStatus)) createOrEnsureProjectForQuote(merged);
-  postQuote(merged).catch(err => console.warn('No se pudo guardar la cotización en el servidor:', err));
+  postQuote(merged).catch((err) => {
+    notify(err.message, 'error');
+    // Vuelve a mostrar lo que quedó guardado en el servidor
+    quotesCollection.hydrate().catch(() => undefined);
+  });
 };
 
 export const syncQuotesFromApi = async () => {
@@ -143,6 +154,8 @@ export const approveQuote = async (quoteId: string, approvalData?: any) => {
 
   const payloadQuote = {
     ...(current || {}),
+    // Cotización completa desde el editor (aunque aún no se hubiera guardado)
+    ...(approvalData?.quote || {}),
     ...(approvalData?.items ? { items: approvalData.items } : {}),
     ...(approvalData?.deliveryTime ? { deliveryTime: approvalData.deliveryTime } : {}),
     ...(approvalData?.paymentTerms ? { paymentTerms: approvalData.paymentTerms } : {}),
@@ -186,7 +199,7 @@ export const markQuoteAsSent = async (quoteId: string, sendData: {
   const quotes = getQuotes();
   const quote = quotes.find((q: any) => q.id === quoteId);
   if (quote) {
-    quote.status = 'Enviada';
+    if (!isApprovedStatus(quote.status) && quote.status !== 'Rechazada') quote.status = 'Enviada';
     quote.sentAt = new Date().toISOString();
     quote.sentVia = sendData.channel;
     quote.sentDestination = sendData.destination || quote.clientPhone || quote.clientEmail;
@@ -210,7 +223,10 @@ export const markQuoteAsSent = async (quoteId: string, sendData: {
 };
 
 export const deleteQuote = (quoteId: string) => {
-  quotesCollection.remove(quoteId).catch((err) => console.warn('No se pudo eliminar la cotización en el servidor:', err));
+  quotesCollection.remove(quoteId).catch((err) => {
+    notify(err.message, 'error');
+    quotesCollection.hydrate().catch(() => undefined);
+  });
 };
 
 export const seedQuotes = () => {

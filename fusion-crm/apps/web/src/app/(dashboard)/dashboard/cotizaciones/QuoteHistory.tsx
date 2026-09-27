@@ -1,5 +1,5 @@
 import * as React from "react";
-import { getQuotes, saveQuotes, approveQuote, deleteQuote, syncQuotesFromApi } from "../../../../lib/quotesStore";
+import { getQuotes, saveQuotes, approveQuote, deleteQuote, syncQuotesFromApi, markQuoteAsSent } from "../../../../lib/quotesStore";
 import { generateQuotePDF, sendQuoteWhatsApp, sendQuoteEmail } from "../../../../lib/quoteSharing";
 import { MassRecalculateModal } from "../../../../features/quote-assist";
 import { History, Search, Plus, FileText, Mail, MessageCircle, AlertCircle, Edit, Trash2, Sparkles, RefreshCw, Lock, Trophy } from "lucide-react";
@@ -50,6 +50,19 @@ export function QuoteHistory({
     if (!newRevisionQuotes || newRevisionQuotes.length === 0) return;
     saveQuotes(newRevisionQuotes);
     loadQuotes();
+  };
+
+  /** Envía y deja la cotización como enviada (salvo que ya esté aprobada o rechazada). */
+  const handleSend = async (quote: any, channel: 'WHATSAPP' | 'EMAIL') => {
+    try {
+      const { pdfUrl } = channel === 'WHATSAPP' ? await sendQuoteWhatsApp(quote) : await sendQuoteEmail(quote);
+      if (!['Aprobada', 'Rechazada'].includes(quote.status)) {
+        await markQuoteAsSent(quote.id, { channel, destination: channel === 'WHATSAPP' ? quote.clientPhone : quote.clientEmail });
+      }
+      if (!pdfUrl) notify('No se pudo crear el enlace del PDF: se descargó para que lo adjuntes a mano.', 'error');
+    } catch (err: any) {
+      notify(err?.message || 'No se pudo enviar', 'error');
+    }
   };
 
   const handleDelete = (id: string, number: string) => {
@@ -299,7 +312,7 @@ export function QuoteHistory({
 
                       {/* Enviar WhatsApp */}
                       <button 
-                        onClick={() => sendQuoteWhatsApp(q)}
+                        onClick={() => handleSend(q, 'WHATSAPP')}
                         className="p-1.5 hover:bg-muted text-muted-foreground hover:text-emerald-600 rounded-md transition-colors"
                         title="Enviar por WhatsApp"
                       >
@@ -319,21 +332,21 @@ export function QuoteHistory({
 
                       {/* Enviar Email */}
                       <button 
-                        onClick={() => sendQuoteEmail(q)}
+                        onClick={() => handleSend(q, 'EMAIL')}
                         className="p-1.5 hover:bg-muted text-muted-foreground hover:text-sky-600 rounded-md transition-colors"
                         title="Enviar por Email"
                       >
                         <Mail className="w-4 h-4 text-sky-600" />
                       </button>
 
-                      {/* Eliminar */}
-                      <button 
+                      {/* Eliminar (una aprobada ya tiene OT: no se borra desde aquí) */}
+                      {q.status !== 'Aprobada' && <button 
                         onClick={() => handleDelete(q.id, q.number)}
                         className="p-1.5 hover:bg-danger/10 text-muted-foreground hover:text-danger rounded-md transition-colors"
                         title="Eliminar de historial"
                       >
                         <Trash2 className="w-4 h-4" />
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>

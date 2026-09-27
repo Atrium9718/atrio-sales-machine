@@ -11,6 +11,7 @@ import { useProjectsQuery } from '@/hooks/useDomainQueries';
 import { useSettingValue } from '@/hooks/useSettingValue';
 import { EditProjectForm } from './components/EditProjectForm';
 import { WorkloadView } from './components/WorkloadView';
+import { useFusionAuth } from '@/context/FusionAuthContext';
 import { ProjectMaterials } from './components/ProjectMaterials';
 import { inventoryApi } from '../../../../lib/inventoryStore';
 import { ProjectFiles } from './components/ProjectFiles';
@@ -250,7 +251,9 @@ export default function ProduccionKanbanPage() {
   const activeProject = activeProjectId ? projects.find(p => p.id === activeProjectId) : null;
 
   // Permisos (Mock)
-  const hasCostReadPermission = true;
+  // Costos y márgenes solo para quien tiene el módulo de costos
+  const { canSeeModule } = useFusionAuth();
+  const hasCostReadPermission = canSeeModule('costos');
   const hasDeletePermission = true;
   const hasQualityApprovePermission = true;
 
