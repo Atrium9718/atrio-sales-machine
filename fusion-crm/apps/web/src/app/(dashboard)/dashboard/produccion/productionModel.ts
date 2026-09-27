@@ -89,7 +89,8 @@ export interface ProductionProject {
   stageEnteredAt: string;
   totalRealHours: number;
   timeEntries: TimeEntry[];
-  consumedMaterials: { id: string; name: string; quantity: number; unitCost: number; totalCost: number; date: string }[];
+  /** Salidas de bodega cargadas a la OT (itemId/movementId desde el kárdex; las antiguas no los tienen). */
+  consumedMaterials: { id: string; name: string; quantity: number; unitCost: number; totalCost: number; date: string; itemId?: string; movementId?: string; kind?: 'CONSUMO' | 'MERMA'; unit?: string; note?: string }[];
   
   artworkKeys: string[];
   completedAt: string | null;

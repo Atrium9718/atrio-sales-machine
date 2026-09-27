@@ -72,10 +72,17 @@ function publishStageChanges(changes: ReturnType<typeof detectStageChanges>) {
   }
 }
 
+/** Colecciones que solo se leen por aquí: el inventario cambia con movimientos (/api/inventory). */
+const READ_ONLY = new Set(['inventory']);
+
 function resolveRepo(req: Request, res: Response): DocumentRepository | null {
   const collection = req.params.collection;
   if (!DATA_COLLECTIONS[collection]) {
     res.status(404).json({ success: false, error: 'Colección desconocida' });
+    return null;
+  }
+  if (READ_ONLY.has(collection) && req.method !== 'GET') {
+    res.status(405).json({ success: false, error: 'El inventario se modifica con entradas, salidas, cortes o conteos (/api/inventory)' });
     return null;
   }
   return repoFor(collection);

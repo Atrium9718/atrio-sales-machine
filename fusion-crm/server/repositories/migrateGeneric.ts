@@ -14,6 +14,7 @@ export const GENERIC_COLLECTIONS = [
   'master_catalogs',
   'tariff_versions',
   'system_config',
+  'inventory_movements',
   'access_reviews',
   'auth_sessions',
   'security_events',

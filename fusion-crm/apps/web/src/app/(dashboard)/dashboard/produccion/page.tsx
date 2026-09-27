@@ -5,13 +5,13 @@ import { AlertCircle, AlertTriangle, Bell, BellOff, BellRing, Briefcase, Calenda
 import { Link } from "react-router-dom";
 import { fuzzyMatchAny } from "../../../../../../../packages/core/src/utils/search";
 import { computeDeliverySemaphore } from "../../../../../../../packages/core/src/production/semaphore";
-import { getInventory, deductInventory, InventoryItem } from '../../../../lib/inventoryStore';
 import { getProjects, updateProjectsList, syncProjectsFromApi, deleteProject } from '../../../../lib/projectsStore';
 import { getQuotes } from '../../../../lib/quotesStore';
 import { useProjectsQuery } from '@/hooks/useDomainQueries';
 import { useSettingValue } from '@/hooks/useSettingValue';
 import { EditProjectForm } from './components/EditProjectForm';
 import { WorkloadView } from './components/WorkloadView';
+import { ProjectMaterials } from './components/ProjectMaterials';
 import { ProjectFiles } from './components/ProjectFiles';
 import { uploadFile, type FileRef } from '@/lib/files';
 import { notify } from '@/lib/notify';
@@ -237,19 +237,6 @@ export default function ProduccionKanbanPage() {
   const [isEditOpen, setIsEditOpen] = React.useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false);
   const [projectToDelete, setProjectToDelete] = React.useState<ProductionProject | null>(null);
-  const [materialConsumeModalOpen, setMaterialConsumeModalOpen] = React.useState(false);
-  const [consumeItemId, setConsumeItemId] = React.useState('');
-  const [consumeQuantity, setConsumeQuantity] = React.useState(1);
-  const [inventoryList, setInventoryList] = React.useState<InventoryItem[]>([]);
-
-  React.useEffect(() => {
-    if (materialConsumeModalOpen) {
-      setInventoryList(getInventory());
-      setConsumeItemId('');
-      setConsumeQuantity(1);
-    }
-  }, [materialConsumeModalOpen]);
-  const [materialsTab, setMaterialsTab] = React.useState<'CONSUMOS' | 'MOVIMIENTOS' | 'DAÑOS' | 'REPROCESOS'>('CONSUMOS');
   const [searchMaterial, setSearchMaterial] = React.useState('');
 
   const [expandedTaskId, setExpandedTaskId] = React.useState<string | null>(null);
@@ -1452,77 +1439,12 @@ export default function ProduccionKanbanPage() {
               )}
 
               {modalTab === 'MATERIALES' && (
-                <div className="space-y-6">
-                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div className="p-4 bg-card border border-border rounded-xl shadow-sm">
-                         <p className="text-xs text-muted-foreground font-bold mb-1">Costo Materiales</p>
-                         <p className="text-xl font-black">{formatCOP(activeProject.materialCost)}</p>
-                      </div>
-                      <div className="p-4 bg-card border border-border rounded-xl shadow-sm">
-                         <p className="text-xs text-muted-foreground font-bold mb-1">Papel Consumido</p>
-                         <p className="text-xl font-black">{(activeProject as any).paperConsumed || 0} resmas</p>
-                      </div>
-                      <div className="p-4 bg-red-50 border border-red-100 rounded-xl shadow-sm">
-                         <p className="text-xs text-red-600 font-bold mb-1">Daños</p>
-                         <p className="text-xl font-black text-red-700">{(activeProject as any).damageCount || 0}</p>
-                      </div>
-                      <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl shadow-sm">
-                         <p className="text-xs text-orange-600 font-bold mb-1">Reprocesos</p>
-                         <p className="text-xl font-black text-orange-700">{(activeProject as any).reprocessCount || 0}</p>
-                      </div>
-                   </div>
-
-                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex bg-muted p-1 rounded-lg w-full sm:w-auto overflow-x-auto">
-                         {(['CONSUMOS', 'MOVIMIENTOS', 'DAÑOS', 'REPROCESOS'] as const).map(t => (
-                            <button key={t} onClick={() => setMaterialsTab(t)} className={`px-3 py-1.5 text-xs font-bold rounded-md whitespace-nowrap ${materialsTab === t ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>{t}</button>
-                         ))}
-                      </div>
-                      <button onClick={() => setMaterialConsumeModalOpen(true)} className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:bg-primary/90 flex items-center gap-1 shrink-0"><Plus className="w-3 h-3"/> Registrar Consumo</button>
-                   </div>
-
-                   {materialsTab === 'CONSUMOS' && (
-                      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                         <div className="overflow-x-auto">
-                           <table className="w-full text-sm text-left">
-                              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                                 <tr><th className="px-4 py-3">Insumo / Papel</th><th className="px-4 py-3">Cant.</th><th className="px-4 py-3">Costo Unit.</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Fecha</th></tr>
-                              </thead>
-                              <tbody className="divide-y divide-border">
-                                 {(activeProject.consumedMaterials || []).length === 0 ? (
-                                    <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No hay consumos registrados</td></tr>
-                                 ) : (activeProject.consumedMaterials || []).map(mat => (
-                                    <tr key={mat.id}>
-                                      <td className="px-4 py-3">{mat.name}</td>
-                                      <td className="px-4 py-3">{mat.quantity}</td>
-                                      <td className="px-4 py-3">{formatCOP(mat.unitCost)}</td>
-                                      <td className="px-4 py-3 font-bold">{formatCOP(mat.totalCost)}</td>
-                                      <td className="px-4 py-3 text-muted-foreground">{mat.date}</td>
-                                    </tr>
-                                 ))}
-                              </tbody>
-                           </table>
-                         </div>
-                      </div>
-                   )}
-                   {materialsTab === 'MOVIMIENTOS' && (
-                      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                         <div className="overflow-x-auto">
-                           <table className="w-full text-sm text-left">
-                              <thead className="bg-muted/50 text-muted-foreground text-xs uppercase">
-                                 <tr><th className="px-4 py-3">Tipo</th><th className="px-4 py-3">Insumo</th><th className="px-4 py-3">Cant.</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Responsable</th><th className="px-4 py-3">Fecha</th></tr>
-                              </thead>
-                              <tbody className="divide-y divide-border">
-                                 <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No hay movimientos de inventario registrados para este proyecto</td></tr>
-                              </tbody>
-                           </table>
-                         </div>
-                      </div>
-                   )}
-                   {materialsTab === 'DAÑOS' && (<div className="p-12 text-center text-muted-foreground border border-red-100 bg-red-50/30 rounded-xl">No hay daños reportados en este proyecto.</div>)}
-                   {materialsTab === 'REPROCESOS' && (<div className="p-12 text-center text-muted-foreground border border-orange-100 bg-orange-50/30 rounded-xl">No hay reprocesos reportados en este proyecto.</div>)}
-                </div>
+                <ProjectMaterials
+                  project={activeProject}
+                  onChange={(fn) => setProjectsWithSync((prev: ProductionProject[]) => prev.map((p) => (p.id === activeProject.id ? fn(p) : p)))}
+                />
               )}
+
 {modalTab === 'FINANCIERO' && (
                 <div className="space-y-6 animate-in fade-in">
                   {hasCostReadPermission ? (() => {
@@ -1825,97 +1747,6 @@ export default function ProduccionKanbanPage() {
            </div>
          );
       })()}
-
-      {/* REGISTRO DE CONSUMO MODAL (Bloque D) */}
-      {materialConsumeModalOpen && activeProject && (
-         <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex justify-center items-center p-4">
-            <div className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
-               <div className="h-14 border-b border-border flex items-center justify-between px-6 shrink-0 bg-muted/20">
-                  <h2 className="font-bold text-lg">Registrar Consumo</h2>
-                  <button onClick={() => setMaterialConsumeModalOpen(false)} className="text-muted-foreground hover:bg-muted p-2 rounded-md"><X className="w-5 h-5" /></button>
-               </div>
-               <form onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!consumeItemId) { notify('Selecciona un insumo'); return; }
-                  const item = inventoryList.find(i => i.id === consumeItemId);
-                  if (!item) return;
-                  if (consumeQuantity > item.available) {
-                    notify('Inventario insuficiente. Stock disponible: ' + item.available);
-                    return;
-                  }
-                  
-                  // Deduct from inventory
-                  deductInventory(consumeItemId, consumeQuantity);
-                  
-                  // Add to project
-                  const totalCost = item.unitCost * consumeQuantity;
-                  setProjectsWithSync(prev => prev.map(p => {
-                    if (p.id === activeProject.id) {
-                      const mat = {
-                        id: Math.random().toString(36).substr(2, 9),
-                        name: item.name,
-                        quantity: consumeQuantity,
-                        unitCost: item.unitCost,
-                        totalCost,
-                        date: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })
-                      };
-                      return {
-                        ...p,
-                        materialCost: p.materialCost + totalCost,
-                        consumedMaterials: [...(p.consumedMaterials || []), mat]
-                      };
-                    }
-                    return p;
-                  }));
-                  
-                  setMaterialConsumeModalOpen(false);
-               }} className="p-6 space-y-4">
-                  <div className="space-y-1">
-                     <label className="text-xs font-bold text-muted-foreground">Insumo / Referencia</label>
-                     <select 
-                        value={consumeItemId}
-                        onChange={(e) => setConsumeItemId(e.target.value)}
-                        className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" 
-                        required
-                     >
-                        <option value="">Selecciona un material...</option>
-                        {inventoryList.map(item => (
-                          <option key={item.id} value={item.id}>{item.name} ({item.available} {item.unit} disp.)</option>
-                        ))}
-                     </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-muted-foreground">Cantidad</label>
-                        <input 
-                          type="number" 
-                          step="0.01" 
-                          min="0.01" 
-                          value={consumeQuantity}
-                          onChange={(e) => setConsumeQuantity(Number(e.target.value))}
-                          className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" 
-                          required 
-                        />
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-muted-foreground">Costo Estimado</label>
-                        <div className="w-full px-3 py-2 border border-border bg-muted/50 rounded-md text-sm font-bold text-foreground cursor-not-allowed">
-                           {formatCOP((inventoryList.find(i => i.id === consumeItemId)?.unitCost || 0) * consumeQuantity)}
-                        </div>
-                     </div>
-                  </div>
-                  <div className="space-y-1">
-                     <label className="text-xs font-bold text-muted-foreground">Observaciones (Opcional)</label>
-                     <input type="text" className="w-full px-3 py-2 border border-input rounded-md text-sm bg-background" />
-                  </div>
-                  <div className="pt-4 border-t border-border flex justify-end gap-3">
-                    <button type="button" onClick={() => setMaterialConsumeModalOpen(false)} className="px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm font-bold rounded-md">Cancelar</button>
-                    <button type="submit" className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold rounded-md shadow-sm">Registrar y Descontar</button>
-                  </div>
-               </form>
-            </div>
-         </div>
-      )}
 
       {/* CONFIG MODAL (Bloques H, M) */}
       {isConfigOpen && (
