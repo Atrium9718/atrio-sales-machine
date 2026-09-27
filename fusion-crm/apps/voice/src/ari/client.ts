@@ -171,13 +171,19 @@ export class AriClient {
     });
   }
 
+  /**
+   * POST /channels/create: crea el canal sin marcar (luego se marca con dialChannel).
+   * ARI no acepta callerId ni timeout aquí: el identificador de llamada va como variable
+   * del canal y el tiempo de timbrado se pasa al marcar.
+   */
   public async createChannel(params: {
     endpoint: string;
     app: string;
     appArgs?: string;
     channelId?: string;
+    originator?: string;
     callerId?: string;
-    timeout?: number;
+    callerName?: string;
     variables?: Record<string, string>;
   }): Promise<AriChannel> {
     const query = new URLSearchParams({
@@ -185,13 +191,15 @@ export class AriClient {
       app: params.app,
       ...(params.appArgs ? { appArgs: params.appArgs } : {}),
       ...(params.channelId ? { channelId: params.channelId } : {}),
-      ...(params.callerId ? { callerId: params.callerId } : {}),
-      ...(params.timeout ? { timeout: String(params.timeout) } : {}),
+      ...(params.originator ? { originator: params.originator } : {}),
     });
+    const variables: Record<string, string> = { ...(params.variables || {}) };
+    if (params.callerId) variables['CALLERID(num)'] = params.callerId;
+    if (params.callerName) variables['CALLERID(name)'] = params.callerName;
 
     return this.request<AriChannel>(`/channels/create?${query.toString()}`, {
       method: 'POST',
-      body: params.variables ? JSON.stringify({ variables: params.variables }) : undefined,
+      body: Object.keys(variables).length ? JSON.stringify({ variables }) : undefined,
     });
   }
 
@@ -225,12 +233,21 @@ export class AriClient {
     });
   }
 
-  public async dialChannel(channelId: string, callerId?: string, timeout = 30): Promise<void> {
+  /**
+   * POST /channels/{channelId}/dial. `callerChannelId` es el canal de quien llama (no un número):
+   * Asterisk lo usa para la identificación y los códecs de la nueva pierna.
+   */
+  public async dialChannel(channelId: string, callerChannelId?: string, timeout = 30): Promise<void> {
     const query = new URLSearchParams({
       timeout: String(timeout),
-      ...(callerId ? { caller: callerId } : {}),
+      ...(callerChannelId ? { caller: callerChannelId } : {}),
     });
     await this.request(`/channels/${channelId}/dial?${query.toString()}`, { method: 'POST' });
+  }
+
+  /** POST /channels/{channelId}/ring: indica timbrado a quien llama mientras se marca al destino. */
+  public async ringChannel(channelId: string): Promise<void> {
+    await this.request(`/channels/${channelId}/ring`, { method: 'POST' });
   }
 
   public async holdChannel(channelId: string): Promise<void> {

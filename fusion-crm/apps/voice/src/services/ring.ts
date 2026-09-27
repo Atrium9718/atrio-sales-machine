@@ -1,3 +1,4 @@
+import { trunkDialString } from '../trunk';
 import { AriClient } from '../ari/client';
 import { ActiveCall, callRegistry } from '../state/registry';
 import { prisma } from './persist';
@@ -126,7 +127,7 @@ export class VoiceRingService {
         break;
 
       case 'BROWSER_AND_MOBILE':
-        await this.dialSimultaneousLegs(call, ext.extension, ext.mobileNumber, ext.ringTimeoutSeconds, onAnswered, onFailedOrTimeout);
+        await this.dialSimultaneousLegs(call, ext.extension, ext.mobileNumber ?? undefined, ext.ringTimeoutSeconds, onAnswered, onFailedOrTimeout);
         break;
     }
   }
@@ -148,13 +149,12 @@ export class VoiceRingService {
         app: 'fusion-voz',
         appArgs: `outbound_agent,${call.callId}`,
         callerId: call.fromNumber,
-        timeout: timeoutSecs,
       });
 
       callRegistry.linkChannelToCall(call.callId, channel.id);
 
       // Iniciar marcación
-      await this.ari.dialChannel(channel.id, call.fromNumber, timeoutSecs);
+      await this.ari.dialChannel(channel.id, call.channelId || undefined, timeoutSecs);
 
       // Timer de timeout de timbrado
       call.ringTimer = setTimeout(async () => {
@@ -184,18 +184,17 @@ export class VoiceRingService {
   ): Promise<void> {
     try {
       telemetry.log('INFO', `Originando llamada hacia celular ${mobileNumber} por troncal para ${call.callId}`);
-      const trunkEndpoint = `PJSIP/${mobileNumber}@troncal-operador`;
+      const trunkEndpoint = trunkDialString(mobileNumber);
 
       const channel = await this.ari.createChannel({
         endpoint: trunkEndpoint,
         app: 'fusion-voz',
         appArgs: `outbound_mobile,${call.callId}`,
         callerId: call.fromNumber,
-        timeout: timeoutSecs,
       });
 
       callRegistry.linkChannelToCall(call.callId, channel.id);
-      await this.ari.dialChannel(channel.id, call.fromNumber, timeoutSecs);
+      await this.ari.dialChannel(channel.id, call.channelId || undefined, timeoutSecs);
 
       call.ringTimer = setTimeout(async () => {
         try {
@@ -231,23 +230,21 @@ export class VoiceRingService {
         app: 'fusion-voz',
         appArgs: `outbound_simultaneous,${call.callId}`,
         callerId: call.fromNumber,
-        timeout: timeoutSecs,
       });
       browserChannelId = browserChannel.id;
       callRegistry.linkChannelToCall(call.callId, browserChannelId);
-      await this.ari.dialChannel(browserChannelId, call.fromNumber, timeoutSecs);
+      await this.ari.dialChannel(browserChannelId, call.channelId || undefined, timeoutSecs);
 
       if (mobileNumber) {
         const mobileChannel = await this.ari.createChannel({
-          endpoint: `PJSIP/${mobileNumber}@troncal-operador`,
+          endpoint: trunkDialString(mobileNumber),
           app: 'fusion-voz',
           appArgs: `outbound_simultaneous,${call.callId}`,
           callerId: call.fromNumber,
-          timeout: timeoutSecs,
         });
         mobileChannelId = mobileChannel.id;
         callRegistry.linkChannelToCall(call.callId, mobileChannelId);
-        await this.ari.dialChannel(mobileChannelId, call.fromNumber, timeoutSecs);
+        await this.ari.dialChannel(mobileChannelId, call.channelId || undefined, timeoutSecs);
       }
 
       call.ringTimer = setTimeout(async () => {

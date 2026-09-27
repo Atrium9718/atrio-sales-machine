@@ -75,8 +75,10 @@ else
   echo "--- AVISO: TRUNK_OPERATOR_IP no definida. Puerto 5060 permanece protegido contra ataques de fuerza bruta ---"
 fi
 
-# El puerto 8088 (ARI y WS interno) NUNCA se abre en UFW:
-# Solo Traefik y la red interna de Docker tienen acceso a él.
+# El puerto 8088 (ARI y WS interno) NUNCA se abre a internet. Asterisk usa la red del host,
+# así que los contenedores (CRM, puente de voz y Traefik) llegan por la red interna de Docker:
+# se permite solo desde esas subredes privadas.
+ufw allow from 172.16.0.0/12 to any port 8088 proto tcp comment "Asterisk ARI solo desde Docker" || true
 
 # 4. Configuración idempotente de Fail2ban para Asterisk
 echo "--- Configurando Fail2ban para Asterisk (Idempotente) ---"

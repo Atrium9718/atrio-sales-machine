@@ -1,181 +1,212 @@
-"use client";
-
 import * as React from "react";
-import { Download, Building2, Phone, Mail, MapPin, CheckCircle, Tag, Clock, Calendar, Users, FileText, ArrowRight, AlertCircle } from "lucide-react";
-import { notify } from '@/lib/notify';
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Building2, Mail, MapPin, Tag, User, FileText, Package, PhoneCall, PhoneMissed, PhoneIncoming, PhoneOutgoing } from "lucide-react";
+import { PhoneLink } from "../../../../../../../../packages/ui/src/components/PhoneLink";
+import { useFusionAuth } from "@/context/FusionAuthContext";
+
+interface ProfileResponse {
+  client: any;
+  quotes: { id: string; number: string; status: string; date: string | null; total: number }[];
+  projects: { id: string; number: string; name: string; stageName: string; delivered: boolean; dueDate: string | null; quoteNumber: string | null }[];
+  stats: { wonValue: number; quotesCount: number; approvedCount: number; closeRate: number | null; openProjects: number; lastQuoteAt: string | null };
+}
+
+const TEMP: Record<string, { label: string; cls: string }> = {
+  HOT: { label: "Caliente", cls: "bg-rose-500/10 text-rose-600 dark:text-rose-400" },
+  WARM: { label: "Tibio", cls: "bg-amber-500/10 text-amber-600 dark:text-amber-400" },
+  COLD: { label: "Frío", cls: "bg-sky-500/10 text-sky-600 dark:text-sky-400" },
+  VIP: { label: "VIP", cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400" },
+};
+const TYPE: Record<string, string> = { ACTIVE: "Activo", PROSPECT: "Prospecto", INACTIVE: "Inactivo" };
+
+const cop = (n: number) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n || 0);
+const day = (iso: string | null) => (iso ? new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" }) : "—");
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-4">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-xl font-bold mt-1 tabular-nums">{value}</div>
+    </div>
+  );
+}
 
 export default function ClientProfilePage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { canSeeModule } = useFusionAuth();
+  const [data, setData] = React.useState<ProfileResponse | null>(null);
+  const [error, setError] = React.useState("");
+  const [calls, setCalls] = React.useState<any[] | null>(null);
+
+  React.useEffect(() => {
+    if (!id) return;
+    fetch(`/api/clients/${encodeURIComponent(id)}`)
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.success) throw new Error(d.error || `Error ${r.status}`);
+        setData(d);
+      })
+      .catch((err) => setError(err?.message || "No se pudo cargar el cliente"));
+    // Llamadas del cliente (solo si la telefonía está activa y hay permiso)
+    fetch(`/api/voice/calls?customerId=${encodeURIComponent(id)}&limit=10`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setCalls(d?.success ? d.calls : null))
+      .catch(() => setCalls(null));
+  }, [id]);
+
+  const back = (
+    <Link to="/dashboard/clientes" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+      <ArrowLeft className="w-4 h-4" /> Clientes
+    </Link>
+  );
+
+  if (error) return <div className="space-y-4">{back}<div className="bg-card border border-border rounded-xl p-8 text-center text-muted-foreground">{error}</div></div>;
+  if (!data) return <div className="space-y-4">{back}<div className="text-sm text-muted-foreground">Cargando…</div></div>;
+
+  const c = data.client;
+  const temp = TEMP[String(c.temp || "").toUpperCase()];
+  const phones = [c.phone1, c.phone2, c.phone3, c.phone].filter((p, i, all) => p && all.indexOf(p) === i);
+  const showMoney = canSeeModule("comercial");
+
   return (
-    <div className="space-y-6 h-full flex flex-col">
-      {/* Page Header */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden shrink-0">
-        <div className="h-24 bg-gradient-to-r from-primary/20 to-primary/5 relative">
-          <div className="absolute -bottom-8 left-6">
-            <div className="w-16 h-16 bg-background rounded-xl border-2 border-border flex items-center justify-center shadow-sm">
-              <Building2 className="w-8 h-8 text-primary" />
+    <div className="space-y-6">
+      {back}
+      <div className="bg-card rounded-xl border border-border p-6 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+        <div className="flex items-start gap-4 min-w-0">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Building2 className="w-6 h-6 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold text-foreground">{c.name || c.tradeName || "Cliente"}</h1>
+              {c.type && <span className="px-2 py-0.5 rounded text-xs font-semibold bg-muted text-muted-foreground">{TYPE[c.type] || c.type}</span>}
+              {temp && <span className={`px-2 py-0.5 rounded text-xs font-semibold ${temp.cls}`}>{temp.label}</span>}
+            </div>
+            <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-x-4">
+              {c.nit && <span>NIT {c.nit}</span>}
+              {c.code && <span>{c.code}</span>}
+              {c.tradeName && c.tradeName !== c.name && <span>{c.tradeName}</span>}
             </div>
           </div>
         </div>
-        <div className="px-6 pt-10 pb-4">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-foreground">Fusión Comunicación Gráfica S.A.S.</h1>
-                <span className="px-2 py-0.5 rounded text-xs font-semibold uppercase bg-green-500/10 text-green-600 dark:text-green-400">Activo</span>
-                <span className="px-2 py-0.5 rounded text-xs font-semibold uppercase bg-red-500/10 text-red-600 dark:text-red-400">Hot</span>
-              </div>
-              <div className="text-sm text-muted-foreground mt-1 flex items-center gap-4">
-                <span>NIT: 900.595.222-9</span>
-                <span>CLI-00124</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="px-4 py-2 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 font-medium text-sm transition-colors">
-                Editar
-              </button>
-              <button 
-                onClick={() => notify("MOCK: Abre el modal de la agenda (AppointmentModal) pre-cargado con este cliente.")}
-                className="px-4 py-2 rounded-md bg-muted text-foreground hover:bg-muted/80 font-medium text-sm transition-colors"
-              >
-                Agendar Cita
-              </button>
-              <button className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium text-sm transition-colors">
-                Nueva Cotización
-              </button>
-            </div>
-          </div>
-        </div>
+        <button onClick={() => navigate(`/dashboard/cotizaciones?clientId=${encodeURIComponent(c.id)}&clientName=${encodeURIComponent(c.name || "")}`)} className="px-4 py-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 font-medium text-sm shrink-0">
+          Nueva cotización
+        </button>
       </div>
 
-      {/* Navegación por pestañas (Estática para demo) */}
-      <div className="border-b border-border">
-        <nav className="flex space-x-6 px-4" aria-label="Tabs">
-          {["Resumen", "Contactos", "Cotizaciones", "Oportunidades", "Proyectos", "Comunicaciones", "Archivos", "Notas"].map((tab, i) => (
-            <button
-              key={tab}
-              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
-                i === 0 
-                  ? 'border-primary text-primary' 
-                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </nav>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Stat label="Valor aprobado" value={showMoney ? cop(data.stats.wonValue) : "—"} />
+        <Stat label="Cotizaciones" value={`${data.stats.quotesCount}${data.stats.approvedCount ? ` · ${data.stats.approvedCount} aprobadas` : ""}`} />
+        <Stat label="Tasa de cierre" value={data.stats.closeRate == null ? "—" : `${data.stats.closeRate}%`} />
+        <Stat label="Pedidos en curso" value={String(data.stats.openProjects)} />
       </div>
 
-      {/* Contenido de la pestaña (Resumen) */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-y-auto">
-        {/* Columna Izquierda: Detalles e Info Rápida */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="space-y-6">
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="font-semibold text-sm mb-4 uppercase tracking-wider text-muted-foreground">Información de Contacto</h3>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3 text-sm">
-                <Mail className="w-4 h-4 text-muted-foreground mt-0.5" />
-                <div>
-                  <div className="font-medium">ventas@fusiongrafica.co</div>
-                  <div className="text-muted-foreground text-xs">Correo principal</div>
+          <section className="bg-card rounded-xl border border-border p-5 space-y-3 text-sm">
+            <h2 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Contacto</h2>
+            {phones.length ? (
+              phones.map((p: string) => (
+                <div key={p} className="flex items-center gap-2">
+                  <PhoneLink phone={p} name={c.name} customerId={c.id} />
                 </div>
+              ))
+            ) : (
+              <div className="text-muted-foreground">Sin teléfono registrado</div>
+            )}
+            {c.email && (
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-muted-foreground" />
+                <span className="break-all">{c.email}</span>
               </div>
-              <div className="flex items-start gap-3 text-sm">
-                <Phone className="w-4 h-4 text-muted-foreground mt-0.5" />
-                <div>
-                  <div className="font-medium">+57 300 123 4567</div>
-                  <div className="text-muted-foreground text-xs">Móvil</div>
-                </div>
+            )}
+            {c.billingContact && (
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-muted-foreground" />
+                <span>{c.billingContact} <span className="text-muted-foreground">(facturación)</span></span>
               </div>
-              <div className="flex items-start gap-3 text-sm">
-                <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                <div>
-                  <div className="font-medium">Cra 43A # 1-50, Medellín</div>
-                  <div className="text-muted-foreground text-xs">Antioquia, Colombia</div>
-                </div>
+            )}
+            {c.address && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-muted-foreground" />
+                <span>{c.address}</span>
               </div>
-            </div>
-          </div>
+            )}
+            {c.sector && (
+              <div className="flex items-center gap-2">
+                <Tag className="w-4 h-4 text-muted-foreground" />
+                <span>Sector: {c.sector}</span>
+              </div>
+            )}
+          </section>
 
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="font-semibold text-sm mb-4 uppercase tracking-wider text-muted-foreground">Clasificación</h3>
-            <div className="flex flex-wrap gap-2">
-              <div className="flex items-center gap-1 bg-muted px-2 py-1 rounded text-xs">
-                <Tag className="w-3 h-3 text-muted-foreground" />
-                Sector: <strong>Publicidad</strong>
-              </div>
-              <div className="flex items-center gap-1 bg-muted px-2 py-1 rounded text-xs">
-                <Users className="w-3 h-3 text-muted-foreground" />
-                Origen: <strong>Referido</strong>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-border">
-              <div className="text-xs text-muted-foreground">Responsable Comercial</div>
-              <div className="flex items-center gap-2 mt-2">
-                <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary">CG</div>
-                <span className="text-sm font-medium">Carlos Gómez</span>
-              </div>
-            </div>
-          </div>
+          {calls && (
+            <section className="bg-card rounded-xl border border-border">
+              <h2 className="p-4 border-b border-border font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <PhoneCall className="w-4 h-4" /> Llamadas
+              </h2>
+              <ul className="divide-y divide-border text-sm">
+                {calls.map((call) => (
+                  <li key={call.id}>
+                    <Link to={`/voz/llamadas/${call.id}`} className="px-4 py-2.5 flex items-center justify-between gap-2 hover:bg-muted/40">
+                      <span className="flex items-center gap-2">
+                        {call.missed ? <PhoneMissed className="w-4 h-4 text-rose-600" /> : call.direction === "OUTBOUND" ? <PhoneOutgoing className="w-4 h-4 text-sky-600" /> : <PhoneIncoming className="w-4 h-4 text-emerald-600" />}
+                        {call.handledByName || (call.missed ? "Perdida" : "—")}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{day(call.startedAt)}</span>
+                    </Link>
+                  </li>
+                ))}
+                {calls.length === 0 && <li className="px-4 py-6 text-center text-muted-foreground">Sin llamadas registradas.</li>}
+              </ul>
+            </section>
+          )}
         </div>
 
-        {/* Columna Derecha (2 col width): Métricas y Actividad */}
-        <div className="md:col-span-2 space-y-6">
-          
-          {/* Métricas Hero */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-card border border-border rounded-xl p-4 flex flex-col items-center text-center justify-center">
-              <div className="text-2xl font-bold text-foreground">$ 45.2M</div>
-              <div className="text-xs text-muted-foreground mt-1">Valor Ganado</div>
+        <div className="lg:col-span-2 space-y-6">
+          <section className="bg-card rounded-xl border border-border">
+            <h2 className="p-4 border-b border-border font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Cotizaciones
+            </h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <tbody className="divide-y divide-border">
+                  {data.quotes.map((q) => (
+                    <tr key={q.id} onClick={() => navigate(`/dashboard/cotizador?quoteId=${encodeURIComponent(q.id)}`)} className="hover:bg-muted/40 cursor-pointer">
+                      <td className="px-4 py-2.5 font-medium">{q.number || "Sin número"}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{q.status}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{day(q.date)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{showMoney ? cop(q.total) : ""}</td>
+                    </tr>
+                  ))}
+                  {data.quotes.length === 0 && (
+                    <tr>
+                      <td className="px-4 py-6 text-center text-muted-foreground">Aún no tiene cotizaciones.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <div className="bg-card border border-border rounded-xl p-4 flex flex-col items-center text-center justify-center">
-              <div className="text-2xl font-bold text-foreground">32</div>
-              <div className="text-xs text-muted-foreground mt-1">Cotizaciones</div>
-            </div>
-            <div className="bg-card border border-border rounded-xl p-4 flex flex-col items-center text-center justify-center">
-              <div className="text-2xl font-bold text-green-500">84%</div>
-              <div className="text-xs text-muted-foreground mt-1">Tasa de Cierre</div>
-            </div>
-            <div className="bg-card border border-border rounded-xl p-4 flex flex-col items-center text-center justify-center">
-              <div className="text-2xl font-bold text-foreground">12 días</div>
-              <div className="text-xs text-muted-foreground mt-1">Desde últ. contacto</div>
-            </div>
-          </div>
+          </section>
 
-          {/* Calidad de Datos (Alerta) */}
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex gap-4 items-start">
-            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-sm font-semibold text-amber-600 dark:text-amber-500">Problema de calidad de datos detectado</h4>
-              <p className="text-sm text-amber-600/80 dark:text-amber-500/80 mt-1">
-                El Dígito de Verificación (DV) del NIT no coincide. Esperado: 9, Actual: nulo.
-              </p>
-              <button className="text-sm font-medium text-amber-700 dark:text-amber-400 mt-2 underline hover:no-underline">
-                Solucionar ahora
-              </button>
-            </div>
-          </div>
-
-          {/* Actividad Reciente */}
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="font-semibold text-sm mb-4 uppercase tracking-wider text-muted-foreground">Línea de Tiempo</h3>
-            <div className="space-y-6 pl-4 border-l-2 border-muted relative">
-              {[
-                { type: "quote", title: "Cotización COT-0294 aprobada", date: "Hoy, 10:30 AM", icon: CheckCircle, color: "text-green-500" },
-                { type: "email", title: "Correo enviado: Propuesta Comercial", date: "Ayer, 04:15 PM", icon: Mail, color: "text-blue-500" },
-                { type: "meeting", title: "Cita presencial realizada", date: "15 de Ago, 2026", icon: Calendar, color: "text-primary" },
-              ].map((item, i) => (
-                <div key={i} className="relative">
-                  <div className={`absolute -left-[27px] w-5 h-5 rounded-full bg-background border-2 border-muted flex items-center justify-center`}>
-                    <div className={`w-2 h-2 rounded-full ${item.color.replace('text-', 'bg-')}`} />
+          <section className="bg-card rounded-xl border border-border">
+            <h2 className="p-4 border-b border-border font-semibold text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <Package className="w-4 h-4" /> Pedidos (OT)
+            </h2>
+            <ul className="divide-y divide-border text-sm">
+              {data.projects.map((p) => (
+                <li key={p.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{p.number} · <span className="font-normal">{p.name}</span></div>
+                    <div className="text-xs text-muted-foreground">{p.quoteNumber ? `Desde ${p.quoteNumber}` : ""}{p.dueDate ? ` · entrega ${day(p.dueDate)}` : ""}</div>
                   </div>
-                  <div className="text-sm font-medium">{item.title}</div>
-                  <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                    <Clock className="w-3 h-3" /> {item.date}
-                  </div>
-                </div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${p.delivered ? "bg-muted text-muted-foreground" : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"}`}>{p.stageName}</span>
+                </li>
               ))}
-            </div>
-          </div>
+              {data.projects.length === 0 && <li className="px-4 py-6 text-center text-muted-foreground">Sin pedidos.</li>}
+            </ul>
+          </section>
         </div>
       </div>
     </div>

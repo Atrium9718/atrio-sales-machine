@@ -1,12 +1,14 @@
+import { trunkDialString } from '../trunk';
 import { AriClient } from '../ari/client';
+import type { AriChannel } from '../ari/types';
 import { ActiveCall, callRegistry } from '../state/registry';
-import { createCallSnapshot, transitionCall } from '@fusion/core/voice/callMachine';
+import { createCallSnapshot, transitionCall } from '@fusion/core/src/voice/callMachine';
 import {
   VoiceDoNotCallError,
   VoiceDestinationBlockedError,
   VoiceDailyLimitExceededError,
-} from '@fusion/core/voice/errors';
-import { normalizeColombianPhone } from '@fusion/core/voice/normalizePhone';
+} from '@fusion/core/src/voice/errors';
+import { normalizeColombianPhone } from '@fusion/core/src/voice/normalizePhone';
 import { VoiceBridgeService } from '../services/bridge';
 import { VoiceRecordService } from '../services/record';
 import { persistence, prisma } from '../services/persist';
@@ -124,7 +126,6 @@ export class OutboundCallHandler {
       app: 'fusion-voz',
       appArgs: `outbound_dialer,${callId}`,
       callerId: normalizedDest,
-      timeout: 30,
     });
 
     activeCall.channelId = agentChannel.id;
@@ -138,12 +139,88 @@ export class OutboundCallHandler {
     activeCall.machine = ringTrans.snapshot;
     persistence.persistCallTransition(callId, params.organizationId, ringTrans.event, ringTrans.snapshot);
 
-    await this.ari.dialChannel(agentChannel.id, normalizedDest, 30);
+    await this.ari.dialChannel(agentChannel.id, undefined, 30);
 
     return {
       callId,
       status: 'DIALING_AGENT',
     };
+  }
+
+  /**
+   * El asesor marcó un número externo desde su teléfono (navegador o app SIP): su canal ya
+   * está en Stasis. Se valida el destino, se le indica timbrado y se marca al cliente por la
+   * troncal; al contestar el cliente se conectan (handleCustomerAnsweredOutbound).
+   */
+  public async handleAgentDialedExternal(agentChannel: AriChannel, rawDest: string): Promise<void> {
+    const reject = async (reason: string, sound = 'sound:ss-noservice') => {
+      telemetry.log('WARN', `Llamada saliente rechazada desde ${agentChannel.name}: ${reason}`);
+      try {
+        await this.ari.answerChannel(agentChannel.id);
+        await this.ari.playMediaOnChannel(agentChannel.id, sound);
+        setTimeout(() => this.ari.hangupChannel(agentChannel.id).catch(() => undefined), 4000);
+      } catch {
+        /* el canal ya colgó */
+      }
+    };
+
+    const normalizedDest = normalizeColombianPhone(rawDest);
+    if (!normalizedDest) return reject(`número inválido ${rawDest}`);
+    if (['01900', '01901', '1900', '900'].some((p) => rawDest.startsWith(p) || normalizedDest.replace('+57', '').startsWith(p))) {
+      return reject(`prefijo restringido ${rawDest}`);
+    }
+
+    // PJSIP/101-00000012 → la extensión 101
+    const endpointName = String(agentChannel.name || '').replace(/^PJSIP\//, '').replace(/-[0-9a-f]+$/i, '');
+    const extension = await prisma.voiceExtension.findFirst({
+      where: { OR: [{ extension: endpointName }, { sipUsername: endpointName }, { extension: agentChannel.caller?.number || '' }], status: 'ACTIVE' },
+    });
+    if (!extension) return reject(`extensión ${endpointName} no registrada en el CRM`);
+
+    const isDnc = await prisma.voiceDoNotCall.findFirst({ where: { organizationId: extension.organizationId, phone: normalizedDest } });
+    if (isDnc) return reject(`${normalizedDest} está en la lista de no llamar`);
+
+    const callId = `call_out_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const activeCall: ActiveCall = {
+      callId,
+      organizationId: extension.organizationId,
+      correlationId: telemetry.createCorrelationId('outbound'),
+      channelId: agentChannel.id,
+      linkedChannelIds: [],
+      direction: 'OUTBOUND',
+      fromNumber: process.env.VOICE_CALLER_ID || extension.callerIdNumber || extension.extension,
+      toNumber: normalizedDest,
+      extensionId: extension.id,
+      handledByUserId: extension.userId ?? undefined,
+      machine: createCallSnapshot(callId),
+      legalConsentAnnounced: false,
+      startedAt: new Date(),
+      agentDialed: true,
+    };
+    telemetry.recordCallStarted();
+    callRegistry.registerCall(activeCall);
+    persistence.persistCallCreation(activeCall);
+    const ringTrans = transitionCall(activeCall.machine, 'RINGING', { channelId: agentChannel.id, actorUserId: activeCall.handledByUserId });
+    activeCall.machine = ringTrans.snapshot;
+    persistence.persistCallTransition(callId, activeCall.organizationId, ringTrans.event, ringTrans.snapshot);
+
+    try {
+      await this.ari.ringChannel(agentChannel.id);
+      const customerChannel = await this.ari.createChannel({
+        endpoint: trunkDialString(normalizedDest),
+        app: 'fusion-voz',
+        appArgs: `outbound_customer,${callId}`,
+        callerId: activeCall.fromNumber,
+      });
+      callRegistry.linkChannelToCall(callId, customerChannel.id);
+      await this.ari.dialChannel(customerChannel.id, agentChannel.id, 45);
+    } catch (err: any) {
+      telemetry.log('ERROR', `No se pudo marcar ${normalizedDest} por la troncal: ${err.message}`);
+      activeCall.machine = transitionCall(activeCall.machine, 'FAILED', { reason: 'TRUNK_DIAL_FAILED', extra: { error: err.message } }).snapshot;
+      persistence.persistCallCompletion(activeCall, 'FAILED', 'TRUNK_ERROR', 'SYSTEM');
+      callRegistry.removeCall(callId);
+      await reject('la troncal no aceptó la llamada', 'sound:ss-noservice');
+    }
   }
 
   /**
@@ -154,20 +231,19 @@ export class OutboundCallHandler {
     telemetry.log('INFO', `Asesor contestó su softphone para llamada saliente ${call.callId}. Marcando al cliente ${call.toNumber}...`);
 
     try {
-      const trunkEndpoint = `PJSIP/${call.toNumber}@troncal-operador`;
+      const trunkEndpoint = trunkDialString(call.toNumber);
 
       const customerChannel = await this.ari.createChannel({
         endpoint: trunkEndpoint,
         app: 'fusion-voz',
         appArgs: `outbound_customer,${call.callId}`,
         callerId: call.fromNumber,
-        timeout: 45,
       });
 
       callRegistry.linkChannelToCall(call.callId, customerChannel.id);
 
       // Iniciar marcación por la troncal
-      await this.ari.dialChannel(customerChannel.id, call.fromNumber, 45);
+      await this.ari.dialChannel(customerChannel.id, call.channelId || undefined, 45);
     } catch (err: any) {
       telemetry.log('ERROR', `Error marcando al cliente por la troncal: ${err.message}`);
       const failTrans = transitionCall(call.machine, 'FAILED', {
@@ -188,6 +264,8 @@ export class OutboundCallHandler {
     telemetry.log('INFO', `Cliente contestó llamada saliente ${call.callId}. Conectando audio...`);
 
     try {
+      // Si el asesor marcó desde su teléfono, su canal sigue timbrando: se contesta ahora
+      if (call.agentDialed) await this.ari.answerChannel(call.channelId);
       const bridgeId = await this.bridgeService.createMixingBridge(call);
       call.bridgeId = bridgeId;
 

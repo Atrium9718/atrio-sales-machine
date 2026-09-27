@@ -12,6 +12,7 @@ import { callRegistry } from './state/registry';
 import { prisma, persistence } from './services/persist';
 import { broadcaster } from './services/broadcast';
 import { telemetry } from './telemetry';
+import { TRUNK_ENDPOINT } from './trunk';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const REDIS_URL = process.env.REDIS_URL || 'redis://redis:6379';
@@ -214,7 +215,7 @@ async function checkTrunkHealth(): Promise<void> {
 
   try {
     const endpoints = await ariClient.getEndpoints();
-    const trunkEndpoint = endpoints.find((ep) => ep.resource === 'troncal-operador' || ep.resource.includes('troncal'));
+    const trunkEndpoint = endpoints.find((ep) => ep.resource === TRUNK_ENDPOINT);
 
     const isAvailable = trunkEndpoint && trunkEndpoint.state !== 'offline';
 

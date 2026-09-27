@@ -54,7 +54,7 @@ WORKDIR /usr/src
 RUN curl -fsSL http://downloads.asterisk.org/pub/telephony/asterisk/releases/asterisk-${ASTERISK_VERSION}.tar.gz | tar -xz \
     && cd asterisk-${ASTERISK_VERSION} \
     # Instalar dependencias adicionales de Asterisk
-    && ./contrib/scripts/install_prereq install-unpackaged || true \
+    && (./contrib/scripts/install_prereq install-unpackaged || true) \
     # Configurar opciones de compilación
     && ./configure \
         --with-jansson \
@@ -110,8 +110,8 @@ RUN curl -fsSL http://downloads.asterisk.org/pub/telephony/asterisk/releases/ast
         menuselect.makeopts \
     && make -j$(nproc) \
     && make install \
-    && make samples || true \
-    && make config || true \
+    # Configuraciones de ejemplo (el entrypoint las reemplaza con las plantillas de etc/)
+    && (make samples || true) \
     && cd /usr/src \
     && rm -rf asterisk-${ASTERISK_VERSION}
 

@@ -5,8 +5,8 @@ import {
   transitionCall,
   canTransition,
   VoiceCallState,
-} from '@fusion/core/voice/callMachine';
-import { VoiceInvalidStateTransitionError } from '@fusion/core/voice/errors';
+} from '@fusion/core/src/voice/callMachine';
+import { VoiceInvalidStateTransitionError } from '@fusion/core/src/voice/errors';
 
 describe('Máquina de Estados de Llamadas (callMachine)', () => {
   it('1. Ciclo de vida completo exitoso: CREATED -> RINGING -> CONNECTED -> COMPLETED', () => {

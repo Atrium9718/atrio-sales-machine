@@ -311,6 +311,39 @@ lugar del cliente OAuth (las cuentas de servicio no pueden guardar en un "Mi uni
 Si Drive falla en algún momento (token revocado, sin espacio), el archivo **no se pierde**:
 queda en el servidor y se avisa a quien lo subió.
 
+## 10. Telefonía con Asterisk (opcional)
+
+La central telefónica es un Asterisk 22 propio. El CRM lo controla por su API (ARI) con el
+servicio `voice`. Sin `ASTERISK_ARI_PASSWORD` el módulo de voz queda apagado y el resto del
+sistema funciona igual. Necesita Postgres (`DATA_BACKEND=postgres`): ahí quedan las llamadas,
+extensiones y números.
+
+1. **Contrate la troncal SIP** con un operador (usuario, contraseña, servidor SIP y números).
+   Pregúntele en qué formato espera los números marcados (`TRUNK_DIAL_FORMAT`) y desde qué IP
+   le enviará las llamadas (`TRUNK_OPERATOR_IP`).
+2. **DNS:** cree `pbx.fusioncg.com` apuntando al servidor (el teléfono del navegador se conecta
+   por `wss://pbx.fusioncg.com/ws`).
+3. **`.env`:** complete el bloque "Telefonía y Voz" de `.env.example`:
+   - `ASTERISK_ARI_PASSWORD`: una clave larga (`openssl rand -hex 24`).
+   - `SECRET_ENCRYPTION_KEY`: cifra las contraseñas de las extensiones (`openssl rand -hex 32`).
+     No la cambie después.
+   - `TRUNK_SIP_HOST`, `TRUNK_USERNAME`, `TRUNK_PASSWORD`, `TRUNK_OPERATOR_IP`, `VOICE_CALLER_ID`.
+   - `PUBLIC_IP`: la IP pública del servidor (para que el audio no se corte).
+4. **Firewall:** `sudo bash infra/scripts/bootstrap-vps.sh` abre el audio (UDP 10000-10200),
+   el 5060 solo para la IP del operador y el 8088 solo para Docker.
+5. **Arranque:** `docker compose up -d --build asterisk voice app`.
+6. **En el CRM** (Administración → Telefonía y troncales): cree una extensión para cada
+   asesor y registre los números con su destino. En Panel de voz cada asesor ve si su
+   teléfono quedó conectado.
+
+Verificación rápida en el servidor:
+
+```bash
+docker exec fusion-asterisk asterisk -rx "pjsip show registrations"   # troncal Registered
+docker exec fusion-asterisk asterisk -rx "ari show apps"              # fusion-voz conectado
+docker logs fusion-voice | tail                                       # el puente tomó el liderazgo
+```
+
 ## Problemas frecuentes
 
 | Síntoma | Causa probable |

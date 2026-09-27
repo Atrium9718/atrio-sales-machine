@@ -14,7 +14,6 @@ import {
   AlertTriangle,
   Clock,
   Briefcase,
-  DollarSign,
   Calendar,
   UserPlus,
   Move,
@@ -49,6 +48,28 @@ export const VoiceIncomingCallModal: React.FC<VoiceIncomingCallModalProps> = ({ 
   const hasCostRead = permissions.includes('*') || permissions.includes('cost:read');
 
   const isIncoming = activeCall && activeCall.state === 'RINGING_INBOUND';
+
+  // Quién llama: el servidor lo busca en los clientes, cotizaciones y OT del CRM
+  const [identity, setIdentity] = useState<any>(null);
+  const [lastCall, setLastCall] = useState<any>(null);
+  const remoteNumber = isIncoming ? activeCall?.remoteNumber : null;
+  useEffect(() => {
+    setIdentity(null);
+    setLastCall(null);
+    if (!remoteNumber) return;
+    let cancelled = false;
+    fetch(`/api/voice/identify?number=${encodeURIComponent(remoteNumber)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d?.success) return;
+        setIdentity(d.identity);
+        setLastCall(d.lastCall);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [remoteNumber]);
 
   // Control de timbre de llamada
   useEffect(() => {
@@ -121,14 +142,17 @@ export const VoiceIncomingCallModal: React.FC<VoiceIncomingCallModalProps> = ({ 
     await hangupCall();
   };
 
-  const context = activeCall.context || {};
-  const customerName = context.customerName || (activeCall.remoteDisplayName !== activeCall.remoteNumber ? activeCall.remoteDisplayName : null);
-  const contactName = context.contactName || null;
-  const contactRole = context.contactRole || 'Contacto principal';
-  const temperature = context.customerTemperature || 'HOT';
+  const context = { ...(activeCall.context || {}), ...(identity?.customerId ? { customerId: identity.customerId } : {}) };
+  const customerName = identity?.customerName || context.customerName || (activeCall.remoteDisplayName !== activeCall.remoteNumber ? activeCall.remoteDisplayName : null);
+  const contactName = identity?.contactName || context.contactName || null;
+  const contactRole = identity?.contactName ? 'Contacto' : context.contactRole || '';
+  const temperature = identity?.temperature || context.customerTemperature || null;
+  const when = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' }) : '';
   const phoneFormatted = formatColombianPhone(activeCall.remoteNumber);
 
   const renderTemperatureBadge = () => {
+    if (!temperature) return null;
     switch (temperature) {
       case 'VIP':
         return (
@@ -213,55 +237,55 @@ export const VoiceIncomingCallModal: React.FC<VoiceIncomingCallModalProps> = ({ 
           <div className="shrink-0">{renderTemperatureBadge()}</div>
         </div>
 
-        {/* Ficha CRM en vivo */}
-        <div className="space-y-2 bg-muted/30 p-2.5 rounded-xl border border-border/60">
-          {/* Última actividad */}
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span>Última actividad: <strong className="text-foreground font-semibold">{context.lastActivityAt || 'Hace 3 días (Correo enviado)'}</strong></span>
-          </div>
-
-          {/* Cotización abierta */}
-          <div className="flex items-start gap-2 text-muted-foreground">
-            <Briefcase className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
-            <div className="overflow-hidden">
-              <span>Cotización activa: </span>
-              <strong className="text-foreground font-semibold">
-                COT-2026-0412
-                {hasCostRead && ' · ' + formatCurrencyCOP(4850000)}
-              </strong>
-              <span className="block text-[10px] text-muted-foreground">Enviada, sin respuesta hace 5 días</span>
-            </div>
-          </div>
-
-          {/* Proyecto en producción */}
-          <div className="flex items-start gap-2 text-muted-foreground">
-            <Calendar className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
-            <div className="overflow-hidden">
-              <span>Proyecto en producción: </span>
-              <strong className="text-foreground font-semibold">PROD-1187 (En acabados)</strong>
-              <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Entrega comprometida: Mañana, 3:00 PM</span>
-            </div>
-          </div>
-
-          {/* Cartera y saldo vencido (SOLO CON PERMISO cost:read) */}
-          {hasCostRead && (
-            <div className="flex items-start gap-2 text-muted-foreground border-t border-border/50 pt-1.5">
-              <DollarSign className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <span>Cartera: </span>
-                <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatCurrencyCOP(1200000)}</strong>
-                <span className="text-[10px] text-muted-foreground ml-1">(1 factura vencida hace 12 días)</span>
+        {/* Ficha CRM en vivo: solo datos reales del cliente que llama */}
+        {(identity?.openQuote || identity?.activeProject || lastCall || identity?.matches > 1) && (
+          <div className="space-y-2 bg-muted/30 p-2.5 rounded-xl border border-border/60">
+            {lastCall && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>
+                  Última llamada: <strong className="text-foreground font-semibold">{when(lastCall.startedAt)}</strong>
+                  {lastCall.handledByName ? ` con ${lastCall.handledByName}` : lastCall.missed ? ' (perdida)' : ''}
+                </span>
               </div>
-            </div>
-          )}
-
-          {/* Tarea asignada */}
-          <div className="text-[11px] bg-primary/10 border border-primary/20 text-primary p-2 rounded-lg font-medium flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-            <span>Tarea suya: "Llamar para coordinar entrega" vence hoy</span>
+            )}
+            {identity?.openQuote && (
+              <div className="flex items-start gap-2 text-muted-foreground">
+                <Briefcase className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                <div className="overflow-hidden">
+                  <span>Cotización abierta: </span>
+                  <strong className="text-foreground font-semibold">
+                    {identity.openQuote.number || 'Sin número'}
+                    {hasCostRead && identity.openQuote.total != null && ' · ' + formatCurrencyCOP(identity.openQuote.total)}
+                  </strong>
+                  <span className="block text-[10px] text-muted-foreground">{identity.openQuote.status}</span>
+                </div>
+              </div>
+            )}
+            {identity?.activeProject && (
+              <div className="flex items-start gap-2 text-muted-foreground">
+                <Calendar className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                <div className="overflow-hidden">
+                  <span>Pedido en curso: </span>
+                  <strong className="text-foreground font-semibold">
+                    {identity.activeProject.number} ({identity.activeProject.stageName})
+                  </strong>
+                  {identity.activeProject.dueDate && (
+                    <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                      Entrega: {new Date(`${identity.activeProject.dueDate}T12:00:00`).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {identity?.matches > 1 && (
+              <div className="text-[11px] bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 p-2 rounded-lg font-medium flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Este número está en {identity.matches} clientes: confirme con quién habla.</span>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Enlace para abrir ficha de cliente sin cortar la llamada */}
         <div className="flex items-center justify-between pt-0.5 text-xs">

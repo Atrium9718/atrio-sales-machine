@@ -1,3 +1,4 @@
+import { ORGANIZATION_ID } from '../repositories/prisma/mappers';
 /**
  * FUSION CRM — RUTAS Y CONTROLADOR DE LOCUCIONES, IVR Y HORARIOS (Sub-Etapa 17.5)
  *
@@ -118,7 +119,7 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_legal_grabacion',
     {
       id: 'prompt_legal_grabacion',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Aviso Legal de Grabación (Habeas Data)',
       description: 'Aviso legal obligatorio para todas las llamadas entrantes que puedan ser grabadas.',
       category: 'LEGAL',
@@ -142,12 +143,12 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_saludo_general',
     {
       id: 'prompt_saludo_general',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Bienvenida y Menú Comercial Principal',
       description: 'Saludo institucional con opciones principales de conmutador.',
       category: 'MENU',
       source: 'TTS',
-      text: 'Gracias por comunicarse con Impresos del Café. Para ventas y cotizaciones, marque 1. Para consultar el estado de su pedido o fecha de entrega, marque 2. Si prefiere que le devolvamos la llamada, marque 3. O marque 0 para comunicarse con un asesor.',
+      text: 'Gracias por comunicarse con Fusión Comunicación Gráfica. Para ventas y cotizaciones, marque 1. Para consultar el estado de su pedido o fecha de entrega, marque 2. Si prefiere que le devolvamos la llamada, marque 3. O marque 0 para comunicarse con un asesor.',
       ttsVoice: 'es-CO-Standard-A',
       ttsLanguage: 'es-CO',
       storageKey: 'prompts/saludo_general_v1.wav',
@@ -166,7 +167,7 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_error_opcion_invalida',
     {
       id: 'prompt_error_opcion_invalida',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Error Opción Inválida Menú',
       description: 'Locución breve cuando se digita una tecla que no existe en el menú.',
       category: 'MENU',
@@ -190,7 +191,7 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_fuera_de_horario',
     {
       id: 'prompt_fuera_de_horario',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Atención Fuera de Horario Laboral',
       description: 'Mensaje fuera del horario regular de lunes a viernes 7:30am a 5:30pm.',
       category: 'ANNOUNCEMENT',
@@ -214,7 +215,7 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_festivo',
     {
       id: 'prompt_festivo',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Aviso Día Festivo Colombia',
       description: 'Mensaje especial para los 18 días festivos oficiales de Colombia.',
       category: 'ANNOUNCEMENT',
@@ -238,7 +239,7 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_cola_espera',
     {
       id: 'prompt_cola_espera',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Mensaje Periódico Cola de Espera',
       description: 'Mensaje que suena cada 45 segundos mientras el cliente espera un asesor.',
       category: 'HOLD_MUSIC',
@@ -262,7 +263,7 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_buzon_invitacion',
     {
       id: 'prompt_buzon_invitacion',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Invitación a Dejar Mensaje en Buzón',
       description: 'Instrucción al llamante antes del tono de grabación de buzón.',
       category: 'VOICEMAIL',
@@ -286,12 +287,12 @@ export const inMemoryPrompts = new Map<string, VoicePromptRecord>([
     'prompt_despedida',
     {
       id: 'prompt_despedida',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Despedida Institucional',
       description: 'Mensaje final antes de colgar.',
       category: 'ANNOUNCEMENT',
       source: 'TTS',
-      text: 'Gracias por comunicarse con Impresos del Café y confiar en nuestra calidad gráfica. Que tenga un excelente día.',
+      text: 'Gracias por comunicarse con Fusión Comunicación Gráfica y confiar en nuestra calidad gráfica. Que tenga un excelente día.',
       ttsVoice: 'es-CO-Standard-A',
       ttsLanguage: 'es-CO',
       storageKey: 'prompts/despedida_v1.wav',
@@ -317,8 +318,8 @@ export const inMemorySchedules = new Map<string, VoiceScheduleRecord>([
     'sched_main',
     {
       id: 'sched_main',
-      organizationId: 'org-default',
-      name: 'Horario Comercial Impresos del Café',
+      organizationId: ORGANIZATION_ID,
+      name: 'Horario Comercial Fusión Comunicación Gráfica',
       timezone: 'America/Bogota',
       holidaysFollowColombia: true,
       rules: [
@@ -352,7 +353,7 @@ export const inMemoryFlows = new Map<string, VoiceIvrFlowRecord>([
     'flow_main_01',
     {
       id: 'flow_main_01',
-      organizationId: 'org-default',
+      organizationId: ORGANIZATION_ID,
       name: 'Árbol Principal de Atención Telefónica',
       description: 'Flujo oficial con aviso legal obligatorio, horario de Bogotá, festivos y conmutador comercial.',
       didIds: ['num_01'], // +576017441234
@@ -365,7 +366,7 @@ export const inMemoryFlows = new Map<string, VoiceIvrFlowRecord>([
       updatedAt: '2026-09-01T08:00:00Z',
       definition: {
         id: 'flow_main_01',
-        organizationId: 'org-default',
+        organizationId: ORGANIZATION_ID,
         name: 'Árbol Principal de Atención Telefónica',
         version: 1,
         status: 'PUBLISHED',
@@ -735,7 +736,7 @@ voiceIvrRouter.post('/prompts', (req: Request, res: Response) => {
 
   const newPrompt: VoicePromptRecord = {
     id: cleanId,
-    organizationId: 'org-default',
+    organizationId: ORGANIZATION_ID,
     name: name.trim(),
     description,
     category,
@@ -918,7 +919,7 @@ voiceIvrRouter.post('/ivr-flows', (req: Request, res: Response) => {
   const cleanId = `flow_${Date.now()}`;
   const initialDef: IvrFlowDefinition = {
     id: cleanId,
-    organizationId: 'org-default',
+    organizationId: ORGANIZATION_ID,
     name: name.trim(),
     version: 1,
     status: 'DRAFT',
@@ -940,7 +941,7 @@ voiceIvrRouter.post('/ivr-flows', (req: Request, res: Response) => {
 
   const newRecord: VoiceIvrFlowRecord = {
     id: cleanId,
-    organizationId: 'org-default',
+    organizationId: ORGANIZATION_ID,
     name: name.trim(),
     description,
     didIds,
@@ -1155,7 +1156,7 @@ voiceIvrRouter.post('/ivr-flows/:id/simulate-step', async (req: Request, res: Re
   const { context, event } = req.body;
   const execContext = context || {
     callId: `sim_${Date.now()}`,
-    organizationId: 'org-default',
+    organizationId: ORGANIZATION_ID,
     fromNumber: '+573105559876',
     toNumber: '+576017441234',
     callerCustomer: {

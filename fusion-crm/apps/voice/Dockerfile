@@ -1,29 +1,19 @@
-FROM node:22-alpine AS base
-
+# Puente de voz: controla Asterisk por ARI y guarda las llamadas en Postgres.
+FROM node:22-bookworm-slim
 WORKDIR /app
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g bun@1.3
 
-# Instalar herramientas del sistema
-RUN apk add --no-cache libc6-compat openssl
-
-# Copiar archivos de configuración de dependencias
-COPY package.json package-lock.json* ./
-
-# Instalar dependencias del workspace
-RUN npm install
-
-# Copiar esquema de Prisma y paquetes compartidos
-COPY packages ./packages
-COPY tsconfig.json ./
-
-# Generar cliente de Prisma
-RUN npx prisma generate --schema=packages/db/prisma
-
-# Copiar código fuente de apps/voice
-COPY apps/voice ./apps/voice
+COPY . .
+# Las dependencias usan el protocolo `workspace:*`, que npm no soporta: se instala con bun.
+# postinstall ejecuta `prisma generate`.
+RUN bun install --frozen-lockfile
 
 ENV NODE_ENV=production
 ENV PORT=3001
-
 EXPOSE 3001
-
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+  CMD node -e "fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["npx", "tsx", "apps/voice/src/index.ts"]

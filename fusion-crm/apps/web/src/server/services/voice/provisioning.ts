@@ -1,3 +1,4 @@
+import { ORGANIZATION_ID } from '../../../../../../server/repositories/prisma/mappers';
 /**
  * FUSION CRM — SERVICIO DE APROVISIONAMIENTO DE EXTENSIONES VOIP (ETAPA 17.2)
  *
@@ -7,6 +8,7 @@
 
 import { encryptSecret, decryptSecret, generateSecureSipPassword } from '../../../../../../packages/core/src/security/secrets';
 import { inMemoryAuditLogs } from '../../../../../../server/services/callsService';
+import { saveExtension, saveSecret } from '../../../../../../server/services/voiceStore';
 
 export interface ProvisionResult {
   success: boolean;
@@ -77,7 +79,7 @@ class AsteriskAriClient {
 
   private get authHeader(): string {
     const user = process.env.ASTERISK_ARI_USERNAME || 'fusion';
-    const pass = process.env.ASTERISK_ARI_PASSWORD || 'fusion_secret_ari_2026';
+    const pass = process.env.ASTERISK_ARI_PASSWORD || '';
     return 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
   }
 
@@ -171,7 +173,8 @@ function getNextExtensionNumber(): string {
     Array.from(inMemoryExtensions.values()).map((e) => parseInt(e.extension, 10))
   );
 
-  let candidate = currentExtensionSequence + 1;
+  const highest = Math.max(currentExtensionSequence, ...existingNums);
+  let candidate = (Number.isFinite(highest) ? highest : currentExtensionSequence) + 1;
   while (existingNums.has(candidate)) {
     candidate++;
   }
@@ -198,7 +201,7 @@ function recordAudit(action: string, details: Record<string, any>, userId?: stri
 export async function provisionExtension(
   userId: string,
   userName = 'Usuario',
-  organizationId = 'org-default',
+  organizationId = ORGANIZATION_ID,
   type: 'USER' | 'DESK' | 'VIRTUAL' = 'USER'
 ): Promise<ProvisionResult> {
   // 1. Verificar si ya existe para este usuario
@@ -214,7 +217,7 @@ export async function provisionExtension(
   const encrypted = encryptSecret(plainPassword);
 
   const secretId = `sec_ext_${extNumber}`;
-  inMemorySecrets.set(secretId, {
+  const secretRecord: InMemSecret = {
     id: secretId,
     organizationId,
     key: `sip:secret:${extNumber}`,
@@ -224,9 +227,11 @@ export async function provisionExtension(
     algorithm: encrypted.algorithm,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  });
+  };
+  inMemorySecrets.set(secretId, secretRecord);
+  await saveSecret(secretRecord);
 
-  // 3. Crear o actualizar VoiceExtension en memoria
+  // 3. Crear o actualizar VoiceExtension
   const extensionRecord: InMemExtension = {
     id: existing ? existing.id : `ext_id_${extNumber}`,
     organizationId,
@@ -270,7 +275,7 @@ export async function provisionExtension(
 
       // c. Endpoint (WebRTC)
       await ariClient.putDynamicConfig('endpoint', extNumber, [
-        { attribute: 'context', value: 'fusion-entrante' },
+        { attribute: 'context', value: 'fusion-interno' },
         { attribute: 'disallow', value: 'all' },
         { attribute: 'allow', value: 'opus,ulaw,alaw' },
         { attribute: 'aors', value: extNumber },
@@ -294,6 +299,8 @@ export async function provisionExtension(
     extensionRecord.status = 'PENDING_PROVISION';
     asteriskError = err.message;
   }
+
+  await saveExtension(extensionRecord);
 
   // 6. Escribir en AuditLog
   recordAudit('VOICE_EXTENSION_PROVISIONED', {
@@ -337,6 +344,7 @@ export async function deprovisionExtension(
   // 2. Marcar extensión DISABLED (NUNCA borrar histórico de llamadas VoiceCall)
   ext.status = 'DISABLED';
   ext.updatedAt = new Date().toISOString();
+  await saveExtension(ext);
 
   // 3. Registrar en AuditLog
   recordAudit('VOICE_EXTENSION_DEPROVISIONED', {
@@ -369,8 +377,9 @@ export async function rotateSecret(
     secret.iv = encrypted.iv;
     secret.authTag = encrypted.authTag;
     secret.updatedAt = new Date().toISOString();
+    await saveSecret(secret);
   } else {
-    inMemorySecrets.set(ext.sipPasswordSecretId, {
+    const created: InMemSecret = {
       id: ext.sipPasswordSecretId,
       organizationId: ext.organizationId,
       key: `sip:secret:${extensionNumber}`,
@@ -380,7 +389,9 @@ export async function rotateSecret(
       algorithm: encrypted.algorithm,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    inMemorySecrets.set(created.id, created);
+    await saveSecret(created);
   }
 
   // Actualizar en Asterisk ARI
@@ -491,7 +502,7 @@ export async function reconcileExtensions(): Promise<{
       total: inMemoryExtensions.size,
       synced: 0,
       pending: inMemoryExtensions.size,
-      errors: ['El servidor Asterisk ARI no responde en http://127.0.0.1:8088'],
+      errors: [`El servidor Asterisk ARI no responde en ${process.env.ASTERISK_ARI_URL || 'http://127.0.0.1:8088'}`],
     };
   }
 
@@ -525,7 +536,7 @@ export async function reconcileExtensions(): Promise<{
       ]);
 
       await ariClient.putDynamicConfig('endpoint', extNum, [
-        { attribute: 'context', value: 'fusion-entrante' },
+        { attribute: 'context', value: 'fusion-interno' },
         { attribute: 'disallow', value: 'all' },
         { attribute: 'allow', value: 'opus,ulaw,alaw' },
         { attribute: 'aors', value: extNum },
@@ -539,6 +550,7 @@ export async function reconcileExtensions(): Promise<{
 
       ext.status = 'ACTIVE';
       ext.updatedAt = new Date().toISOString();
+      await saveExtension(ext);
       synced++;
     } catch (err: any) {
       ext.status = 'PENDING_PROVISION';
@@ -549,76 +561,4 @@ export async function reconcileExtensions(): Promise<{
 
   recordAudit('VOICE_EXTENSIONS_RECONCILED', { synced, pending, errors });
   return { total: inMemoryExtensions.size, synced, pending, errors };
-}
-
-// Inicializar extensiones por defecto para el equipo comercial de Fusión
-if (inMemoryExtensions.size === 0) {
-  // Ext 101 - Cristian (Comercial)
-  inMemoryExtensions.set('101', {
-    id: 'ext_101',
-    organizationId: 'org-default',
-    userId: 'user_cristian_comercial',
-    extension: '101',
-    label: 'Cristian — Director Comercial',
-    sipUsername: 'ext_101',
-    sipPasswordSecretId: 'sec_ext_101',
-    type: 'USER',
-    status: 'ACTIVE',
-    ringStrategy: 'BROWSER_AND_MOBILE',
-    mobileNumber: '+573001234567',
-    ringTimeoutSeconds: 25,
-    voicemailEnabled: true,
-    recordingPolicy: 'ALWAYS',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  });
-
-  const pw101 = generateSecureSipPassword(24);
-  const enc101 = encryptSecret(pw101);
-  inMemorySecrets.set('sec_ext_101', {
-    id: 'sec_ext_101',
-    organizationId: 'org-default',
-    key: 'sip:secret:101',
-    encryptedValue: enc101.encryptedValue,
-    iv: enc101.iv,
-    authTag: enc101.authTag,
-    algorithm: enc101.algorithm,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  });
-
-  // Ext 102 - Andrés (Operaciones)
-  inMemoryExtensions.set('102', {
-    id: 'ext_102',
-    organizationId: 'org-default',
-    userId: 'user_andres_operaciones',
-    extension: '102',
-    label: 'Andrés — Operaciones y Producción',
-    sipUsername: 'ext_102',
-    sipPasswordSecretId: 'sec_ext_102',
-    type: 'USER',
-    status: 'ACTIVE',
-    ringStrategy: 'BROWSER_ONLY',
-    ringTimeoutSeconds: 20,
-    voicemailEnabled: true,
-    recordingPolicy: 'ALWAYS',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  });
-
-  const pw102 = generateSecureSipPassword(24);
-  const enc102 = encryptSecret(pw102);
-  inMemorySecrets.set('sec_ext_102', {
-    id: 'sec_ext_102',
-    organizationId: 'org-default',
-    key: 'sip:secret:102',
-    encryptedValue: enc102.encryptedValue,
-    iv: enc102.iv,
-    authTag: enc102.authTag,
-    algorithm: enc102.algorithm,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  });
-
-  currentExtensionSequence = 102;
 }

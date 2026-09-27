@@ -6,7 +6,7 @@ import {
   QueueStateNotificationSchema,
   OrgSupervisorNotification,
   OrgSupervisorNotificationSchema,
-} from '@fusion/contracts/voice';
+} from '@fusion/contracts/src/voice';
 import { telemetry } from '../telemetry';
 
 class VoiceBroadcastService {

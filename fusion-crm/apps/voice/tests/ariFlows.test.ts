@@ -2,7 +2,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { AriSimulator } from './helpers/ariSimulator';
 import { callRegistry, ActiveCall } from '../src/state/registry';
-import { createCallSnapshot, transitionCall } from '@fusion/core/voice/callMachine';
+import { createCallSnapshot, transitionCall } from '@fusion/core/src/voice/callMachine';
 
 describe('Flujos de Llamadas Simulados con ARI (ariSimulator)', () => {
   let sim: AriSimulator;

@@ -1,3 +1,4 @@
+import { ORGANIZATION_ID } from '../repositories/prisma/mappers';
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { isVoiceEnabled, getPublicVoiceConfig } from '../../packages/config/src/env';
@@ -22,10 +23,37 @@ import {
 } from '../../packages/core/src/voice/holidays';
 import { inMemoryAuditLogs } from '../services/callsService';
 import { employeeService } from '../services/employeeService';
+import { systemConfig } from '../services/systemConfig';
+import { isOpenAt } from '../../packages/core/src/calendar/workCalendar';
+import { permissionsForRequest } from '../auth/userPermissions';
 import { voiceIvrRouter } from './voiceIvrRoutes';
+import { normalizeColombianPhone } from '../../packages/core/src/voice/normalizePhone';
+import { trunkFromEnv, loadVoiceStore, saveNumber, deleteNumber, saveExtension, voiceDbAvailable, DEFAULT_TRUNK_ID } from '../services/voiceStore';
+import { voiceCallsRouter } from './voiceCalls';
+import { getPrisma } from '../repositories/prisma/client';
 import { voiceQueueRouter } from './voiceQueueRoutes';
 
 export const voiceRouter = Router();
+
+// Configurar la central (troncal, números, extensiones, horarios, IVR, locuciones y colas)
+// exige voice:manage_all; el uso diario (contestar, notas, estado, buzón) solo voice:use.
+const MANAGE_PATHS = [/^\/trunk(\/|$)/, /^\/numbers(\/|$)/, /^\/extensions(\/|$)/, /^\/schedules(\/|$)/, /^\/prompts(\/|$)/, /^\/ivr-flows(\/|$)/, /^\/queues$/];
+voiceRouter.use((req, res, next) => {
+  // Si la telefonía está encendida lo consulta cualquier pantalla (no revela nada sensible)
+  if (req.path === '/config') return next();
+  const isWrite = req.method !== 'GET' && req.method !== 'HEAD';
+  const { permissions } = permissionsForRequest(req);
+  if (!can(permissions, 'voice:use')) {
+    return res.status(403).json({ success: false, error: 'No tienes permiso para usar la telefonía', code: 'VOICE_USE_PERMISSION_REQUIRED' });
+  }
+  if (isWrite && MANAGE_PATHS.some((re) => re.test(req.path)) && !can(permissions, 'voice:manage_all')) {
+    return res.status(403).json({ success: false, error: 'Solo quien administra la telefonía puede cambiar esta configuración', code: 'VOICE_MANAGE_REQUIRED' });
+  }
+  next();
+});
+
+// Historial, detalle y resumen del día (llamadas registradas por el puente de voz)
+voiceRouter.use('/', voiceCallsRouter);
 
 // Sub-Etapa 17.5: Locuciones, Flujos de IVR y Horarios de Atención
 voiceRouter.use('/', voiceIvrRouter);
@@ -58,21 +86,8 @@ export interface VoiceTrunkConfig {
   };
 }
 
-let activeTrunk: VoiceTrunkConfig = {
-  id: 'trunk_main_01',
-  organizationId: 'org-default',
-  name: 'Troncal SIP Principal (Colombia)',
-  provider: 'CLARO',
-  sipHost: process.env.TRUNK_SIP_HOST || 'sip.claro.com.co',
-  sipPort: parseInt(process.env.TRUNK_SIP_PORT || '5060', 10),
-  transport: 'UDP',
-  username: process.env.TRUNK_USERNAME || 'fusion_trunk_601',
-  register: true,
-  maxChannels: 10,
-  codecs: ['alaw', 'ulaw', 'opus'],
-  callerIdDefault: '+576017441234',
-  status: 'ACTIVE',
-};
+// La troncal la define el servidor (.env): es la que Asterisk registra al arrancar
+let activeTrunk: VoiceTrunkConfig = trunkFromEnv() as VoiceTrunkConfig;
 
 // Estado en memoria de Números Telefónicos (VoiceNumber / DIDs)
 export interface VoiceNumberRecord {
@@ -82,7 +97,7 @@ export interface VoiceNumberRecord {
   displayName: string;
   countryCode: string;
   trunkId: string;
-  primaryAction: 'IVR_FLOW' | 'QUEUE' | 'EXTENSION' | 'AI_AGENT' | 'VOICEMAIL' | 'EXTERNAL_NUMBER';
+  primaryAction: 'IVR_FLOW' | 'QUEUE' | 'EXTENSION' | 'AI_AGENT' | 'VOICEMAIL';
   primaryTargetId: string;
   secondaryAction?: string;
   secondaryTargetId?: string;
@@ -90,40 +105,13 @@ export interface VoiceNumberRecord {
   status: 'ACTIVE' | 'RELEASED' | 'RESERVED';
 }
 
-const inMemoryNumbers: Map<string, VoiceNumberRecord> = new Map([
-  [
-    'num_bogota_01',
-    {
-      id: 'num_bogota_01',
-      organizationId: 'org-default',
-      e164Number: '+576017441234',
-      displayName: 'PBX Principal Bogotá — Fusión Comunicación Gráfica',
-      countryCode: '57',
-      trunkId: 'trunk_main_01',
-      primaryAction: 'IVR_FLOW',
-      primaryTargetId: 'ivr_menu_bienvenida',
-      secondaryAction: 'AI_AGENT',
-      secondaryTargetId: 'agent_clara_ventas',
-      scheduleId: 'sched_bogota_laboral',
-      status: 'ACTIVE',
-    },
-  ],
-  [
-    'num_comercial_02',
-    {
-      id: 'num_comercial_02',
-      organizationId: 'org-default',
-      e164Number: '+573009123456',
-      displayName: 'Línea Celular Ventas Corporativas',
-      countryCode: '57',
-      trunkId: 'trunk_main_01',
-      primaryAction: 'QUEUE',
-      primaryTargetId: 'cola_comercial_nacional',
-      scheduleId: 'sched_bogota_laboral',
-      status: 'ACTIVE',
-    },
-  ],
-]);
+const inMemoryNumbers: Map<string, VoiceNumberRecord> = new Map();
+
+/** Carga de la base la configuración de la central (se llama al arrancar el servidor). */
+export async function loadVoiceConfig() {
+  activeTrunk = trunkFromEnv() as VoiceTrunkConfig;
+  await loadVoiceStore({ extensions: inMemoryExtensions, secrets: inMemorySecrets, numbers: inMemoryNumbers as Map<string, any> });
+}
 
 // Estado en memoria de Horarios (VoiceSchedule)
 export interface VoiceScheduleRecord {
@@ -146,7 +134,7 @@ export interface VoiceScheduleRecord {
 
 let activeSchedule: VoiceScheduleRecord = {
   id: 'sched_bogota_laboral',
-  organizationId: 'org-default',
+  organizationId: ORGANIZATION_ID,
   name: 'Horario Comercial Bogotá (L-V 8:00 - 17:30, Sáb 8:00 - 13:00)',
   timezone: 'America/Bogota',
   holidaysFollowLaw51: true,
@@ -174,22 +162,22 @@ voiceRouter.get('/config', (_req: Request, res: Response) => {
 
 voiceRouter.get('/status', async (_req: Request, res: Response) => {
   const isAriAlive = await ariClient.isAlive().catch(() => false);
-  const bogotaStatus = getCurrentBogotaStatus(activeSchedule);
+  // Abierto o cerrado según el calendario laboral de la empresa (Administración → Calendario)
+  const bogotaStatus = { ...getCurrentBogotaStatus(activeSchedule), isOpen: isOpenAt(new Date(), systemConfig().calendar()) };
 
   return res.json({
     ok: true,
-    stage: '17.2',
     isVoiceEnabled: isVoiceEnabled(),
     asterisk: {
       connected: isAriAlive,
-      ariUrl: process.env.ASTERISK_ARI_URL || 'http://127.0.0.1:8088',
-      version: isAriAlive ? 'Asterisk 22.6.0 LTS (chan_websocket)' : 'No conectado / en espera',
+      version: isAriAlive ? 'Asterisk 22 LTS' : null,
     },
     counts: {
-      extensions: inMemoryExtensions.size,
+      extensions: Array.from(inMemoryExtensions.values()).filter((e) => e.status !== 'DISABLED').length,
       numbers: inMemoryNumbers.size,
-      trunks: 1,
+      trunks: activeTrunk.sipHost ? 1 : 0,
     },
+    trunk: { name: activeTrunk.name, sipHost: activeTrunk.sipHost, configured: Boolean(activeTrunk.sipHost) },
     businessHours: bogotaStatus,
   });
 });
@@ -206,31 +194,12 @@ voiceRouter.get('/trunk', (_req: Request, res: Response) => {
   res.json({ trunk: safeTrunk });
 });
 
-voiceRouter.post('/trunk', (req: Request, res: Response) => {
-  const body = req.body;
-  activeTrunk = {
-    ...activeTrunk,
-    name: body.name || activeTrunk.name,
-    provider: body.provider || activeTrunk.provider,
-    sipHost: body.sipHost || activeTrunk.sipHost,
-    sipPort: Number(body.sipPort) || activeTrunk.sipPort,
-    transport: body.transport || activeTrunk.transport,
-    username: body.username || activeTrunk.username,
-    maxChannels: Number(body.maxChannels) || activeTrunk.maxChannels,
-    codecs: body.codecs || activeTrunk.codecs,
-    callerIdDefault: body.callerIdDefault || activeTrunk.callerIdDefault,
-    register: body.register !== undefined ? body.register : activeTrunk.register,
-  };
-
-  inMemoryAuditLogs.push({
-    id: `audit_${Date.now()}`,
-    action: 'VOICE_TRUNK_UPDATED',
-    userId: (req.headers['x-user-id'] as string) || 'ADMIN',
-    details: { trunkId: activeTrunk.id, sipHost: activeTrunk.sipHost },
-    timestamp: new Date().toISOString(),
+voiceRouter.post('/trunk', (_req: Request, res: Response) => {
+  res.status(409).json({
+    success: false,
+    error: 'La troncal se configura en el servidor (TRUNK_SIP_HOST, TRUNK_USERNAME y TRUNK_PASSWORD en .env) y aplica al reiniciar Asterisk.',
+    trunk: activeTrunk,
   });
-
-  res.json({ success: true, trunk: activeTrunk });
 });
 
 voiceRouter.post('/trunk/test', async (_req: Request, res: Response) => {
@@ -297,34 +266,52 @@ voiceRouter.get('/numbers', (_req: Request, res: Response) => {
   });
 });
 
-voiceRouter.post('/numbers', (req: Request, res: Response) => {
-  const body = req.body;
-  if (!body.e164Number || !body.displayName) {
-    return res.status(400).json({ error: 'Número E.164 y Nombre descriptivo son obligatorios' });
+const NUMBER_TARGETS = ['IVR_FLOW', 'QUEUE', 'EXTENSION', 'AI_AGENT', 'VOICEMAIL'];
+
+voiceRouter.post('/numbers', async (req: Request, res: Response) => {
+  const body = req.body ?? {};
+  const e164 = normalizeColombianPhone(String(body.e164Number || ''));
+  if (!e164 || !body.displayName) {
+    return res.status(400).json({ error: 'Escribe el número (ej. +57 606 880 1234) y un nombre para reconocerlo' });
   }
+  const primaryAction = body.primaryAction || 'IVR_FLOW';
+  if (!NUMBER_TARGETS.includes(primaryAction)) {
+    return res.status(400).json({ error: 'Destino no válido: elige menú de opciones, cola, extensión, agente de IA o buzón' });
+  }
+  const duplicate = Array.from(inMemoryNumbers.values()).find((n) => n.e164Number === e164 && n.id !== body.id);
+  if (duplicate) return res.status(409).json({ error: `El número ${e164} ya está registrado como "${duplicate.displayName}"` });
 
   const id = body.id || `num_${Date.now()}`;
   const record: VoiceNumberRecord = {
     id,
-    organizationId: 'org-default',
-    e164Number: body.e164Number,
-    displayName: body.displayName,
-    countryCode: body.countryCode || '57',
-    trunkId: body.trunkId || 'trunk_main_01',
-    primaryAction: body.primaryAction || 'IVR_FLOW',
-    primaryTargetId: body.primaryTargetId || 'ivr_menu_bienvenida',
+    organizationId: ORGANIZATION_ID,
+    e164Number: e164,
+    displayName: String(body.displayName).trim(),
+    countryCode: '57',
+    trunkId: body.trunkId || DEFAULT_TRUNK_ID,
+    primaryAction,
+    primaryTargetId: body.primaryTargetId || '',
     secondaryAction: body.secondaryAction,
     secondaryTargetId: body.secondaryTargetId,
-    scheduleId: body.scheduleId || 'sched_bogota_laboral',
+    scheduleId: body.scheduleId,
     status: body.status || 'ACTIVE',
   };
-
+  try {
+    await saveNumber(record);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'No se pudo guardar el número: ' + (err?.message || err) });
+  }
   inMemoryNumbers.set(id, record);
   res.json({ success: true, number: record });
 });
 
-voiceRouter.delete('/numbers/:id', (req: Request, res: Response) => {
+voiceRouter.delete('/numbers/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
+  try {
+    await deleteNumber(id);
+  } catch (err: any) {
+    return res.status(500).json({ error: 'No se pudo eliminar el número: ' + (err?.message || err) });
+  }
   inMemoryNumbers.delete(id);
   res.json({ success: true });
 });
@@ -355,9 +342,16 @@ voiceRouter.get('/extensions', async (_req: Request, res: Response) => {
 });
 
 voiceRouter.post('/extensions/provision', async (req: Request, res: Response) => {
-  const { userId, userName, type } = req.body;
-  const result = await provisionExtension(userId, userName, 'org-default', type);
-  res.json(result);
+  const { userId, type } = req.body ?? {};
+  const employee = userId ? employeeService.getEmployeeById(String(userId)) : undefined;
+  if (!employee) return res.status(400).json({ success: false, error: 'Elige a la persona del equipo que tendrá la extensión' });
+  if (type && !['USER', 'DESK', 'VIRTUAL'].includes(type)) return res.status(400).json({ success: false, error: 'Tipo de extensión no válido' });
+  try {
+    const result = await provisionExtension(employee.id, employee.name, ORGANIZATION_ID, type);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: 'No se pudo crear la extensión: ' + (err?.message || err) });
+  }
 });
 
 voiceRouter.post('/extensions/:ext/deprovision', async (req: Request, res: Response) => {
@@ -484,27 +478,7 @@ export const inMemoryVoicemails = [
 
 // Helper para extraer contexto de usuario y verificar permisos (SSOT)
 function resolveVoiceUserAuth(req: Request) {
-  const currentActiveUser = employeeService.getActiveUser();
-  const userId = (req.headers['x-user-id'] as string) || currentActiveUser.id || 'emp-03';
-  const role = (req.headers['x-user-role'] as string) || currentActiveUser.roleKey || 'super_admin';
-  const permissionsHeader = req.headers['x-user-permissions'] as string;
-  let permissions: string[] = ['*'];
-
-  if (permissionsHeader) {
-    try {
-      permissions = JSON.parse(permissionsHeader);
-    } catch {
-      permissions = permissionsHeader.split(',').map((p) => p.trim());
-    }
-  } else if (role === 'admin' || role === 'super_admin' || userId === 'emp-03') {
-    permissions = ['*'];
-  }
-
-  // Permitir simulación de restricción mediante header para pruebas
-  if (req.headers['x-deny-voice-use'] === 'true') {
-    permissions = permissions.filter((p) => p !== 'voice:use' && p !== '*');
-  }
-
+  const { userId, role, permissions } = permissionsForRequest(req);
   return {
     userId,
     role,
@@ -534,18 +508,14 @@ function handleGetSoftphoneCredentials(req: Request, res: Response) {
 
   // 2. Buscar extensión asignada al usuario
   let ext = Array.from(inMemoryExtensions.values()).find(
-    (e) => e.userId === auth.userId && e.status === 'ACTIVE'
+    (e) => e.userId === auth.userId && e.status !== 'DISABLED'
   );
 
-  // Fallback para administradores o demos: usar ext 101 si no tiene una específica asignada
-  if (!ext) {
-    ext = inMemoryExtensions.get('101');
-  }
-
+  // Cada quien usa solo su extensión: nunca se entregan credenciales de otra persona
   if (!ext) {
     return res.status(404).json({
       success: false,
-      error: `No se encontró una extensión SIP activa aprovisionada para el usuario ${auth.userId}`,
+      error: 'No tienes una extensión telefónica asignada. Pide a quien administra la telefonía que te cree una.',
       code: 'EXTENSION_NOT_PROVISIONED',
     });
   }
@@ -576,7 +546,7 @@ function handleGetSoftphoneCredentials(req: Request, res: Response) {
   }
 
   // 4. Generar configuración ICE (STUN y TURN efímero)
-  const turnSecret = process.env.COTURN_AUTH_SECRET || 'fusion_turn_secret_2026';
+  const turnSecret = process.env.TURN_SECRET || process.env.COTURN_AUTH_SECRET || '';
   const expiryTimestamp = Math.floor(Date.now() / 1000) + 900; // 15 minutos de vigencia
   const turnUsername = `${expiryTimestamp}:${auth.userId}`;
   const turnPassword = crypto.createHmac('sha1', turnSecret).update(turnUsername).digest('base64');
@@ -594,7 +564,7 @@ function handleGetSoftphoneCredentials(req: Request, res: Response) {
     },
   ];
 
-  const wssUrl = process.env.VOICE_WEBRTC_WSS_URL || 'wss://pbx.fusioncg.com/ws';
+  const wssUrl = process.env.ASTERISK_WEBRTC_WSS_URL || process.env.VOICE_WEBRTC_WSS_URL || 'wss://pbx.fusioncg.com/ws';
   const sipDomain = process.env.VOICE_SIP_DOMAIN || 'pbx.fusioncg.com';
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -627,7 +597,7 @@ function handleGetSoftphoneCredentials(req: Request, res: Response) {
       wssUrl,
       sipDomain,
       displayName: ext.label || `Extensión ${ext.extension}`,
-      callerIdDefault: activeTrunk.callerIdDefault || '+576017441234',
+      callerIdDefault: activeTrunk.callerIdDefault || '',
       expiresAt,
       iceServers,
     },
@@ -682,7 +652,7 @@ voiceRouter.post('/agent-status', (req: Request, res: Response) => {
   // Difundir por tiempo real SSE
   try {
     realtimeStreamManager.publish({
-      organizationId: (auth as any).organizationId || 'org-default',
+      organizationId: (auth as any).organizationId || ORGANIZATION_ID,
       type: 'user_notification' as any,
       channelId: `voice:user:${auth.userId}`,
       payload: {
@@ -754,7 +724,7 @@ voiceRouter.get('/voicemail/messages', (_req: Request, res: Response) => {
 /**
  * BLOQUE D: Auto-guardado en vivo de notas de llamada (VoiceCall.notes)
  */
-voiceRouter.post('/calls/:callId/notes', (req: Request, res: Response) => {
+voiceRouter.post('/calls/:callId/notes', async (req: Request, res: Response) => {
   const { callId } = req.params;
   const { notes } = req.body;
   const auth = resolveVoiceUserAuth(req);
@@ -763,6 +733,12 @@ voiceRouter.post('/calls/:callId/notes', (req: Request, res: Response) => {
     notes: String(notes || ''),
     updatedAt: new Date().toISOString(),
   });
+  // Las notas quedan en la llamada registrada (se ven en el historial)
+  if (voiceDbAvailable()) {
+    await getPrisma()
+      .voiceCall.updateMany({ where: { id: callId, organizationId: ORGANIZATION_ID }, data: { notes: String(notes || '').slice(0, 5000), updatedById: auth.userId } })
+      .catch((err) => console.warn('[voz] No se guardaron las notas de la llamada:', err?.message || err));
+  }
 
   inMemoryAuditLogs.push({
     id: `audit_call_note_${Date.now()}`,
@@ -938,9 +914,8 @@ voiceRouter.get('/search-contacts', (req: Request, res: Response) => {
 voiceRouter.get('/mobile-config', (req: Request, res: Response) => {
   const auth = resolveVoiceUserAuth(req);
   let ext = Array.from(inMemoryExtensions.values()).find(
-    (e) => e.userId === auth.userId && e.status === 'ACTIVE'
+    (e) => e.userId === auth.userId && e.status !== 'DISABLED'
   );
-  if (!ext) ext = inMemoryExtensions.get('101');
 
   if (!ext) {
     return res.status(404).json({ success: false, error: 'Extensión no encontrada' });
@@ -975,9 +950,8 @@ voiceRouter.get('/mobile-config', (req: Request, res: Response) => {
 voiceRouter.post('/mobile-config/reveal', (req: Request, res: Response) => {
   const auth = resolveVoiceUserAuth(req);
   let ext = Array.from(inMemoryExtensions.values()).find(
-    (e) => e.userId === auth.userId && e.status === 'ACTIVE'
+    (e) => e.userId === auth.userId && e.status !== 'DISABLED'
   );
-  if (!ext) ext = inMemoryExtensions.get('101');
 
   if (!ext) {
     return res.status(404).json({ success: false, error: 'Extensión no encontrada' });
@@ -1010,22 +984,30 @@ voiceRouter.post('/mobile-config/reveal', (req: Request, res: Response) => {
   });
 });
 
-voiceRouter.post('/mobile-forwarding', (req: Request, res: Response) => {
+voiceRouter.post('/mobile-forwarding', async (req: Request, res: Response) => {
   const auth = resolveVoiceUserAuth(req);
   const { mobileNumber, ringStrategy } = req.body;
 
   let ext = Array.from(inMemoryExtensions.values()).find(
-    (e) => e.userId === auth.userId && e.status === 'ACTIVE'
+    (e) => e.userId === auth.userId && e.status !== 'DISABLED'
   );
-  if (!ext) ext = inMemoryExtensions.get('101');
 
   if (!ext) {
     return res.status(404).json({ success: false, error: 'Extensión no encontrada' });
   }
 
-  ext.mobileNumber = mobileNumber || ext.mobileNumber;
+  const STRATEGIES = ['BROWSER_ONLY', 'BROWSER_THEN_MOBILE', 'BROWSER_AND_MOBILE', 'MOBILE_ONLY'];
+  const mobile = mobileNumber ? normalizeColombianPhone(String(mobileNumber)) : ext.mobileNumber;
+  if (mobileNumber && !mobile) return res.status(400).json({ success: false, error: 'El número de celular no es válido' });
+  if (ringStrategy && !STRATEGIES.includes(ringStrategy)) return res.status(400).json({ success: false, error: 'Modo de timbrado no válido' });
+  ext.mobileNumber = mobile || undefined;
   ext.ringStrategy = ringStrategy || 'BROWSER_THEN_MOBILE';
   ext.updatedAt = new Date().toISOString();
+  try {
+    await saveExtension(ext);
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: 'No se pudo guardar el desvío: ' + (err?.message || err) });
+  }
 
   inMemoryAuditLogs.push({
     id: `audit_forwarding_${Date.now()}`,
@@ -1040,7 +1022,7 @@ voiceRouter.post('/mobile-forwarding', (req: Request, res: Response) => {
     extension: ext.extension,
     ringStrategy: ext.ringStrategy,
     mobileNumber: ext.mobileNumber,
-    confirmationPrompt: 'Llamada de Impresos del Café, pulse 1 para tomarla.',
+    confirmationPrompt: 'Llamada de Fusión Comunicación Gráfica, pulse 1 para tomarla.',
   });
 });
 

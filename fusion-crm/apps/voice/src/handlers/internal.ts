@@ -1,6 +1,7 @@
+import { DEFAULT_ORGANIZATION_ID } from '../org';
 import { AriClient } from '../ari/client';
 import { ActiveCall, callRegistry } from '../state/registry';
-import { createCallSnapshot, transitionCall } from '@fusion/core/voice/callMachine';
+import { createCallSnapshot, transitionCall } from '@fusion/core/src/voice/callMachine';
 import { VoiceRingService } from '../services/ring';
 import { VoiceBridgeService } from '../services/bridge';
 import { persistence, prisma } from '../services/persist';
@@ -39,7 +40,7 @@ export class InternalCallHandler {
       },
     });
 
-    const orgId = sourceExtension?.organizationId || targetExtension?.organizationId || 'org_default';
+    const orgId = sourceExtension?.organizationId || targetExtension?.organizationId || DEFAULT_ORGANIZATION_ID;
     const callId = `call_int_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const snapshot = createCallSnapshot(callId);
 

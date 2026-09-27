@@ -21,6 +21,9 @@ services:
     image: traefik:v3.6
     container_name: fusion-traefik
     restart: unless-stopped
+    # Asterisk usa la red del host: Traefik lo alcanza por host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
@@ -69,6 +72,25 @@ services:
       LIVEKIT_RECORDING_ENABLED: ${LIVEKIT_RECORDING_ENABLED:-false}
       # Cuenta de servicio de Firebase: verifica sesiones y autentica al servidor ante Firestore
       GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/firebase-service-account.json
+      # Telefonía (Asterisk 22 por ARI). Sin ASTERISK_ARI_PASSWORD el módulo de voz queda apagado.
+      ASTERISK_ARI_URL: ${ASTERISK_ARI_URL:-http://host.docker.internal:8088}
+      ASTERISK_ARI_USERNAME: ${ASTERISK_ARI_USERNAME:-fusion}
+      ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-}
+      ASTERISK_ARI_APP: fusion-voz
+      ASTERISK_WEBRTC_WSS_URL: ${ASTERISK_WEBRTC_WSS_URL:-wss://pbx.fusioncg.com/ws}
+      # Troncal del operador (la misma que registra Asterisk); el CRM la muestra, no la cambia
+      TRUNK_NAME: ${TRUNK_NAME:-}
+      TRUNK_PROVIDER: ${TRUNK_PROVIDER:-}
+      TRUNK_SIP_HOST: ${TRUNK_SIP_HOST:-}
+      TRUNK_SIP_PORT: ${TRUNK_SIP_PORT:-5060}
+      TRUNK_USERNAME: ${TRUNK_USERNAME:-}
+      TRUNK_MAX_CHANNELS: ${TRUNK_MAX_CHANNELS:-10}
+      VOICE_CALLER_ID: ${VOICE_CALLER_ID:-}
+      TURN_SECRET: ${TURN_SECRET:-}
+      # Cifra las contraseñas SIP guardadas en la base (openssl rand -hex 32). No cambiarla después.
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
       # Respaldos (solo lectura) para la pantalla Administración → Respaldos
@@ -230,7 +252,8 @@ services:
     network_mode: host
     environment:
       ASTERISK_ARI_USERNAME: "${ASTERISK_ARI_USERNAME:-fusion}"
-      ASTERISK_ARI_PASSWORD: "${ASTERISK_ARI_PASSWORD:-fusion_secret_ari_2026}"
+      # Sin contraseña, Asterisk genera una aleatoria y nadie puede usar ARI (voz apagada)
+      ASTERISK_ARI_PASSWORD: "${ASTERISK_ARI_PASSWORD:-}"
       ASTERISK_ARI_PASSWORD_CRYPT: "${ASTERISK_ARI_PASSWORD_CRYPT:-}"
       PUBLIC_IP: "${PUBLIC_IP:-127.0.0.1}"
       DOCKER_SUBNET: "${DOCKER_SUBNET:-172.18.0.0/16}"
@@ -247,6 +270,13 @@ services:
       - asterisk_sounds:/var/lib/asterisk/sounds/fusion
       - asterisk_recordings:/var/spool/asterisk/recording
       - asterisk_logs:/var/log/asterisk
+    labels:
+      # Teléfono del navegador (WebRTC): wss://pbx.fusioncg.com/ws → Asterisk :8088/ws
+      - "traefik.enable=true"
+      - "traefik.http.routers.pbx.rule=Host(`pbx.fusioncg.com`) && PathPrefix(`/ws`)"
+      - "traefik.http.routers.pbx.entrypoints=websecure"
+      - "traefik.http.routers.pbx.tls.certresolver=letsencrypt"
+      - "traefik.http.services.pbx.loadbalancer.server.port=8088"
     healthcheck:
       test: ["CMD-SHELL", "asterisk -rx 'core show uptime' || exit 1"]
       interval: 30s
@@ -269,14 +299,19 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@postgres:5432/fusion_crm?schema=public
       REDIS_URL: redis://redis:6379
-      ASTERISK_ARI_URL: ${ASTERISK_ARI_URL:-http://127.0.0.1:8088}
-      ASTERISK_ARI_WS_URL: ${ASTERISK_ARI_WS_URL:-ws://127.0.0.1:8088/ari/events?app=fusion-voz&subscribeAll=false}
+      # Asterisk usa la red del host: desde este contenedor se alcanza por host.docker.internal
+      ASTERISK_ARI_URL: ${ASTERISK_ARI_URL:-http://host.docker.internal:8088}
+      ASTERISK_ARI_WS_URL: ${ASTERISK_ARI_WS_URL:-ws://host.docker.internal:8088/ari/events?app=fusion-voz&subscribeAll=false}
       ASTERISK_ARI_USERNAME: ${ASTERISK_ARI_USERNAME:-fusion}
-      ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-fusion_secret_ari_2026}
+      ASTERISK_ARI_PASSWORD: ${ASTERISK_ARI_PASSWORD:-}
       ASTERISK_APP_NAME: fusion-voz
+      TRUNK_DIAL_FORMAT: ${TRUNK_DIAL_FORMAT:-NATIONAL}
+      VOICE_CALLER_ID: ${VOICE_CALLER_ID:-}
       ASTERISK_RECORDINGS_PATH: /var/spool/asterisk/recording
     volumes:
       - asterisk_recordings:/var/spool/asterisk/recording
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
       - redis

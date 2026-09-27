@@ -1,7 +1,8 @@
+import { DEFAULT_ORGANIZATION_ID } from '../org';
 import { AriChannel, AriStasisStartEvent } from '../ari/types';
 import { AriClient } from '../ari/client';
 import { ActiveCall, callRegistry } from '../state/registry';
-import { createCallSnapshot, transitionCall } from '@fusion/core/voice/callMachine';
+import { createCallSnapshot, transitionCall } from '@fusion/core/src/voice/callMachine';
 import { resolveCallerIdentity } from '../services/identify';
 import { VoiceRingService } from '../services/ring';
 import { VoiceBridgeService } from '../services/bridge';
@@ -42,7 +43,7 @@ export class InboundCallHandler {
       include: { trunk: true },
     });
 
-    const organizationId = didRecord?.organizationId || 'org_default';
+    const organizationId = didRecord?.organizationId || DEFAULT_ORGANIZATION_ID;
 
     // 2. Resolver identidad en paralelo antes de timbrar (< 200 ms)
     const identity = await resolveCallerIdentity(fromNumber, organizationId);

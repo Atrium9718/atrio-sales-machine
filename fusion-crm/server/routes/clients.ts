@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { repositories, writeContextFrom } from '../repositories';
+import { clientProfile } from '../../packages/core/src/crm/clientProfile';
 
 export const clientsRouter = Router();
 
@@ -170,6 +171,20 @@ clientsRouter.post('/seed', async (req, res) => {
     await mergeClients(SEED_CLIENTS.map((c, i) => ({ ...c, id: `seed-cli-${i + 1}`, code: `CLI-SEED-00${i + 1}` })), writeContextFrom(req));
 
     res.json({ success: true, message: 'Base de datos de clientes (8 registros reales) cargada exitosamente en la nube.', count: SEED_CLIENTS.length });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/clients/:id — ficha del cliente con sus cotizaciones, OT e indicadores
+clientsRouter.get('/:id', async (req, res) => {
+  try {
+    const repo = repositories();
+    const clients = await repo.clients.list();
+    const client: any = clients.find((c: any) => String(c.id) === req.params.id);
+    if (!client) return res.status(404).json({ success: false, error: 'Cliente no encontrado' });
+    const [quotes, projects] = await Promise.all([repo.quotes.list(), repo.projects.list()]);
+    res.json({ success: true, client, ...clientProfile(client, quotes, projects) });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

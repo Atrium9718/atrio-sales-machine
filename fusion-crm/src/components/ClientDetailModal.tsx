@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { X, Building, Phone, Mail, MapPin, UserCheck, FileText, PlusCircle, MessageSquare } from 'lucide-react';
 
 interface Props {
@@ -210,6 +211,13 @@ export function ClientDetailModal({ client, onClose, onNewQuote }: Props) {
             >
               Cerrar
             </button>
+            <Link
+              to={`/dashboard/clientes/${encodeURIComponent(client.id)}`}
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold rounded-lg border border-border hover:bg-muted transition-colors"
+            >
+              Ver ficha completa
+            </Link>
             {onNewQuote && (
               <button
                 onClick={() => {

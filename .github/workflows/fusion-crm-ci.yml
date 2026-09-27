@@ -67,6 +67,11 @@ jobs:
       - name: Pruebas (unitarias e integración con Postgres)
         run: npx vitest run
 
+      - name: Tipos y pruebas del puente de voz (Asterisk ARI simulado)
+        run: |
+          npx tsc --noEmit -p apps/voice/tsconfig.json
+          cd apps/voice && node --test --test-force-exit --import tsx tests/*.test.ts
+
       - name: Build (cliente Vite + servidor)
         run: bun run build
 

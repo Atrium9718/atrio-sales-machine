@@ -1,3 +1,4 @@
+import { ORGANIZATION_ID } from '../repositories/prisma/mappers';
 import { Router, Request, Response } from 'express';
 import { can } from '../../packages/core/src/auth/permissions';
 import {
@@ -10,26 +11,13 @@ import {
 } from '../../packages/core/src/voice/queueStrategies';
 import { inMemoryAuditLogs } from '../services/callsService';
 import { employeeService } from '../services/employeeService';
+import { permissionsForRequest } from '../auth/userPermissions';
 
 export const voiceQueueRouter = Router();
 
 // Helper para autenticación y permisos
 function resolveAuth(req: Request) {
-  const userId = (req.headers['x-user-id'] as string) || 'user_cristian_comercial';
-  const role = (req.headers['x-user-role'] as string) || 'admin';
-  const permissionsHeader = req.headers['x-user-permissions'] as string;
-  let permissions: string[] = ['*'];
-
-  if (permissionsHeader) {
-    try {
-      permissions = JSON.parse(permissionsHeader);
-    } catch {
-      permissions = permissionsHeader.split(',').map((p) => p.trim());
-    }
-  } else if (role === 'admin' || role === 'super_admin' || userId === 'emp-03' || userId === 'user_cristian_comercial') {
-    permissions = ['*'];
-  }
-
+  const { userId, role, permissions } = permissionsForRequest(req);
   return {
     userId,
     role,
@@ -136,7 +124,7 @@ export interface VoicemailItem {
 let inMemoryQueues: VoiceQueueData[] = [
   {
     id: 'queue_ventas_01',
-    organizationId: 'org_default',
+    organizationId: ORGANIZATION_ID,
     name: 'Ventas y Comercial',
     extension: '801',
     strategy: 'ROUND_ROBIN',
@@ -164,7 +152,7 @@ let inMemoryQueues: VoiceQueueData[] = [
   },
   {
     id: 'queue_servicio_02',
-    organizationId: 'org_default',
+    organizationId: ORGANIZATION_ID,
     name: 'Servicio al Cliente y Despachos',
     extension: '802',
     strategy: 'FEWEST_CALLS',
@@ -190,7 +178,7 @@ let inMemoryQueues: VoiceQueueData[] = [
   },
   {
     id: 'queue_preprensa_03',
-    organizationId: 'org_default',
+    organizationId: ORGANIZATION_ID,
     name: 'Soporte Técnico y Preprensa',
     extension: '803',
     strategy: 'SKILL_BASED',
@@ -351,7 +339,7 @@ voiceQueueRouter.post('/queues', (req: Request, res: Response) => {
 
   const newQueue: VoiceQueueData = {
     id: queueId,
-    organizationId: data.organizationId || 'org_default',
+    organizationId: data.organizationId || ORGANIZATION_ID,
     name: data.name,
     extension: data.extension || '899',
     strategy: data.strategy || 'RINGALL',

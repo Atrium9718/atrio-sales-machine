@@ -5,7 +5,7 @@ import { metaWebhookRouter } from './routes/metaWebhook';
 import { widgetRouter } from './routes/widget';
 import { assistantRouter } from './routes/assistant';
 import { omnichannelRouter } from './routes/omnichannel';
-import { voiceRouter } from './routes/voice';
+import { voiceRouter, loadVoiceConfig } from './routes/voice';
 import { checkMetaTokens } from './metaCron';
 import { settingsRouter } from './routes/settings';
 import { adminRouter } from './routes/admin';
@@ -140,6 +140,8 @@ export async function startServer() {
   await loadTariffStore();
   await loadSystemConfig();
   await loadSessionRegistry();
+  // Configuración de la central telefónica (extensiones, claves cifradas y números) desde Postgres
+  await loadVoiceConfig().catch((err) => console.warn('[voz] No se pudo cargar la configuración:', err?.message || err));
   await loadStateFromFirestore();
   startStateSync();
 

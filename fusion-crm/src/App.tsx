@@ -187,7 +187,6 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
   const itemBadges: Record<string, number> = { '/dashboard/portal-clientes': newClientRequests, '/dashboard/inbox': inboxAttention };
   const permissions = isSuperAdmin ? ['*'] : ((window as any).__FUSION_USER_PERMISSIONS__ || ['*']);
   const hasVoiceUse = isSuperAdmin || can(permissions, 'voice:use');
-  const canSupervise = isSuperAdmin || can(permissions, 'voice:supervise');
   const canManageVoice = isSuperAdmin || can(permissions, 'voice:manage_all');
 
   type NavItem = {
@@ -240,16 +239,13 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     ]),
     ...(hasVoiceUse && voiceStatus.enabled ? [
       group('Voz y Telefonía', 'voz', [
+        // Supervisión, informes, agente de IA y campañas: fases 2 y 3 (sus rutas siguen para administradores)
         { name: 'Panel de Voz', path: '/voz', icon: Phone, permission: 'voice:use' },
         { name: 'Historial de Llamadas', path: '/voz/llamadas', icon: PhoneCall, permission: 'voice:use' },
         { name: 'Colas y Agentes', path: '/voz/colas', icon: Users, permission: 'voice:use' },
         { name: 'Buzón de Voz', path: '/voz/buzon', icon: MessageSquare, permission: 'voice:use' },
         { name: 'Flujos de IVR', path: '/voz/ivr', icon: Network, permission: 'voice:use' },
         { name: 'Biblioteca de Locuciones', path: '/voz/locuciones', icon: FileText, permission: 'voice:use' },
-        { name: 'Agente de IA', path: '/voz/agente-ia', icon: Bot, permission: 'voice:use' },
-        { name: 'Campañas Salientes', path: '/voz/campanas', icon: Megaphone, permission: 'voice:use' },
-        ...(canSupervise ? [{ name: 'Supervisión en Vivo', path: '/voz/supervision', icon: Activity, permission: 'voice:supervise' }] : []),
-        { name: 'Informes de Voz', path: '/voz/informes', icon: TrendingUp, permission: 'voice:use' },
       ]),
     ] : []),
     group('Equipo', 'equipo', [

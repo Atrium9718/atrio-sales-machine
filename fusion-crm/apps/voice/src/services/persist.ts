@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { ActiveCall } from '../state/registry';
-import { CallMachineSnapshot } from '@fusion/core/voice/callMachine';
+import { CallMachineSnapshot } from '@fusion/core/src/voice/callMachine';
 import { telemetry } from '../telemetry';
 
 // Instancia de Prisma dedicada para el servicio de voz

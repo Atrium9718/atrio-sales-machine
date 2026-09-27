@@ -1,5 +1,5 @@
-import { CallMachineSnapshot, VoiceCallState } from '@fusion/core/voice/callMachine';
-import { VoiceCustomerContext } from '@fusion/contracts/voice';
+import { CallMachineSnapshot, VoiceCallState } from '@fusion/core/src/voice/callMachine';
+import { VoiceCustomerContext } from '@fusion/contracts/src/voice';
 
 export interface ActiveCall {
   callId: string;
@@ -31,6 +31,8 @@ export interface ActiveCall {
   holdMusicClass?: string;
   transferredFromUserId?: string;
   attendedTransferSecondBridgeId?: string;
+  /** Saliente marcada desde el teléfono del asesor: su canal se contesta cuando contesta el cliente. */
+  agentDialed?: boolean;
 }
 
 class CallRegistry {

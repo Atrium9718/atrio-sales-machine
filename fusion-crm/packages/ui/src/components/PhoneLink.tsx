@@ -27,9 +27,12 @@ export function formatColombianPhone(rawPhone: string): string {
   if (digits.length === 12 && digits.startsWith('573')) {
     return `+${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
   }
-  // Fijo Bogotá: 601XXXXXXX
+  // Fijo con indicativo de 3 dígitos (601 Bogotá, 604 Medellín, 606 Eje Cafetero…)
   if (digits.length === 10 && digits.startsWith('60')) {
-    return `+57 (${digits.slice(1, 3)}) ${digits.slice(3, 6)} ${digits.slice(6)}`;
+    return `+57 (${digits.slice(0, 3)}) ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  }
+  if (digits.length === 12 && digits.startsWith('5760')) {
+    return `+57 (${digits.slice(2, 5)}) ${digits.slice(5, 8)} ${digits.slice(8)}`;
   }
 
   return rawPhone;

@@ -9,7 +9,7 @@ import {
 } from './types';
 import { AriClient } from './client';
 import { callRegistry } from '../state/registry';
-import { transitionCall } from '@fusion/core/voice/callMachine';
+import { transitionCall } from '@fusion/core/src/voice/callMachine';
 import { InboundCallHandler } from '../handlers/inbound';
 import { OutboundCallHandler } from '../handlers/outbound';
 import { InternalCallHandler } from '../handlers/internal';
@@ -76,7 +76,18 @@ export class AriEventDispatcher {
       dialplanExten: dialedExt,
     });
 
-    // 1. Clasificación por argumento de Stasis
+    // 1. Lo que marca una extensión (contexto fusion-interno): interna o número externo
+    if (args.includes('internal')) {
+      const target = args[args.indexOf('internal') + 1] || dialedExt;
+      if (/^\d{3,4}$/.test(target)) {
+        await this.internalHandler.handleInternalCall(channel.id, callerNumber, target);
+      } else {
+        await this.outboundHandler.handleAgentDialedExternal(channel, target);
+      }
+      return;
+    }
+
+    // 2. Llamadas del operador y respuestas de piernas creadas por el CRM
     if (args.includes('inbound') || dialedExt.length >= 7 || dialedExt.startsWith('+')) {
       await this.inboundHandler.handleStasisStart(event);
       return;
@@ -101,7 +112,7 @@ export class AriEventDispatcher {
       return;
     }
 
-    if (args.includes('internal') || (dialedExt.length === 3 && !dialedExt.startsWith('9'))) {
+    if (dialedExt.length === 3 && !dialedExt.startsWith('9')) {
       // Llamada interna entre extensiones (ej: 101 llama a 102)
       await this.internalHandler.handleInternalCall(channel.id, callerNumber, dialedExt);
       return;

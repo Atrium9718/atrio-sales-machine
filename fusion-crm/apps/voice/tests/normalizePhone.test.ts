@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeColombianPhone, parseColombianPhone } from '@fusion/core/voice/normalizePhone';
+import { normalizeColombianPhone, parseColombianPhone } from '@fusion/core/src/voice/normalizePhone';
 
 describe('Normalización de Teléfonos Colombianos (E.164)', () => {
   it('1. Celular estándar de 10 dígitos (3001234567) -> +573001234567', () => {

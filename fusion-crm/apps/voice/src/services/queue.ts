@@ -1,3 +1,4 @@
+import { trunkDialString } from '../trunk';
 /**
  * Motor de Colas de Atención ACD (apps/voice/src/services/queue.ts)
  * Etapa 17.6 — Bloque A.
@@ -31,8 +32,8 @@ import {
   QueueAgentCandidate,
   QueueStrategyType,
   MAX_QUEUE_BOUNCES,
-} from '@fusion/core/voice/queueStrategies';
-import { transitionCall } from '@fusion/core/voice/callMachine';
+} from '@fusion/core/src/voice/queueStrategies';
+import { transitionCall } from '@fusion/core/src/voice/callMachine';
 
 export interface QueueCallItem {
   callId: string;
@@ -412,9 +413,9 @@ export class VoiceQueueService {
       if (queueItem.isVirtualCallback && queueItem.callbackPhone) {
         telemetry.log('INFO', `Devolución virtual: marcando al cliente ${queueItem.callbackPhone}...`);
         const customerLeg = await this.ari.originateChannel({
-          endpoint: `PJSIP/${queueItem.callbackPhone}@trunk_provider`,
+          endpoint: trunkDialString(queueItem.callbackPhone),
           app: 'fusion-voz',
-          callerId: `Impresos del Cafe <${queue.extension || '5746040000'}>`,
+          callerId: `Fusión <${process.env.VOICE_CALLER_ID || queue.extension || ''}>`,
         });
         await this.ari.addChannelToBridge(mixingBridge.id, customerLeg.id);
         await this.ari.addChannelToBridge(mixingBridge.id, agentChannel.id);
@@ -645,7 +646,7 @@ export class VoiceQueueService {
         telemetry.log('INFO', `Desbordando llamada ${call.callId} hacia celular externo ${phone}`);
         try {
           await this.ari.originateChannel({
-            endpoint: `PJSIP/${phone}@trunk_provider`,
+            endpoint: trunkDialString(phone),
             app: 'fusion-voz',
             callerId: call.fromNumber,
           });

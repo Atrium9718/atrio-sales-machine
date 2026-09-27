@@ -1,1 +1,1 @@
-export * from '@fusion/core/voice/callMachine';
+export * from '@fusion/core/src/voice/callMachine';

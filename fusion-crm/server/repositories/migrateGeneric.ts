@@ -16,6 +16,7 @@ export const GENERIC_COLLECTIONS = [
   'system_config',
   'inventory_movements',
   'quote_links',
+  'voice_number_meta',
   'access_reviews',
   'auth_sessions',
   'security_events',

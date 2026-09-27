@@ -5,7 +5,12 @@ const IV_LENGTH = 12; // 96 bits for GCM
 const AUTH_TAG_LENGTH = 16;
 
 function getEncryptionKey(): Buffer {
-  const secretKey = process.env.SECRET_ENCRYPTION_KEY || process.env.APP_SECRET || 'fusion-vault-encryption-secret-key-32';
+  const configured = process.env.SECRET_ENCRYPTION_KEY || process.env.APP_SECRET;
+  // En producción no se cifra con una clave conocida (estaría en el código fuente)
+  if (!configured && process.env.NODE_ENV === 'production') {
+    throw new Error('Falta SECRET_ENCRYPTION_KEY en el servidor: sin ella no se pueden guardar ni leer claves cifradas');
+  }
+  const secretKey = configured || 'fusion-vault-encryption-secret-key-32';
   return crypto.createHash('sha256').update(secretKey).digest();
 }
 

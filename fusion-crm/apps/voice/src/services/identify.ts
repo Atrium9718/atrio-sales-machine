@@ -1,5 +1,5 @@
-import { normalizeColombianPhone } from '@fusion/core/voice/normalizePhone';
-import { VoiceCustomerContext } from '@fusion/contracts/voice';
+import { normalizeColombianPhone } from '@fusion/core/src/voice/normalizePhone';
+import { VoiceCustomerContext } from '@fusion/contracts/src/voice';
 import { prisma } from './persist';
 import { telemetry } from '../telemetry';
 
@@ -277,7 +277,7 @@ export async function resolveCallerIdentity(
           contactId: selectedContactId,
           contactName: selectedContactName,
           contactRole: selectedContactRole,
-          lastActivityAt: lastActivity?.createdAt ? lastActivity.createdAt.toISOString() : null,
+          lastActivityAt: lastActivity?.occurredAt ? lastActivity.occurredAt.toISOString() : null,
           openQuotes: formattedQuotes,
           productionProjects: formattedProjects,
           financials: userHasCostReadPermission
