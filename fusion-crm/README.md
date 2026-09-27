@@ -89,20 +89,25 @@ Si un navegador tenía datos de la versión anterior en `localStorage` (`fusion_
 - Cuando entra una solicitud, el equipo conectado recibe un **aviso emergente** en tiempo real y el menú muestra el número de solicitudes nuevas.
 - Los adjuntos se guardan en Firebase Storage (`client-requests/…`): la cuenta de servicio necesita el rol **Storage Object Admin** sobre el bucket de `storageBucket`. El tipo de cada archivo se valida por su contenido, no por la extensión.
 
-### Base de datos: migración a Postgres (fase 1)
+### Base de datos: Postgres
 
-Clientes, cotizaciones (con sus ítems) y proyectos de producción pueden vivir en **Postgres**. Los elige la variable `DATA_BACKEND` (`firestore` por defecto, o `postgres`). Todo lo demás sigue en Firestore por ahora: empleados, chat, anuncios, portal y solicitudes, corridas del cotizador, configuración, etc.
+Con `DATA_BACKEND=postgres` (por defecto `firestore`) todos los datos del negocio viven en **Postgres** y entran en el respaldo diario:
+
+- **Fase 1 (tablas propias):** clientes, cotizaciones (con sus ítems) y proyectos de producción.
+- **Fase 2 (almacén genérico `app_documents`, un documento JSON por registro):** empleados y roles, configuración e historial, maestros, tarifario, agenda, pipeline, catálogo, inventario, órdenes de impresión, corridas y plantillas del cotizador, portal del cliente y solicitudes, bandeja omnicanal, avisos, consumo de IA, chat interno, anuncios y llamadas.
+
+Siguen en Firebase: el inicio de sesión (Google) y los adjuntos del portal (Firebase Storage). El panel de agentes y el Interventor (herramientas en construcción) aún leen Firestore.
 
 - **Esquema:** `packages/db/prisma/schema`. Migraciones en `schema/migrations`; se aplican con `bun run db:migrate`. El contenedor las aplica solo al arrancar con `DATA_BACKEND=postgres`.
 - **Qué se guarda dónde:** los datos clave van en columnas relacionales (cliente, NIT, responsable, número, estado, fechas, totales, ítems, etapa y costos), listas para reportes. El documento completo que usa la app se conserva en `appData`.
-- **Qué queda para la fase 2:** tareas, tiempos y aprobaciones de los proyectos siguen dentro de `appData`. Pasarán a sus propias tablas junto con la migración de empleados.
+- **Pendiente:** tareas, tiempos y aprobaciones de los proyectos siguen dentro de `appData` (no tienen tablas propias todavía).
 
 **Paso a paso (en un momento sin actividad):**
 
 1. En `.env`: `DB_PASSWORD=<contraseña segura>` y `DATABASE_URL=postgresql://postgres:<contraseña>@localhost:5432/fusion_crm?schema=public`. Levantar la base: `docker compose up -d postgres`.
 2. Crear las tablas: `bun run db:migrate`.
-3. Simular: `bun run db:migrate-data -- --dry-run` (cuenta lo que hay en Firestore).
-4. Copiar: `bun run db:migrate-data`. Es idempotente y al final compara origen y destino. Si hay errores o diferencias, los lista y termina con código 1.
+3. Simular: `bun run db:migrate-data -- --dry-run` (cuenta lo que hay en Firestore, fase 1 y fase 2).
+4. Copiar: `bun run db:migrate-data`. Copia la fase 1 y luego todas las colecciones de la fase 2; es idempotente y al final compara origen y destino. Si hay errores o diferencias, los lista y termina con código 1.
 5. Activar: `DATA_BACKEND=postgres` en `.env` y `docker compose up -d --build app`.
 6. Si hubo cambios en Firestore entre el paso 4 y el 5, repetir el paso 4 justo antes de activar.
 

@@ -25,7 +25,7 @@ const engineItem = (unitPrice: number) => ({
 
 describe('reviewQuote (servidor)', () => {
   it('recalcula el costo desde la entrada guardada y detecta precios bajo costo', async () => {
-    const { totals, pricingReview } = await reviewQuote(null, [engineItem(Math.floor(unitCost * 0.5))]);
+    const { totals, pricingReview } = await reviewQuote([engineItem(Math.floor(unitCost * 0.5))]);
     expect(pricingReview.belowCost).toBe(true);
     expect(totals.items[0].total).toBeGreaterThan(1);
     expect(approvalBlockReason(pricingReview, 'comercial')).toMatch(/por debajo del costo/);
@@ -34,13 +34,13 @@ describe('reviewQuote (servidor)', () => {
   });
 
   it('permite aprobar precios sobre el costo a cualquier rol', async () => {
-    const { pricingReview } = await reviewQuote(null, [engineItem(Math.ceil(unitCost * 2)), { id: 'm', quantity: 1, unitPrice: 10 }]);
+    const { pricingReview } = await reviewQuote([engineItem(Math.ceil(unitCost * 2)), { id: 'm', quantity: 1, unitPrice: 10 }]);
     expect(pricingReview.belowCost).toBe(false);
     expect(approvalBlockReason(pricingReview, 'comercial')).toBeNull();
   });
 
   it('no bloquea ítems cuya corrida no existe (quedan como no verificados)', async () => {
-    const { pricingReview } = await reviewQuote(null, [{ ...engineItem(1), assistRunId: 'run_inexistente' }]);
+    const { pricingReview } = await reviewQuote([{ ...engineItem(1), assistRunId: 'run_inexistente' }]);
     expect(pricingReview.items[0].status).toBe('UNVERIFIED');
     expect(approvalBlockReason(pricingReview, 'comercial')).toBeNull();
   });

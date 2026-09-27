@@ -1,5 +1,8 @@
 /**
- * Fase 1 de la migración a Postgres: copia clientes, cotizaciones y proyectos desde Firestore.
+ * Migración a Postgres: copia desde Firestore
+ *   fase 1 — clientes, cotizaciones y proyectos (tablas propias);
+ *   fase 2 — el resto (empleados, roles, portal, bandeja, agenda, pipeline, catálogo,
+ *            chat interno, configuración…) al almacén genérico app_documents.
  *
  *   bun run db:migrate-data -- --dry-run   # solo cuenta lo que hay en Firestore
  *   bun run db:migrate-data                # copia (idempotente) y verifica
@@ -12,6 +15,8 @@ import { createFirestoreRepository } from '../server/repositories/firestoreRepos
 import { createClientsRepository, createProjectsRepository, createQuotesRepository } from '../server/repositories/prisma/repositories';
 import { disconnectPrisma } from '../server/repositories/prisma/client';
 import { migratePhase1 } from '../server/repositories/migratePhase1';
+import { GENERIC_COLLECTIONS, migrateGenericCollections } from '../server/repositories/migrateGeneric';
+import { createPostgresDocumentRepository } from '../server/repositories/documentStore';
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
@@ -40,7 +45,18 @@ async function main() {
     for (const m of report.mismatches.slice(0, 50)) console.log(`  - ${m}`);
   }
 
-  const failed = Object.values(report.entities).some((r) => r.failed.length > 0) || report.mismatches.length > 0;
+  console.log('\nFase 2: colecciones generales' + (dryRun ? ' (simulación)' : ''));
+  const generic = await migrateGenericCollections(GENERIC_COLLECTIONS, (n) => createFirestoreRepository(n), (n) => createPostgresDocumentRepository(n), {
+    dryRun,
+    log: (m) => console.log(`[migración] ${m}`),
+  });
+  for (const m of generic.mismatches) console.log(`  - ${m}`);
+
+  const failed =
+    Object.values(report.entities).some((r) => r.failed.length > 0) ||
+    report.mismatches.length > 0 ||
+    Object.values(generic.collections).some((c) => c.failed > 0) ||
+    generic.mismatches.length > 0;
   await disconnectPrisma();
   process.exit(failed ? 1 : 0);
 }

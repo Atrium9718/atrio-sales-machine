@@ -1,16 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-import { initializeApp, getApps } from 'firebase/app';
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  setDoc,
-  updateDoc,
-  Firestore,
-} from 'firebase/firestore';
+import { documentRepository } from '../repositories/documentStore';
 import { eventBus } from '../events/DomainEventBus';
 import { getRequestAuth } from '../auth/requestContext';
 
@@ -500,31 +488,9 @@ export const INITIAL_EMPLOYEES: FusionEmployee[] = [
   },
 ];
 
-let firebaseConfig: any = {};
-try {
-  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(configPath)) {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  }
-} catch (e) {
-  console.warn('Could not read firebase-applet-config.json in employeeService', e);
-}
-
-function getDb(): Firestore | null {
-  try {
-    if (!getApps().length) {
-      if (firebaseConfig.projectId) {
-        initializeApp(firebaseConfig);
-      } else {
-        return null;
-      }
-    }
-    return getFirestore(getApps()[0], firebaseConfig.firestoreDatabaseId);
-  } catch (err) {
-    console.error('Failed to get Firestore in employeeService', err);
-    return null;
-  }
-}
+/** Empleados y roles: en la base configurada (Postgres o Firestore; mismas colecciones). */
+const employeesRepo = () => documentRepository<Employee & { id: string }>('employees');
+const rolesRepo = () => documentRepository<FusionRole & { id: string }>('roles');
 
 function cleanObject<T extends Record<string, any>>(obj: T): T {
   const result: any = {};
@@ -546,50 +512,27 @@ let activeSimulatedUser: Employee | null = null;
 INITIAL_ROLES.forEach((r) => rolesCache.set(r.id, { ...r }));
 INITIAL_EMPLOYEES.forEach((e) => employeesCache.set(e.id, { ...e }));
 
-async function syncWithFirestore(): Promise<void> {
-  const db = getDb();
-  if (!db) {
-    console.warn('[employeeService] Firestore no disponible, operando en memoria.');
-    return;
-  }
-
+/** Carga empleados y roles guardados. Se llama al arrancar, antes de atender peticiones. */
+export async function loadEmployees(): Promise<void> {
   try {
-    // 1. Sincronizar roles desde Firestore
-    const rolesSnap = await getDocs(collection(db, 'roles'));
-    if (!rolesSnap.empty) {
+    // 1. Roles
+    const roles = await rolesRepo().list();
+    if (roles.length) {
       rolesCache.clear();
-      rolesSnap.forEach((d) => {
-        const role = d.data() as FusionRole;
-        rolesCache.set(role.id, role);
-      });
+      for (const role of roles) rolesCache.set(role.id, role);
     } else {
-      for (const r of INITIAL_ROLES) {
-        rolesCache.set(r.id, { ...r });
-        await setDoc(doc(db, 'roles', r.id), cleanObject(r), { merge: true });
-      }
+      for (const r of INITIAL_ROLES) rolesCache.set(r.id, { ...r });
+      await rolesRepo().upsertMany(INITIAL_ROLES.map((r) => cleanObject(r)));
     }
 
-    // 2. Sincronizar empleados desde Firestore
-    const empsSnap = await getDocs(collection(db, 'employees'));
-    if (!empsSnap.empty) {
-      // Cargar plantilla canónica y sobreescribir con Firestore
-      INITIAL_EMPLOYEES.forEach((e) => employeesCache.set(e.id, { ...e }));
-      empsSnap.forEach((d) => {
-        const emp = d.data() as Employee;
-        employeesCache.set(emp.id, emp);
-      });
-      // Persistir en Firestore si alguno de los colaboradores base faltaba
-      for (const emp of INITIAL_EMPLOYEES) {
-        if (!empsSnap.docs.some((d) => d.id === emp.id)) {
-          await setDoc(doc(db, 'employees', emp.id), cleanObject(emp), { merge: true });
-        }
-      }
-    } else {
-      console.log('[employeeService] Inicializando colección "employees" en Firestore...');
-      for (const emp of INITIAL_EMPLOYEES) {
-        employeesCache.set(emp.id, { ...emp });
-        await setDoc(doc(db, 'employees', emp.id), cleanObject(emp), { merge: true });
-      }
+    // 2. Empleados: plantilla base + lo guardado encima
+    const stored = await employeesRepo().list();
+    INITIAL_EMPLOYEES.forEach((e) => employeesCache.set(e.id, { ...e }));
+    for (const emp of stored) employeesCache.set(emp.id, emp);
+    const missing = INITIAL_EMPLOYEES.filter((e) => !stored.some((d) => d.id === e.id));
+    if (missing.length) {
+      if (!stored.length) console.log('[employeeService] Inicializando la colección "employees"...');
+      await employeesRepo().upsertMany(missing.map((e) => cleanObject(e)));
     }
 
     // Inmunidad de Super Administrador para Cristian Andrés Sepúlveda (emp-03)
@@ -602,20 +545,15 @@ async function syncWithFirestore(): Promise<void> {
       cristian.email = 'andresepulveda718@gmail.com';
       cristian.name = 'Cristian Andrés Sepúlveda';
       employeesCache.set('emp-03', cristian);
-      await setDoc(doc(db, 'employees', 'emp-03'), cleanObject(cristian), { merge: true });
+      await employeesRepo().upsert(cleanObject(cristian));
     }
 
     isInitialized = true;
-    console.log(`[employeeService] SSOT Firestore sincronizada: ${employeesCache.size} empleados cargados.`);
+    console.log(`[employeeService] ${employeesCache.size} empleados cargados.`);
   } catch (err) {
-    console.error('[employeeService] Error al sincronizar con Firestore:', err);
+    console.error('[employeeService] No se pudieron cargar empleados y roles; se usan los valores base:', (err as Error)?.message || err);
   }
 }
-
-// Iniciar sincronización de fondo
-syncWithFirestore().catch((err) => {
-  console.error('[employeeService] Error en sincronización inicial:', err);
-});
 
 // Service methods (SSOT)
 export const employeeService = {
@@ -651,11 +589,7 @@ export const employeeService = {
 
     rolesCache.set(savedRole.id, savedRole);
 
-    // Persistir asíncronamente en Firestore
-    const db = getDb();
-    if (db) {
-      setDoc(doc(db, 'roles', savedRole.id), cleanObject(savedRole), { merge: true }).catch(console.error);
-    }
+    rolesRepo().upsert(cleanObject(savedRole)).catch((err) => console.error(`[employeeService] Error guardando el rol ${savedRole.id}:`, err));
 
     return savedRole;
   },
@@ -757,13 +691,9 @@ export const employeeService = {
       activeSimulatedUser = savedEmployee;
     }
 
-    // Persistir asíncronamente en Firestore
-    const db = getDb();
-    if (db) {
-      setDoc(doc(db, 'employees', savedEmployee.id), cleanObject(savedEmployee), { merge: true }).catch((err) => {
-        console.error(`[employeeService] Error guardando empleado ${savedEmployee.id} en Firestore:`, err);
-      });
-    }
+    employeesRepo()
+      .upsert(cleanObject(savedEmployee))
+      .catch((err) => console.error(`[employeeService] Error guardando empleado ${savedEmployee.id}:`, err));
 
     // Publicar evento en el bus desacoplado
     if (isNew) {
@@ -795,16 +725,10 @@ export const employeeService = {
       activeSimulatedUser = this.getActiveUser();
     }
 
-    // Actualizar en Firestore mediante soft-delete (NO deleteDoc)
-    const db = getDb();
-    if (db) {
-      updateDoc(doc(db, 'employees', id), {
-        status: 'INACTIVO',
-        updatedAt: employee.updatedAt,
-      }).catch((err) => {
-        console.error(`[employeeService] Error en soft-delete Firestore de ${id}:`, err);
-      });
-    }
+    // Inactivación (nunca se borra el registro)
+    employeesRepo()
+      .upsert(cleanObject(employee))
+      .catch((err) => console.error(`[employeeService] Error inactivando ${id}:`, err));
 
     // Publicar evento de inactivación
     eventBus.publish('EMPLOYEE_DEACTIVATED', {
@@ -831,21 +755,10 @@ export const employeeService = {
     employeesCache.clear();
     rolesCache.clear();
 
-    const db = getDb();
-
-    for (const role of INITIAL_ROLES) {
-      rolesCache.set(role.id, { ...role });
-      if (db) {
-        await setDoc(doc(db, 'roles', role.id), cleanObject(role), { merge: true });
-      }
-    }
-
-    for (const emp of INITIAL_EMPLOYEES) {
-      employeesCache.set(emp.id, { ...emp });
-      if (db) {
-        await setDoc(doc(db, 'employees', emp.id), cleanObject(emp), { merge: true });
-      }
-    }
+    for (const role of INITIAL_ROLES) rolesCache.set(role.id, { ...role });
+    for (const emp of INITIAL_EMPLOYEES) employeesCache.set(emp.id, { ...emp });
+    await rolesRepo().upsertMany(INITIAL_ROLES.map((r) => cleanObject(r)));
+    await employeesRepo().upsertMany(INITIAL_EMPLOYEES.map((e) => cleanObject(e)));
 
     return Array.from(employeesCache.values());
   },

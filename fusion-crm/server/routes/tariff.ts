@@ -1,38 +1,16 @@
 import { Router } from 'express';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, getDoc, query, orderBy, limit } from 'firebase/firestore';
-import fs from 'fs';
-import path from 'path';
+import { documentRepository } from '../repositories/documentStore';
 import { isAdminRole } from '../auth/session';
 import { SEED_ROLE_TARIFF_PERMISSIONS } from '../../packages/core/src/auth/permissions';
 import { activateTariffVersion, getActiveTariff, getTariffVersion, listTariffVersions, publishTariffVersion } from '../services/tariffStore';
 
 export const tariffRouter = Router();
 
-// Retrieve Firebase configuration
-let firebaseConfig: any = {};
-try {
-  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-} catch (e) {
-  console.warn('Could not read firebase-applet-config.json in tariffRouter', e);
-}
-
-if (!getApps().length && firebaseConfig.projectId) {
-  try {
-    initializeApp(firebaseConfig);
-  } catch (err) {
-    console.error('Firebase init error in tariffRouter', err);
-  }
-}
-
-function getDb() {
-  if (!getApps().length) return null;
-  try {
-    return getFirestore(getApps()[0], firebaseConfig.firestoreDatabaseId);
-  } catch {
-    return null;
-  }
+/** Corrida del asistente guardada (o en memoria si no se pudo guardar). */
+export async function getAssistRun(runId: string): Promise<any | null> {
+  if (memoryAssistRuns.has(runId)) return memoryAssistRuns.get(runId);
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(runId)) return null;
+  return documentRepository('quote_assist_runs').get(runId);
 }
 
 // In-memory fallback stores
@@ -202,15 +180,10 @@ tariffRouter.post('/assist-run', async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    const db = getDb();
-    if (db) {
-      try {
-        await setDoc(doc(db, 'quote_assist_runs', runId), record);
-      } catch (e) {
-        console.warn('Could not write assist run to Firestore, saving to memory', e);
-        memoryAssistRuns.set(runId, record);
-      }
-    } else {
+    try {
+      await documentRepository('quote_assist_runs').upsert(record);
+    } catch (e) {
+      console.warn('[tarifario] No se pudo guardar la corrida; queda en memoria', e);
       memoryAssistRuns.set(runId, record);
     }
 
@@ -224,17 +197,14 @@ tariffRouter.post('/assist-run', async (req, res) => {
 // GET /api/tariff/templates
 tariffRouter.get('/templates', async (req, res) => {
   try {
-    const db = getDb();
-    if (db) {
-      try {
-        const snap = await getDocs(collection(db, 'assist_templates'));
-        if (!snap.empty) {
-          const dbTemplates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          return res.json({ success: true, templates: dbTemplates });
-        }
-      } catch (e) {
-        console.warn('Error reading assist templates from Firestore, using memory fallback', e);
+    try {
+      const stored = await documentRepository('assist_templates').list();
+      if (stored.length) {
+        stored.sort((a: any, b: any) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        return res.json({ success: true, templates: stored });
       }
+    } catch (e) {
+      console.warn('[tarifario] No se pudieron leer las plantillas; se usan las de ejemplo', e);
     }
     res.json({ success: true, templates: memoryTemplates });
   } catch (err: any) {
@@ -263,15 +233,10 @@ tariffRouter.post('/templates', async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    const db = getDb();
-    if (db) {
-      try {
-        await setDoc(doc(db, 'assist_templates', templateId), newTemplate);
-      } catch (e) {
-        console.warn('Could not write template to Firestore, saving to memory', e);
-        memoryTemplates.unshift(newTemplate);
-      }
-    } else {
+    try {
+      await documentRepository('assist_templates').upsert(newTemplate);
+    } catch (e) {
+      console.warn('[tarifario] No se pudo guardar la plantilla; queda en memoria', e);
       memoryTemplates.unshift(newTemplate);
     }
 

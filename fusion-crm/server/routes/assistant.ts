@@ -1,5 +1,6 @@
 import { recordGeminiUsage } from '../omnichannel/usage';
 import { Router } from 'express';
+import { documentRepository } from '../repositories/documentStore';
 import { GoogleGenAI } from '@google/genai';
 import { getApps, initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDoc, doc, getDocs, query, orderBy, setDoc, updateDoc } from 'firebase/firestore';
@@ -35,6 +36,10 @@ function getDb() {
   return getFirestore(getApps()[0], firebaseConfig.firestoreDatabaseId);
 }
 
+/** Historial del asistente interno: en la base configurada (Postgres o Firestore). */
+const chatsRepo = () => documentRepository('chats');
+const SESSION_ID = /^[A-Za-z0-9_-]{1,100}$/;
+
 // Lazy initialization
 let aiClient: GoogleGenAI | null = null;
 function getAiClient(): GoogleGenAI {
@@ -54,11 +59,9 @@ function getAiClient(): GoogleGenAI {
 assistantRouter.get('/sync/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const chatDoc = await getDoc(doc(getDb(), 'chats', sessionId));
-    if (!chatDoc.exists()) {
-      return res.json({ messages: [] });
-    }
-    res.json({ messages: chatDoc.data().messages || [] });
+    if (!SESSION_ID.test(sessionId)) return res.status(400).json({ error: 'Sesión inválida' });
+    const chat: any = await chatsRepo().get(sessionId);
+    res.json({ messages: chat?.messages || [] });
   } catch (error) {
     console.error('Error syncing widget chat:', error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -70,21 +73,17 @@ assistantRouter.post('/message', async (req, res) => {
   try {
     
     const { message, history, context, sessionId = 'default-session' } = req.body;
+    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId)) return res.status(400).json({ error: 'Sesión inválida' });
     
     // Save User message immediately
-    const chatRef = doc(getDb(), 'chats', sessionId);
-    const chatDoc = await getDoc(chatRef);
-    let messages = chatDoc.exists() ? chatDoc.data().messages || [] : [];
-    const isHumanPaused = chatDoc.exists() && chatDoc.data().status === 'human';
+    const chat: any = await chatsRepo().get(sessionId);
+    let messages = chat?.messages || [];
+    const isHumanPaused = chat?.status === 'human';
     
     const newUserMsg = { id: Date.now(), sender: 'user', text: message, time: new Date().toISOString() };
     messages.push(newUserMsg);
     
-    await setDoc(chatRef, {
-      updatedAt: new Date().toISOString(),
-      status: 'active',
-      messages: messages
-    }, { merge: true });
+    await chatsRepo().upsert({ ...(chat || {}), id: sessionId, updatedAt: new Date().toISOString(), status: 'active', messages });
 
     
     if (isHumanPaused) {
@@ -189,10 +188,7 @@ ${JSON.stringify(context || {})}
     const newBotMsg = { id: Date.now(), sender: 'bot', text: aiText, time: new Date().toISOString() };
     
     messages.push(newBotMsg);
-    await updateDoc(chatRef, {
-      updatedAt: new Date().toISOString(),
-      messages: messages
-    });
+    await chatsRepo().patch(sessionId, { updatedAt: new Date().toISOString(), messages });
 
     res.json({ reply: aiText, messages });
 

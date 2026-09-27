@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { setImpersonation } from '../auth/session';
 import { dataBackend, repositories } from '../repositories';
+import { documentRepository } from '../repositories/documentStore';
 import fs from 'fs';
 import path from 'path';
 import { getApps, initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { eventBus } from '../events/DomainEventBus';
 import { inMemoryAnnouncements, inMemoryShoutouts } from './announcements';
 import { inMemoryChannels, inMemoryMessages, inMemoryPins } from './chat';
@@ -44,14 +44,10 @@ if (!getApps().length && firebaseConfig.projectId) {
 import { employeeService } from '../services/employeeService';
 import { FUSION_MODULES_CATALOG } from '../../packages/core/src/auth/permissions';
 
-let db: any = null;
-try {
-  if (getApps().length) {
-    db = getFirestore(getApps()[0], firebaseConfig.firestoreDatabaseId);
-  }
-} catch (err) {
-  console.warn('Firestore not initialized in admin router', err);
-}
+/** Copia de la plantilla PDF en la base (el disco del contenedor se pierde al actualizar). */
+const templateDoc = () => documentRepository('system_settings');
+/** Postgres admite documentos grandes; Firestore tiene un límite de ~1 MB por documento. */
+const maxTemplateBytes = () => (dataBackend() === 'postgres' ? 10_000_000 : 850_000);
 
 // User / Employee Management Endpoints (SSOT)
 adminRouter.get('/users', async (req, res) => {
@@ -221,12 +217,10 @@ adminRouter.get('/template', async (req, res) => {
     let targetPdf = fs.existsSync(publicPdf) ? publicPdf : (fs.existsSync(distPdf) ? distPdf : null);
 
     // If missing from disk, check Firestore to restore
-    if (!existsOnDisk && db) {
+    if (!existsOnDisk) {
       try {
-        const docRef = doc(db, 'system_settings', 'quote_template');
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data();
+        const data: any = await templateDoc().get('quote_template');
+        if (data) {
           if (data?.base64Data) {
             const base64Content = data.base64Data.replace(/^data:.*?;base64,/, '');
             const buffer = Buffer.from(base64Content, 'base64');
@@ -239,7 +233,7 @@ adminRouter.get('/template', async (req, res) => {
           }
         }
       } catch (err) {
-        console.warn('Error reading template from firestore', err);
+        console.warn('[plantilla] No se pudo leer la copia guardada', err);
       }
     }
 
@@ -321,20 +315,17 @@ adminRouter.post('/template', async (req, res) => {
       fs.writeFileSync(distMeta, JSON.stringify(meta, null, 2));
     }
 
-    // Also persist in Firestore if database is available
-    if (db) {
-      try {
-        const docRef = doc(db, 'system_settings', 'quote_template');
-        await setDoc(docRef, {
-          filename: meta.filename,
-          size: meta.size,
-          updatedAt: meta.updatedAt,
-          // Firestore document size limit is ~1MB; if <= 850KB save base64 for complete persistence
-          base64Data: buffer.length <= 850000 ? base64Data : null,
-        }, { merge: true });
-      } catch (fErr) {
-        console.warn('Could not save template to Firestore', fErr);
-      }
+    // Copia en la base para recuperarla si el contenedor se recrea
+    try {
+      await templateDoc().upsert({
+        id: 'quote_template',
+        filename: meta.filename,
+        size: meta.size,
+        updatedAt: meta.updatedAt,
+        base64Data: buffer.length <= maxTemplateBytes() ? base64Data : null,
+      });
+    } catch (fErr) {
+      console.warn('[plantilla] No se pudo guardar la copia en la base', fErr);
     }
 
     res.json({
@@ -360,13 +351,10 @@ adminRouter.delete('/template', async (req, res) => {
     if (fs.existsSync(distPdf)) fs.unlinkSync(distPdf);
     if (fs.existsSync(distMeta)) fs.unlinkSync(distMeta);
 
-    if (db) {
-      try {
-        const docRef = doc(db, 'system_settings', 'quote_template');
-        await deleteDoc(docRef);
-      } catch (err) {
-        console.warn('Error deleting template from Firestore', err);
-      }
+    try {
+      await templateDoc().delete('quote_template');
+    } catch (err) {
+      console.warn('[plantilla] No se pudo borrar la copia guardada', err);
     }
 
     res.json({ success: true, message: 'Plantilla eliminada correctamente' });
@@ -452,19 +440,6 @@ adminRouter.post('/system/purge-transient-data', async (req, res) => {
   console.log('[Purge System 🚀] Iniciando proceso de purga y reseteo de datos transitorios...');
 
   try {
-    if (!db) {
-      if (getApps().length) {
-        db = getFirestore(getApps()[0], firebaseConfig.firestoreDatabaseId);
-      }
-    }
-
-    if (!db) {
-      return res.status(503).json({
-        success: false,
-        error: 'Base de datos Firestore no inicializada o no disponible.',
-      });
-    }
-
     const purgedCollectionsReport: Record<string, number> = {};
     let totalRecordsDeleted = 0;
 
@@ -482,37 +457,11 @@ adminRouter.post('/system/purge-transient-data', async (req, res) => {
           continue;
         }
 
-        const colRef = collection(db, colName);
-        const snap = await getDocs(colRef);
-
-        if (!snap.empty) {
-          let batch = writeBatch(db);
-          let countInBatch = 0;
-          let deletedInCol = 0;
-
-          for (const docSnap of snap.docs) {
-            batch.delete(docSnap.ref);
-            countInBatch++;
-            deletedInCol++;
-            totalRecordsDeleted++;
-
-            // Firestore admite hasta 500 operaciones por WriteBatch (usamos 400 por margen defensivo)
-            if (countInBatch >= 400) {
-              await batch.commit();
-              batch = writeBatch(db);
-              countInBatch = 0;
-            }
-          }
-
-          if (countInBatch > 0) {
-            await batch.commit();
-          }
-
-          purgedCollectionsReport[colName] = deletedInCol;
-          console.log(`[Purge System 🗑️] Colección "${colName}": ${deletedInCol} registros eliminados exitosamente.`);
-        } else {
-          purgedCollectionsReport[colName] = 0;
-        }
+        // El resto está en el almacén genérico (Postgres o Firestore)
+        const deletedInCol = await documentRepository(colName).deleteAll();
+        purgedCollectionsReport[colName] = deletedInCol;
+        totalRecordsDeleted += deletedInCol;
+        if (deletedInCol) console.log(`[Purge System 🗑️] Colección "${colName}": ${deletedInCol} registros eliminados.`);
       } catch (colErr: any) {
         console.warn(`[Purge System ⚠️] Advertencia procesando colección "${colName}":`, colErr.message);
         purgedCollectionsReport[colName] = purgedCollectionsReport[colName] || 0;
@@ -583,9 +532,9 @@ adminRouter.post('/system/purge-transient-data', async (req, res) => {
 
     for (const whiteKey of whitelistAuditKeys) {
       try {
-        const snap = await getDocs(collection(db, whiteKey));
+        const docs = await documentRepository(whiteKey).list();
         whitelistStatus[whiteKey] = {
-          count: snap.size,
+          count: docs.length,
           status: 'INTACT_AND_PROTECTED',
         };
       } catch (checkErr: any) {

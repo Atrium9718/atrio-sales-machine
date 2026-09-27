@@ -1,24 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import crypto from 'crypto';
 import { z } from 'zod';
-import { getApps } from 'firebase/app';
-import {
-  getFirestore,
-  collection,
-  getDocs,
-  getDoc,
-  doc,
-  setDoc,
-  updateDoc,
-  query,
-  where,
-  type Firestore,
-} from 'firebase/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { loadFirebaseConfig } from '../auth/firebaseConfig';
 import { getAdminApp } from '../auth/firebaseAdmin';
 import { eventBus } from '../events/DomainEventBus';
 import { repositories } from '../repositories';
+import { documentRepository } from '../repositories/documentStore';
 import {
   toClientProjectView,
   projectBelongsToClient,
@@ -85,10 +73,9 @@ export interface ClientRequest {
   updatedAt: string;
 }
 
-function getDb(): Firestore | null {
-  if (!getApps().length) return null;
-  return getFirestore(getApps()[0], loadFirebaseConfig().firestoreDatabaseId as string | undefined);
-}
+/** Enlaces y solicitudes: en la base configurada (Postgres o Firestore, mismas colecciones). */
+const linksRepo = () => documentRepository<PortalLink>(LINKS);
+const requestsRepo = () => documentRepository<ClientRequest>(REQUESTS);
 
 export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -100,7 +87,6 @@ export function generateToken(): string {
 
 /** Crea un enlace del portal y devuelve la ruta con el token en claro (única vez que se conoce). */
 export async function createPortalLinkRecord(
-  db: Firestore,
   data: { clientName: string; clientNit: string; createdById: string; createdByName: string }
 ): Promise<{ link: PortalLink; path: string }> {
   const token = generateToken();
@@ -114,15 +100,13 @@ export async function createPortalLinkRecord(
     revokedAt: null,
     lastAccessAt: null,
   };
-  await setDoc(doc(db, LINKS, link.id), link);
+  await linksRepo().upsert(link);
   return { link, path: `/portal/${token}` };
 }
 
 /** Enlace del portal creado por el asistente IA (sin petición HTTP de por medio). */
 export async function createPortalLinkForAssistant(client: { name: string; nit: string }): Promise<string> {
-  const db = getDb();
-  if (!db) throw new Error('Firestore no está disponible para crear el enlace del portal');
-  const { path } = await createPortalLinkRecord(db, { clientName: client.name, clientNit: client.nit, createdById: 'ai-assistant', createdByName: 'Asistente IA' });
+  const { path } = await createPortalLinkRecord({ clientName: client.name, clientNit: client.nit, createdById: 'ai-assistant', createdByName: 'Asistente IA' });
   return path;
 }
 
@@ -214,34 +198,30 @@ async function streamAttachment(res: Response, attachment: ClientRequestAttachme
   }
 }
 
-async function findActiveLink(db: Firestore, token: string): Promise<PortalLink | null> {
+async function findActiveLink(token: string): Promise<PortalLink | null> {
   if (!TOKEN_PATTERN.test(token)) return null;
-  const snap = await getDoc(doc(db, LINKS, hashToken(token)));
-  if (!snap.exists()) return null;
-  const link = { ...(snap.data() as PortalLink), id: snap.id };
-  return link.revokedAt ? null : link;
+  const link = await linksRepo().get(hashToken(token));
+  return link && !link.revokedAt ? link : null;
 }
 
 const NOT_FOUND = { success: false, error: 'Enlace no válido o revocado. Solicita uno nuevo a tu asesor.' };
 
 portalPublicRouter.get('/:token', async (req: Request, res: Response) => {
-  const db = getDb();
-  if (!db) return res.status(503).json({ success: false, error: 'Servicio no disponible' });
   try {
-    const link = await findActiveLink(db, req.params.token);
+    const link = await findActiveLink(req.params.token);
     if (!link) return res.status(404).json(NOT_FOUND);
 
     const [projectDocs, quoteDocs, requestsSnap] = await Promise.all([
       repositories().projects.list(),
       repositories().quotes.list(),
-      getDocs(query(collection(db, REQUESTS), where('linkId', '==', link.id))),
+      requestsRepo().list(),
     ]);
 
-    updateDoc(doc(db, LINKS, link.id), { lastAccessAt: new Date().toISOString() }).catch(() => {});
+    linksRepo().patch(link.id, { lastAccessAt: new Date().toISOString() }).catch(() => {});
 
     const projects = buildClientProjects(link, projectDocs, quoteDocs);
-    const requests = requestsSnap.docs
-      .map((d) => ({ ...(d.data() as ClientRequest), id: d.id }))
+    const requests = requestsSnap
+      .filter((r) => r.linkId === link.id)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(toClientRequestView);
 
@@ -278,10 +258,8 @@ export function allowRequest(linkId: string, now = Date.now()): boolean {
 }
 
 portalPublicRouter.post('/:token/requests', async (req: Request, res: Response) => {
-  const db = getDb();
-  if (!db) return res.status(503).json({ success: false, error: 'Servicio no disponible' });
   try {
-    const link = await findActiveLink(db, req.params.token);
+    const link = await findActiveLink(req.params.token);
     if (!link) return res.status(404).json(NOT_FOUND);
 
     const parsed = NewRequestSchema.safeParse(req.body);
@@ -328,7 +306,7 @@ portalPublicRouter.post('/:token/requests', async (req: Request, res: Response) 
       createdAt: now,
       updatedAt: now,
     };
-    await setDoc(doc(db, REQUESTS, request.id), request);
+    await requestsRepo().upsert(request);
 
     // Aviso en tiempo real al equipo (SSE)
     eventBus.publish('CLIENT_REQUEST_CREATED', {
@@ -346,29 +324,20 @@ portalPublicRouter.post('/:token/requests', async (req: Request, res: Response) 
   }
 });
 
-async function getRequest(db: Firestore, id: string): Promise<ClientRequest | null> {
+async function getRequest(id: string): Promise<ClientRequest | null> {
   if (!/^sol-[A-Za-z0-9-]{1,60}$/.test(id)) return null;
-  const snap = await getDoc(doc(db, REQUESTS, id));
-  return snap.exists() ? { ...(snap.data() as ClientRequest), id: snap.id } : null;
+  return requestsRepo().get(id);
 }
 
 portalPublicRouter.get('/:token/requests/:id/attachments/:index', async (req: Request, res: Response) => {
-  const db = getDb();
-  if (!db) return res.status(503).json({ success: false, error: 'Servicio no disponible' });
-  const link = await findActiveLink(db, req.params.token);
+  const link = await findActiveLink(req.params.token);
   if (!link) return res.status(404).json(NOT_FOUND);
-  const request = await getRequest(db, req.params.id);
+  const request = await getRequest(req.params.id);
   if (!request || request.linkId !== link.id) return res.status(404).json({ success: false, error: 'Archivo no encontrado' });
   await streamAttachment(res, request.attachments?.[Number(req.params.index)]);
 });
 
 // ── Gestión interna (requiere sesión) ───────────────────────────
-
-function requireDb(res: Response): Firestore | null {
-  const db = getDb();
-  if (!db) res.status(503).json({ success: false, error: 'Firestore no configurado' });
-  return db;
-}
 
 /** Clientes conocidos (a partir de las cotizaciones) para sugerirlos al crear un enlace. */
 clientPortalRouter.get('/clients', async (_req, res) => {
@@ -388,12 +357,8 @@ clientPortalRouter.get('/clients', async (_req, res) => {
 });
 
 clientPortalRouter.get('/links', async (_req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
   try {
-    const snap = await getDocs(collection(db, LINKS));
-    const links = snap.docs
-      .map((d) => ({ ...(d.data() as PortalLink), id: d.id }))
+    const links = (await linksRepo().list())
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     res.json({ success: true, links });
   } catch (err: any) {
@@ -407,14 +372,12 @@ const NewLinkSchema = z.object({
 });
 
 clientPortalRouter.post('/links', async (req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
   const parsed = NewLinkSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || 'Datos inválidos' });
   }
   try {
-    const { link, path } = await createPortalLinkRecord(db, {
+    const { link, path } = await createPortalLinkRecord({
       clientName: parsed.data.clientName,
       clientNit: parsed.data.clientNit,
       createdById: String(req.headers['x-user-id'] || ''),
@@ -428,10 +391,8 @@ clientPortalRouter.post('/links', async (req, res) => {
 });
 
 clientPortalRouter.delete('/links/:id', async (req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
   try {
-    await updateDoc(doc(db, LINKS, req.params.id), { revokedAt: new Date().toISOString() });
+    await linksRepo().patch(req.params.id, { revokedAt: new Date().toISOString() });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -440,30 +401,22 @@ clientPortalRouter.delete('/links/:id', async (req, res) => {
 
 /** Número de solicitudes nuevas (contador del menú). */
 clientPortalRouter.get('/requests/summary', async (_req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
   try {
-    const snap = await getDocs(query(collection(db, REQUESTS), where('status', '==', 'NEW')));
-    res.json({ success: true, newCount: snap.size });
+    const newCount = (await requestsRepo().list()).filter((r) => r.status === 'NEW').length;
+    res.json({ success: true, newCount });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 clientPortalRouter.get('/requests/:id/attachments/:index', async (req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
-  const request = await getRequest(db, req.params.id);
+  const request = await getRequest(req.params.id);
   await streamAttachment(res, request?.attachments?.[Number(req.params.index)]);
 });
 
 clientPortalRouter.get('/requests', async (_req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
   try {
-    const snap = await getDocs(collection(db, REQUESTS));
-    const requests = snap.docs
-      .map((d) => ({ ...(d.data() as ClientRequest), id: d.id }))
+    const requests = (await requestsRepo().list())
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     res.json({ success: true, requests });
   } catch (err: any) {
@@ -477,14 +430,12 @@ const UpdateRequestSchema = z.object({
 });
 
 clientPortalRouter.patch('/requests/:id', async (req, res) => {
-  const db = requireDb(res);
-  if (!db) return;
   const parsed = UpdateRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ success: false, error: 'Estado inválido' });
   try {
     const update: Partial<ClientRequest> = { status: parsed.data.status, updatedAt: new Date().toISOString() };
     if (parsed.data.response !== undefined) update.response = parsed.data.response || null;
-    await updateDoc(doc(db, REQUESTS, req.params.id), update);
+    if (!(await requestsRepo().patch(req.params.id, update))) return res.status(404).json({ success: false, error: 'Solicitud no encontrada' });
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

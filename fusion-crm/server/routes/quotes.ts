@@ -8,14 +8,6 @@ import { reviewQuote, approvalBlockReason } from '../services/quoteReviewService
 import { isApprovedStatus } from '../../packages/core/src/pricing/quoteReview';
 import { repositories, writeContextFrom } from '../repositories';
 
-/** Firestore solo para lo que sigue ahí en esta fase (corridas del asistente); null si no está. */
-function firestoreOrNull() {
-  try {
-    return getDb();
-  } catch {
-    return null;
-  }
-}
 import { initializeApp as initAdmin, getApps as getAdminApps } from 'firebase-admin/app';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { getStorage as getAdminStorage } from 'firebase-admin/storage';
@@ -113,7 +105,7 @@ quotesRouter.post('/', async (req, res) => {
     // Los montos los calcula el servidor a partir de los ítems (no se confía en los del navegador)
     const itemsToReview = Array.isArray(quote.items) ? quote.items : previous?.items;
     if (Array.isArray(itemsToReview)) {
-      const { totals, pricingReview } = await reviewQuote(firestoreOrNull(), itemsToReview);
+      const { totals, pricingReview } = await reviewQuote(itemsToReview);
       Object.assign(dataToSave, {
         items: totals.items,
         subtotal: totals.subtotal,
@@ -157,7 +149,7 @@ quotesRouter.patch('/:id/status', async (req, res) => {
     };
 
     if (isApprovedStatus(status) && !isApprovedStatus(snap.data().status)) {
-      const { totals, pricingReview } = await reviewQuote(firestoreOrNull(), snap.data().items);
+      const { totals, pricingReview } = await reviewQuote(snap.data().items);
       const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
       if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
       Object.assign(updates, { items: totals.items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total, pricingReview });
@@ -219,7 +211,7 @@ quotesRouter.post('/:id/approve', async (req, res) => {
     };
 
     // Montos y revisión de precios calculados en el servidor
-    const { totals, pricingReview } = await reviewQuote(firestoreOrNull(), Array.isArray(items) ? items : quoteData.items);
+    const { totals, pricingReview } = await reviewQuote(Array.isArray(items) ? items : quoteData.items);
     const blocked = approvalBlockReason(pricingReview, req.headers['x-user-role']);
     if (blocked) return res.status(403).json({ success: false, code: 'BELOW_COST', error: blocked, pricingReview });
     Object.assign(updates, { items: totals.items, subtotal: totals.subtotal, vatAmount: totals.vatAmount, total: totals.total, pricingReview });

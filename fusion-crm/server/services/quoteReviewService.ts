@@ -1,5 +1,4 @@
-import { doc, getDoc, type Firestore } from 'firebase/firestore';
-import { memoryAssistRuns } from '../routes/tariff';
+import { getAssistRun } from '../routes/tariff';
 import { calculatePressQuote, buildPressQuoteInput } from '../../packages/core/src/pricing/press';
 import { getTariffVersion } from './tariffStore';
 import type { PressQuoteResult } from '../../packages/core/src/pricing/press/types';
@@ -15,16 +14,12 @@ import {
  * cotización, a partir de la entrada guardada y de la versión del tarifario con que se hizo (no del resultado que
  * haya enviado el navegador).
  */
-async function loadEngineResults(db: Firestore | null, runIds: string[]): Promise<Record<string, PressQuoteResult | null>> {
+async function loadEngineResults(runIds: string[]): Promise<Record<string, PressQuoteResult | null>> {
   const results: Record<string, PressQuoteResult | null> = {};
   await Promise.all(
     runIds.map(async (runId) => {
       try {
-        let run: any = memoryAssistRuns.get(runId);
-        if (!run && db && /^[A-Za-z0-9_-]{1,100}$/.test(runId)) {
-          const snap = await getDoc(doc(db, 'quote_assist_runs', runId));
-          run = snap.exists() ? snap.data() : null;
-        }
+        const run: any = await getAssistRun(runId);
         const input = run?.input ? buildPressQuoteInput(run.input, getTariffVersion(run.tariffVersionId).snapshot) : null;
         results[runId] = input ? calculatePressQuote(input) : null;
       } catch (err) {
@@ -41,12 +36,12 @@ export interface QuoteReviewOutcome {
   pricingReview: QuotePricingReview & { checkedAt: string };
 }
 
-export async function reviewQuote(db: Firestore | null, items: unknown): Promise<QuoteReviewOutcome> {
+export async function reviewQuote(items: unknown): Promise<QuoteReviewOutcome> {
   const totals = recalculateQuoteTotals(items);
   const runIds = Array.from(
     new Set(totals.items.map((it) => it?.assistRunId).filter((id): id is string => typeof id === 'string' && !!id))
   );
-  const engineResults = await loadEngineResults(db, runIds);
+  const engineResults = await loadEngineResults(runIds);
   const review = reviewQuotePricing(totals.items, engineResults);
   return { totals, pricingReview: { ...review, checkedAt: new Date().toISOString() } };
 }

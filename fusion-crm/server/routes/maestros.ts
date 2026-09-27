@@ -1,12 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, getDoc, setDoc, updateDoc, query, where, writeBatch, type Firestore } from 'firebase/firestore';
-import { loadFirebaseConfig } from '../auth/firebaseConfig';
+import { documentRepository } from '../repositories/documentStore';
 
 /**
  * Maestros y catálogos de apoyo (sectores, tipos de cliente, orígenes, etapas del pipeline).
- * Se guardan en Firestore (`master_catalogs`); la primera vez se crean los valores base.
+ * Se guardan en la base configurada (colección `master_catalogs`); la primera vez se crean los valores base.
  * Las escrituras solo las pueden hacer administradores (server/auth/session.ts).
  */
 export const maestrosRouter = Router();
@@ -37,10 +35,7 @@ export const DEFAULT_CATALOGS: Record<string, { code: string; name: string }[]> 
 
 export const docIdFor = (catalog: string, code: string) => `${catalog}__${code}`;
 
-function getDb(): Firestore | null {
-  if (!getApps().length) return null;
-  return getFirestore(getApps()[0], loadFirebaseConfig().firestoreDatabaseId as string | undefined);
-}
+const repo = () => documentRepository(COLLECTION);
 
 function resolveCatalog(catalog: string): string | null {
   return Object.prototype.hasOwnProperty.call(DEFAULT_CATALOGS, catalog) ? catalog : null;
@@ -49,29 +44,22 @@ function resolveCatalog(catalog: string): string | null {
 maestrosRouter.get('/:catalogId', async (req, res) => {
   const catalog = resolveCatalog(req.params.catalogId);
   if (!catalog) return res.status(404).json({ error: 'Catálogo desconocido' });
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Firestore no configurado' });
   try {
-    const q = query(collection(db, COLLECTION), where('catalog', '==', catalog));
-    let snap = await getDocs(q);
-    if (snap.empty) {
-      const batch = writeBatch(db);
+    let records: any[] = (await repo().list()).filter((r: any) => r.catalog === catalog);
+    if (!records.length) {
       const now = new Date().toISOString();
-      for (const item of DEFAULT_CATALOGS[catalog]) {
-        batch.set(doc(db, COLLECTION, docIdFor(catalog, item.code)), {
-          id: docIdFor(catalog, item.code),
-          catalog,
-          ...item,
-          description: '',
-          isActive: true,
-          usageCount: 0,
-          createdAt: now,
-        });
-      }
-      await batch.commit();
-      snap = await getDocs(q);
+      records = DEFAULT_CATALOGS[catalog].map((item) => ({
+        id: docIdFor(catalog, item.code),
+        catalog,
+        ...item,
+        description: '',
+        isActive: true,
+        usageCount: 0,
+        createdAt: now,
+      }));
+      await repo().upsertMany(records);
     }
-    const records = snap.docs.map((d) => ({ ...d.data(), id: d.id })).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    records.sort((a: any, b: any) => a.name.localeCompare(b.name));
     res.json(records);
   } catch (err: any) {
     console.error('[maestros] Error listando catálogo:', err);
@@ -90,15 +78,13 @@ maestrosRouter.post('/:catalogId', async (req, res) => {
   if (!catalog) return res.status(404).json({ error: 'Catálogo desconocido' });
   const parsed = NewMasterRecordSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Datos inválidos' });
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Firestore no configurado' });
   try {
     const id = docIdFor(catalog, parsed.data.code);
-    if ((await getDoc(doc(db, COLLECTION, id))).exists()) {
+    if (await repo().get(id)) {
       return res.status(409).json({ error: `Ya existe el código ${parsed.data.code}` });
     }
     const record = { id, catalog, ...parsed.data, isActive: true, usageCount: 0, createdAt: new Date().toISOString() };
-    await setDoc(doc(db, COLLECTION, id), record);
+    await repo().upsert(record);
     res.status(201).json(record);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -116,10 +102,9 @@ maestrosRouter.put('/:catalogId/:id', async (req, res) => {
   if (!catalog || !req.params.id.startsWith(`${catalog}__`)) return res.status(404).json({ error: 'Registro no encontrado' });
   const parsed = UpdateMasterRecordSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Datos inválidos' });
-  const db = getDb();
-  if (!db) return res.status(503).json({ error: 'Firestore no configurado' });
   try {
-    await updateDoc(doc(db, COLLECTION, req.params.id), { ...parsed.data, updatedAt: new Date().toISOString() });
+    const updated = await repo().patch(req.params.id, { ...parsed.data, updatedAt: new Date().toISOString() });
+    if (!updated) return res.status(404).json({ error: 'Registro no encontrado' });
     res.json({ success: true });
   } catch (err: any) {
     res.status(404).json({ error: 'Registro no encontrado' });

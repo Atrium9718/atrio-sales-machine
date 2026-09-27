@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from 'express';
 import { repositories, writeContextFrom, type DocumentRepository } from '../repositories';
-import { createFirestoreRepository } from '../repositories/firestoreRepository';
 import { documentRepository } from '../repositories/documentStore';
 import { eventBus } from '../events/DomainEventBus';
 import { resolveStageIndex } from '../../packages/core/src/portal/clientProgress';
@@ -23,16 +22,13 @@ export const DATA_COLLECTIONS: Record<string, string> = {
   products: 'catalog_products',
 };
 
-/** Colecciones nuevas: van al backend configurado (Postgres o Firestore) desde el principio. */
-const DOCUMENT_COLLECTIONS = new Set(['appointments', 'opportunities', 'products']);
-
 const MAX_BULK_ITEMS = 2000;
 
-/** Los proyectos pasan por el repositorio (Firestore o Postgres); el resto sigue en Firestore. */
+/** Los proyectos tienen tabla propia en Postgres; el resto usa el almacén genérico de documentos. */
 function repoFor(name: string): DocumentRepository {
   if (name === 'projects') return repositories().projects;
-  if (DOCUMENT_COLLECTIONS.has(name)) return documentRepository(DATA_COLLECTIONS[name]);
-  return createFirestoreRepository(DATA_COLLECTIONS[name]);
+  // El resto va a la base configurada (Postgres o Firestore), con el mismo nombre de colección
+  return documentRepository(DATA_COLLECTIONS[name]);
 }
 
 /** Firestore rechaza `undefined`; se normaliza el documento a JSON plano. */
