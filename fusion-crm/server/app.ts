@@ -24,6 +24,7 @@ import { clientsRouter } from './routes/clients';
 import { interventoriaRouter } from './routes/interventoria';
 import { tariffRouter } from './routes/tariff';
 import { dataRouter } from './routes/data';
+import { filesRouter } from './routes/files';
 import { portalPublicRouter, clientPortalRouter } from './routes/clientPortal';
 import { callsService } from './services/callsService';
 import { loadStateFromFirestore, startStateSync, saveStateToFirestore, persistAfterWrites } from './services/persistenceService';
@@ -90,6 +91,7 @@ export async function startServer() {
   app.use('/api/interventoria', interventoriaRouter);
   app.use('/api/tariff', tariffRouter);
   app.use('/api/data', dataRouter);
+  app.use('/api/files', filesRouter);
   app.use('/api/portal', portalPublicRouter); // público: acceso por token del cliente
   app.use('/api/client-portal', clientPortalRouter);
 

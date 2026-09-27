@@ -45,6 +45,20 @@ export function describeIntegrations(env: Env): IntegrationInfo[] {
       testable: true,
     },
     {
+      id: 'drive',
+      name: 'Google Drive de la empresa',
+      purpose: 'Artes de producción, soportes de pago, órdenes de compra y adjuntos del chat y anuncios. Sin Drive se guardan en el disco del servidor.',
+      configured: !!env.GOOGLE_DRIVE_FOLDER_ID && !!((env.GOOGLE_DRIVE_CLIENT_ID && env.GOOGLE_DRIVE_CLIENT_SECRET && env.GOOGLE_DRIVE_REFRESH_TOKEN) || env.GOOGLE_DRIVE_SERVICE_ACCOUNT || env.GOOGLE_DRIVE_USE_SERVICE_ACCOUNT === 'true'),
+      settings: [
+        setting(env, 'GOOGLE_DRIVE_FOLDER_ID', false),
+        setting(env, 'GOOGLE_DRIVE_CLIENT_ID', false),
+        setting(env, 'GOOGLE_DRIVE_CLIENT_SECRET'),
+        setting(env, 'GOOGLE_DRIVE_REFRESH_TOKEN'),
+        setting(env, 'GOOGLE_DRIVE_SERVICE_ACCOUNT', false),
+      ],
+      testable: true,
+    },
+    {
       id: 'gemini',
       name: 'Google Gemini (IA)',
       purpose: 'Agentes de atención, precotizaciones y asistente interno',
@@ -100,6 +114,7 @@ export interface TestDeps {
   fetch: FetchLike;
   pingDatabase(): Promise<string>;
   pingFirebase(): Promise<string>;
+  pingDrive?(): Promise<string>;
   now?: () => number;
 }
 
@@ -120,6 +135,9 @@ export async function testIntegration(id: string, deps: TestDeps): Promise<Integ
         return done(true, await deps.pingDatabase());
       case 'firebase':
         return done(true, await deps.pingFirebase());
+      case 'drive':
+        if (!deps.pingDrive) return done(false, 'Google Drive no está configurado');
+        return done(true, await deps.pingDrive());
       case 'gemini': {
         if (!env.GEMINI_API_KEY) return done(false, 'Falta GEMINI_API_KEY');
         const res = await deps.fetch(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1&key=${encodeURIComponent(env.GEMINI_API_KEY)}`);

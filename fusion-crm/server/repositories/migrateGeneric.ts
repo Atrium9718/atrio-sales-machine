@@ -33,6 +33,7 @@ export const GENERIC_COLLECTIONS = [
   'ai_budget_alerts',
   'ai_evals',
   'chats',
+  'files',
   // Estado de chat interno, anuncios, llamadas… (ver persistenceService)
   'state_announcements',
   'state_shoutouts',

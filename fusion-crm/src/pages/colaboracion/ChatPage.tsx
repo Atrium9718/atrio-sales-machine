@@ -6,8 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { initAuth, googleSignIn, getAccessToken } from '../../lib/firebase';
-import { getOrCreateFolder, uploadFileToDrive } from '../../lib/drive';
+import { uploadFile, fileUrl } from '../../lib/files';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useFusionAuth } from '../../context/FusionAuthContext';
 import { dayLabel, isContinuation } from './chatFormat';
@@ -131,15 +130,7 @@ export const ChatPage: React.FC = () => {
   const [isSending, setIsSending] = useState<boolean>(false);
   const [pendingAttachments, setPendingAttachments] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
-  const [needsAuth, setNeedsAuth] = useState(false);
   const [uploadProgressMsg, setUploadProgressMsg] = useState('');
-
-  useEffect(() => {
-    initAuth(
-      () => setNeedsAuth(false),
-      () => setNeedsAuth(true)
-    );
-  }, []);
 
   // Estados de hilos
   const [activeThreadParent, setActiveThreadParent] = useState<Message | null>(null);
@@ -602,39 +593,23 @@ export const ChatPage: React.FC = () => {
       return;
     }
     
-    let token = await getAccessToken();
-    if (!token) {
-      try {
-        await googleSignIn();
-        token = await getAccessToken();
-      } catch (err) {
-        notify('Necesitas conectar Google Drive para subir archivos.');
-        return;
-      }
-    }
-
     setIsUploading(true);
-    setUploadProgressMsg('Preparando Google Drive...');
+    setUploadProgressMsg('Subiendo archivo...');
     try {
-      if (!token) throw new Error("No token");
-      const rootFolderId = await getOrCreateFolder(token, 'App Uploads');
-      const chatFolderId = await getOrCreateFolder(token, 'Chat', rootFolderId);
-      
-      setUploadProgressMsg('Subiendo archivo...');
-      const driveFile = await uploadFileToDrive(token, file, chatFolderId);
-
+      const { file: stored, warning } = await uploadFile(file, ['Chat']);
+      if (warning) notify(warning, 'info');
       const newAtt = {
-        id: driveFile.id,
-        name: file.name,
-        size: file.size,
-        mimeType: file.type || 'application/octet-stream',
-        url: `https://drive.google.com/file/d/${driveFile.id}/view`,
+        id: stored.id,
+        name: stored.name,
+        size: stored.size,
+        mimeType: stored.mimeType,
+        url: fileUrl(stored),
       };
-      
+
       setPendingAttachments((prev) => [...prev, newAtt]);
     } catch (err: any) {
       console.error('Error subiendo adjunto:', err);
-      notify('Error subiendo a Drive: ' + err.message);
+      notify('Error subiendo el archivo: ' + err.message, 'error');
     } finally {
       setIsUploading(false);
       setUploadProgressMsg('');

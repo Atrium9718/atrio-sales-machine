@@ -27,8 +27,7 @@ import {
 } from 'lucide-react';
 import { ANNOUNCEMENT_TEMPLATES } from '../../../packages/core/src/announcements/templates';
 import { validateAttachment } from '../../../packages/core/src/announcements/mime-validation';
-import { initAuth, googleSignIn, getAccessToken } from '../../lib/firebase';
-import { getOrCreateFolder, uploadFileToDrive } from '../../lib/drive';
+import { uploadFile, fileUrl } from '../../lib/files';
 import { useFusionAuth } from '../../context/FusionAuthContext';
 
 interface AudienceOption {
@@ -78,15 +77,10 @@ export const AnuncioNuevoPage: React.FC = () => {
   // Editor Mode: 'edit' | 'preview' | 'split'
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'split'>('split');
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [needsAuth, setNeedsAuth] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadProgressMsg, setUploadProgressMsg] = useState('');
 
   useEffect(() => {
-    initAuth(
-      () => setNeedsAuth(false),
-      () => setNeedsAuth(true)
-    );
     if (fusionEmployees.length > 0 && !selectedUserId) {
       setSelectedUserId(fusionEmployees[0].id);
     }
@@ -140,19 +134,8 @@ export const AnuncioNuevoPage: React.FC = () => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    let token = await getAccessToken();
-    if (!token) {
-      setAttachmentError('Necesitas conectar tu cuenta de Google Drive primero.');
-      return;
-    }
-
     setUploadingFiles(true);
     try {
-      setUploadProgressMsg('Preparando carpetas en Drive...');
-      // Ensure Folders exist: App Uploads -> Anuncios
-      const rootFolderId = await getOrCreateFolder(token, 'App Uploads');
-      const anunciosFolderId = await getOrCreateFolder(token, 'Anuncios', rootFolderId);
-
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const validation = validateAttachment({
@@ -167,19 +150,20 @@ export const AnuncioNuevoPage: React.FC = () => {
         }
 
         setUploadProgressMsg(`Subiendo ${file.name}...`);
-        const driveFile = await uploadFileToDrive(token, file, anunciosFolderId);
+        const { file: stored, warning } = await uploadFile(file, ['Anuncios']);
+        if (warning) setAttachmentError(warning);
 
         const newAtt = {
-          name: file.name,
-          size: file.size,
+          name: stored.name,
+          size: stored.size,
           mimeType: validation.sanitizedMime,
-          url: `https://drive.google.com/file/d/${driveFile.id}/view`,
+          url: fileUrl(stored),
         };
         setAttachments((prev) => [...prev, newAtt]);
       }
     } catch (err: any) {
       console.error(err);
-      setAttachmentError('Error al subir archivos a Drive: ' + err.message);
+      setAttachmentError('Error al subir archivos: ' + err.message);
     } finally {
       setUploadingFiles(false);
       setUploadProgressMsg('');
@@ -433,24 +417,12 @@ export const AnuncioNuevoPage: React.FC = () => {
               )}
             </div>
 
-            {/* Subida de Adjuntos con MinIO y Validación MIME */}
+            {/* Adjuntos: se guardan en el Drive de la empresa (o en el servidor) */}
             <div className="pt-3 border-t border-border space-y-2">
               <label className="block text-xs font-bold text-foreground">
                 Documentos Adjuntos (SST, Manuales, Circulares)
               </label>
               <div className="flex items-center gap-3">
-                {needsAuth ? (
-                  <button type="button" onClick={async () => {
-                    try {
-                      await googleSignIn();
-                      setNeedsAuth(false);
-                    } catch (e) {
-                      setAttachmentError('Error al autenticar con Google');
-                    }
-                  }} className="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:outline-none bg-blue-600 text-white hover:bg-blue-700 h-8 px-3">
-                    Conectar Google Drive
-                  </button>
-                ) : (
                 <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-muted/40 hover:bg-muted text-xs font-semibold text-foreground transition-colors">
                   <UploadCloud className="w-4 h-4 text-primary" />
                   <span>Cargar archivo</span>
@@ -462,7 +434,6 @@ export const AnuncioNuevoPage: React.FC = () => {
                     accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls,.docx,.doc,.zip"
                   />
                 </label>
-                )}
                 <span className="text-[11px] text-muted-foreground">
                   PDF, DOCX, XLSX, imágenes o ZIP (Máx 25 MB por archivo)
                 </span>

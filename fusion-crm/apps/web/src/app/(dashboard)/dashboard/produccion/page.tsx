@@ -5,14 +5,14 @@ import { AlertCircle, AlertTriangle, Bell, BellOff, BellRing, Briefcase, Calenda
 import { Link } from "react-router-dom";
 import { fuzzyMatchAny } from "../../../../../../../packages/core/src/utils/search";
 import { computeDeliverySemaphore } from "../../../../../../../packages/core/src/production/semaphore";
-import { initAuth, googleSignIn, getAccessToken } from '../../../../../../../src/lib/firebase';
-import { getOrCreateFolder, uploadFileToDrive } from '../../../../../../../src/lib/drive';
 import { getInventory, deductInventory, InventoryItem } from '../../../../lib/inventoryStore';
 import { getProjects, updateProjectsList, syncProjectsFromApi, deleteProject } from '../../../../lib/projectsStore';
 import { getQuotes } from '../../../../lib/quotesStore';
 import { useProjectsQuery } from '@/hooks/useDomainQueries';
 import { useSettingValue } from '@/hooks/useSettingValue';
 import { EditProjectForm } from './components/EditProjectForm';
+import { ProjectFiles } from './components/ProjectFiles';
+import { uploadFile, type FileRef } from '@/lib/files';
 import { notify } from '@/lib/notify';
 
 import { type TimeEntry, type QualityApproval, type ProjectPartialDelivery, type DeliveryNote, type ProductionTask, type ProductionProject, type Quote, EXPECTED_HOURS_PER_STAGE, INITIAL_STAGES, TASK_TEMPLATES, currentProductionUser, formatCOP, formatShortDate, formatRelativeTime } from './productionModel';
@@ -135,88 +135,72 @@ export default function ProduccionKanbanPage() {
 
   const [uploadingFiles, setUploadingFiles] = React.useState(false);
   const [uploadProgressMsg, setUploadProgressMsg] = React.useState('');
-  const [needsAuth, setNeedsAuth] = React.useState(false);
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const paymentInputRef = React.useRef<HTMLInputElement>(null);
-  const poInputRef = React.useRef<HTMLInputElement>(null);
 
-  React.useEffect(() => {
-    initAuth(
-      () => setNeedsAuth(false),
-      () => setNeedsAuth(true)
-    );
-  }, []);
 
-  const handleGenericUpload = (e: React.ChangeEvent<HTMLInputElement>, keyToUpdate: 'paymentKeys' | 'poKeys' | 'artworkKeys') => {
+  type FileKind = 'artwork' | 'payment' | 'po';
+  const FILE_FIELDS: Record<FileKind, { files: string; legacy: string; folder: string }> = {
+    artwork: { files: 'artworkFiles', legacy: 'artworkKeys', folder: 'Artes' },
+    payment: { files: 'paymentFiles', legacy: 'paymentKeys', folder: 'Soportes de pago' },
+    po: { files: 'poFiles', legacy: 'poKeys', folder: 'Órdenes de compra' },
+  };
+  const [uploadingKind, setUploadingKind] = React.useState<FileKind | null>(null);
+
+  /** Sube los archivos al Drive de la empresa (carpeta Producción / cliente - pedido / tipo). */
+  const handleProjectFiles = async (kind: FileKind, list: File[]) => {
     const activeProject = projects.find(p => p.id === activeProjectId);
-    if (!e.target.files || e.target.files.length === 0 || !activeProject) return;
-    
+    if (!activeProject) return;
+    const { files: filesKey, legacy, folder } = FILE_FIELDS[kind];
+    setUploadingKind(kind);
     setUploadingFiles(true);
-    setUploadProgressMsg('Simulando subida...');
-    
-    setTimeout(() => {
-      const newFiles = Array.from(e.target.files || []).map((f: any) => `/mock-folder/${f.name}`);
-      
-      setProjectsWithSync(prev => prev.map(p => {
-        if (p.id === activeProject.id) {
-          const updated = {
+    const uploaded: FileRef[] = [];
+    try {
+      for (const file of list) {
+        setUploadProgressMsg(`Subiendo ${file.name}...`);
+        const { file: stored, warning } = await uploadFile(file, ['Producción', `${activeProject.number} - ${activeProject.client}`, folder]);
+        if (warning) notify(warning, 'info');
+        uploaded.push(stored);
+      }
+    } catch (err: any) {
+      notify('Error subiendo archivos: ' + err.message, 'error');
+    } finally {
+      if (uploaded.length) {
+        setProjectsWithSync(prev => prev.map(p => {
+          if (p.id !== activeProject.id) return p;
+          const updated: any = {
             ...p,
-            [keyToUpdate]: [...(p[keyToUpdate] || []), ...newFiles]
+            [filesKey]: [...((p as any)[filesKey] || []), ...uploaded],
+            // Los nombres se conservan para las reglas que exigen artes antes de avanzar
+            [legacy]: [...((p as any)[legacy] || []), ...uploaded.map(f => f.name)],
           };
-          if (keyToUpdate === 'poKeys' && updated.poKeys.length > 0) {
-            updated.hasPO = true;
-          }
+          if (kind === 'po') updated.hasPO = true;
           return updated;
-        }
-        return p;
-      }));
+        }));
+        notify(`${uploaded.length} archivo(s) guardado(s).`, 'success');
+      }
       setUploadingFiles(false);
+      setUploadingKind(null);
       setUploadProgressMsg('');
-    }, 1500);
+    }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    const activeProject = projects.find(p => p.id === activeProjectId);
-    if (!files || files.length === 0 || !activeProject) return;
-    
-    let token = await getAccessToken();
-    if (!token) {
-      notify('Por favor, conecta Google Drive primero.');
-      return;
-    }
-    
-    setUploadingFiles(true);
-    try {
-      if (!token) throw new Error("No token");
-      setUploadProgressMsg('Preparando carpetas...');
-      const rootFolderId = await getOrCreateFolder(token, 'App Uploads');
-      const prodFolderId = await getOrCreateFolder(token, 'Produccion', rootFolderId);
-      const folderName = `${activeProject.client} - ${activeProject.name}`;
-      const projectFolderId = await getOrCreateFolder(token, folderName, prodFolderId);
-      
-      const newKeys: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        setUploadProgressMsg(`Subiendo ${file.name}...`);
-        const driveFile = await uploadFileToDrive(token, file, projectFolderId);
-        newKeys.push(file.name);
-      }
-      
-      setProjectsWithSync(prev => prev.map(p => {
-        if (p.id === activeProject.id) {
-          return { ...p, artworkKeys: [...p.artworkKeys, ...newKeys] };
-        }
-        return p;
-      }));
-    } catch (err: any) {
-      console.error(err);
-      notify('Error subiendo a Drive: ' + err.message);
-    } finally {
-      setUploadingFiles(false);
-      setUploadProgressMsg('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+  /** Quita un archivo del pedido (por id del archivo o por nombre en los antiguos). */
+  const handleRemoveProjectFile = (kind: FileKind, key: string) => {
+    const { files: filesKey, legacy } = FILE_FIELDS[kind];
+    setProjectsWithSync(prev => prev.map(p => {
+      if (p.id !== activeProjectId) return p;
+      const files: FileRef[] = (p as any)[filesKey] || [];
+      const removed = files.find(f => f.id === key);
+      const name = removed ? removed.name : key;
+      const names: string[] = (p as any)[legacy] || [];
+      const idx = names.indexOf(name);
+      const updated: any = {
+        ...p,
+        [filesKey]: files.filter(f => f.id !== key),
+        [legacy]: idx >= 0 ? [...names.slice(0, idx), ...names.slice(idx + 1)] : names,
+      };
+      if (kind === 'po') updated.hasPO = (updated.poKeys || []).length > 0;
+      return updated;
+    }));
   };
 
   const [remisiones, setRemisiones] = React.useState<DeliveryNote[]>([]);
@@ -1128,27 +1112,10 @@ export default function ProduccionKanbanPage() {
                            </div>
                            <input type="text" placeholder="Nº Factura (ej. FE-1023)" defaultValue={(activeProject as any).invoiceNumber} className="w-full text-sm px-3 py-1.5 border border-input rounded-md mb-3 bg-background" />
                            <div className="flex flex-col gap-2 p-2 bg-muted/30 rounded-md border border-border border-dashed">
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs text-muted-foreground">Soporte de pago</span>
-                                {needsAuth ? (
-                                  <button type="button" onClick={async (e) => { e.preventDefault(); e.stopPropagation(); try { const r = await googleSignIn(); if(r?.accessToken) setNeedsAuth(false); } catch(err:any) { if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') notify(err.message, 'error'); } }} className="text-xs font-bold text-blue-600 hover:underline">Conectar Drive</button>
-                                ) : (
-                                  <>
-                                    <input type="file" multiple className="hidden" ref={paymentInputRef} onChange={(e) => handleGenericUpload(e, 'paymentKeys')} />
-                                    <button type="button" disabled={uploadingFiles} className="text-xs font-bold text-primary hover:underline disabled:opacity-50" onClick={(e) => { e.preventDefault(); e.stopPropagation(); paymentInputRef.current?.click(); }}>{uploadingFiles ? 'Subiendo...' : 'Subir archivo'}</button>
-                                  </>
-                                )}
                               </div>
-                              {((activeProject as any).paymentKeys || []).length > 0 && (
-                                <div className="space-y-1 mt-1">
-                                  {((activeProject as any).paymentKeys || []).map((k: string) => (
-                                    <div key={k} className="flex items-center justify-between text-xs bg-white px-2 py-1 rounded border border-border">
-                                      <span className="truncate max-w-[150px]">{k}</span>
-                                      <button type="button" className="text-red-500 hover:text-red-700"><Trash2 className="w-3 h-3"/></button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                              <ProjectFiles compact buttonLabel="Subir soporte" files={(activeProject as any).paymentFiles || []} legacyNames={(activeProject as any).paymentKeys || []} uploading={uploadingKind === 'payment'} onUpload={(l) => handleProjectFiles('payment', l)} onRemove={(k) => handleRemoveProjectFile('payment', k)} />
                            </div>
                         </div>
                         <div className="bg-card border border-border rounded-xl p-4">
@@ -1157,27 +1124,10 @@ export default function ProduccionKanbanPage() {
                               <button className={`px-2 py-1 text-[10px] font-bold rounded-md ${(activeProject as any).paid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{(activeProject as any).paid ? 'Pagado' : 'Por pagar'}</button>
                            </div>
                            <div className="flex flex-col gap-2 p-2 bg-muted/30 rounded-md border border-border border-dashed">
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-2">
                                 <span className="text-xs text-muted-foreground">Orden de compra (PO)</span>
-                                {needsAuth ? (
-                                  <button type="button" onClick={async (e) => { e.preventDefault(); e.stopPropagation(); try { const r = await googleSignIn(); if(r?.accessToken) setNeedsAuth(false); } catch(err:any) { if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') notify(err.message, 'error'); } }} className="text-xs font-bold text-blue-600 hover:underline">Conectar Drive</button>
-                                ) : (
-                                  <>
-                                    <input type="file" multiple className="hidden" ref={poInputRef} onChange={(e) => handleGenericUpload(e, 'poKeys')} />
-                                    <button type="button" disabled={uploadingFiles} className="text-xs font-bold text-primary hover:underline disabled:opacity-50" onClick={(e) => { e.preventDefault(); e.stopPropagation(); poInputRef.current?.click(); }}>{uploadingFiles ? 'Subiendo...' : 'Subir orden'}</button>
-                                  </>
-                                )}
                               </div>
-                              {((activeProject as any).poKeys || []).length > 0 && (
-                                <div className="space-y-1 mt-1">
-                                  {((activeProject as any).poKeys || []).map((k: string) => (
-                                    <div key={k} className="flex items-center justify-between text-xs bg-white px-2 py-1 rounded border border-border">
-                                      <span className="truncate max-w-[150px]">{k}</span>
-                                      <button type="button" className="text-red-500 hover:text-red-700"><Trash2 className="w-3 h-3"/></button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                              <ProjectFiles compact buttonLabel="Subir orden" files={(activeProject as any).poFiles || []} legacyNames={(activeProject as any).poKeys || []} uploading={uploadingKind === 'po'} onUpload={(l) => handleProjectFiles('po', l)} onRemove={(k) => handleRemoveProjectFile('po', k)} />
                            </div>
                         </div>
                      </div>
@@ -1194,53 +1144,6 @@ export default function ProduccionKanbanPage() {
                           <h3 className="font-bold text-sm text-foreground flex items-center gap-2"><Paperclip className="w-4 h-4 text-muted-foreground"/> Archivos de Diseño</h3>
                           {uploadingFiles && <span className="text-xs text-blue-600 font-medium">{uploadProgressMsg}</span>}
                         </div>
-                        <div className="flex gap-2">
-                           <button type="button" className="px-3 py-1.5 text-xs font-bold bg-muted hover:bg-muted/80 text-foreground rounded-md">Agregar enlace</button>
-                           {needsAuth ? (
-                              <button 
-                                type="button"
-                                onClick={async (e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  try {
-                                    const result = await googleSignIn();
-                                    if (result?.accessToken) {
-                                      setNeedsAuth(false);
-                                    }
-                                  } catch (err: any) {
-                                    if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') {
-                                      notify('Error al conectar: ' + err.message);
-                                    }
-                                  }
-                                }}
-                                className="px-3 py-1.5 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 rounded-md flex items-center gap-1"
-                              >
-                                Conectar Drive
-                              </button>
-                           ) : (
-                             <>
-                               <input
-                                  type="file"
-                                  multiple
-                                  className="hidden"
-                                  ref={fileInputRef}
-                                  onChange={handleFileUpload}
-                               />
-                               <button 
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    fileInputRef.current?.click();
-                                  }}
-                                  disabled={uploadingFiles}
-                                  className="px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-md disabled:opacity-50"
-                               >
-                                  {uploadingFiles ? 'Subiendo...' : 'Subir archivo'}
-                               </button>
-                             </>
-                           )}
-                        </div>
                      </div>
                      {(() => {
                        const st = stages.find(s => s.id === activeProject.stageId || s.key === activeProject.stageId || (s.id === '1' && (activeProject.stageId === 'POR_REVISAR' || !activeProject.stageId)));
@@ -1249,22 +1152,8 @@ export default function ProduccionKanbanPage() {
                        }
                        return null;
                      })()}
-                     {activeProject.artworkKeys.length === 0 ? (
-                       <p className="text-sm text-muted-foreground text-center py-4">No hay archivos adjuntos.</p>
-                     ) : (
-                       <div className="space-y-2">
-                         {activeProject.artworkKeys.map(k => (
-                            <div key={k} className="flex items-center justify-between p-3 border border-border rounded-md bg-muted/10">
-                               <div className="flex items-center gap-2">
-                                  <FileImage className="w-4 h-4 text-indigo-500" />
-                                  <span className="text-sm font-medium">{k}</span>
-                                  <span className="text-xs text-muted-foreground">(3.4 MB)</span>
-                               </div>
-                               <button className="text-muted-foreground hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
-                            </div>
-                         ))}
-                       </div>
-                     )}
+                     <ProjectFiles files={(activeProject as any).artworkFiles || []} legacyNames={activeProject.artworkKeys} uploading={uploadingKind === 'artwork'} onUpload={(l) => handleProjectFiles('artwork', l)} onRemove={(k) => handleRemoveProjectFile('artwork', k)} />
+                     {activeProject.artworkKeys.length === 0 && <p className="text-sm text-muted-foreground text-center py-2">No hay archivos adjuntos.</p>}
                   </div>
 
 {/* ENTREGAS */}

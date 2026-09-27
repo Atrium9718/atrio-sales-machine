@@ -272,6 +272,45 @@ o un tema de pagos, no está segura, falla, o un mensaje no se pudo entregar. So
 información de pedidos con clientes verificados: por su número de WhatsApp registrado, o con NIT +
 número de pedido.
 
+## 9. Google Drive de la empresa (archivos)
+
+Los artes de producción, soportes de pago, órdenes de compra y adjuntos del chat y de los
+anuncios se guardan en **una carpeta del Drive de la empresa**, organizada así:
+`Producción / OT-1203 - Cliente / Artes`, `Chat`, `Anuncios`. Nadie tiene que conectar su
+propio Drive y todo el equipo abre los archivos desde la app. **Sin esta configuración los
+archivos se guardan en el disco del servidor** (volumen `uploads`, incluido en el respaldo).
+
+1. Con la cuenta de Google de la empresa, crea una carpeta (p. ej. "Fusión - Archivos del
+   sistema") y copia su id: es la parte final de la dirección,
+   `https://drive.google.com/drive/folders/`**`1AbC…`**.
+2. En [Google Cloud Console](https://console.cloud.google.com) (mismo proyecto de Firebase):
+   *APIs y servicios → Biblioteca* → habilita **Google Drive API**. Luego *Credenciales →
+   Crear credenciales → ID de cliente de OAuth → Aplicación web*, con URI de redirección
+   `https://developers.google.com/oauthplayground`. Guarda el *ID de cliente* y el *secreto*.
+   (En *Pantalla de consentimiento*, publica la app en "Producción" para que la autorización
+   no venza a los 7 días.)
+3. Abre [OAuth Playground](https://developers.google.com/oauthplayground), en el engranaje
+   marca *Use your own OAuth credentials* y pega el ID y el secreto. En el paso 1 escribe el
+   permiso `https://www.googleapis.com/auth/drive`, autoriza **con la cuenta de la empresa**,
+   y en el paso 2 pulsa *Exchange authorization code for tokens*. Copia el **Refresh token**.
+4. En el `.env` del servidor:
+   ```
+   GOOGLE_DRIVE_FOLDER_ID=1AbC…
+   GOOGLE_DRIVE_CLIENT_ID=….apps.googleusercontent.com
+   GOOGLE_DRIVE_CLIENT_SECRET=…
+   GOOGLE_DRIVE_REFRESH_TOKEN=1//…
+   ```
+   y reinicia: `docker compose -f docker-compose.minimal.yml up -d`.
+5. Verifica en **Administración → Integraciones → Google Drive de la empresa → Probar**: debe
+   decir "Conectado a la carpeta «…»". Luego sube un arte de prueba en un pedido y ábrelo.
+
+*Con Google Workspace* también puedes usar una **unidad compartida**: agrega como Editor el
+correo de la cuenta de servicio de Firebase y usa `GOOGLE_DRIVE_USE_SERVICE_ACCOUNT=true` en
+lugar del cliente OAuth (las cuentas de servicio no pueden guardar en un "Mi unidad" normal).
+
+Si Drive falla en algún momento (token revocado, sin espacio), el archivo **no se pierde**:
+queda en el servidor y se avisa a quien lo subió.
+
 ## Problemas frecuentes
 
 | Síntoma | Causa probable |

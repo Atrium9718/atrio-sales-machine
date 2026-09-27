@@ -10,6 +10,7 @@ import { eventBus } from '../events/DomainEventBus';
 import { describeIntegrations, testIntegration } from '../services/integrations';
 import { diskInfo, metricsSnapshot, processInfo, versionInfo } from '../services/systemHealth';
 import { uploadsDir } from '../services/fileStorage';
+import { companyDrive } from '../services/googleDrive';
 import { budgetWatcher, stageNotifier } from '../omnichannel/runtime';
 import { saveStateToFirestore } from '../services/persistenceService';
 
@@ -50,6 +51,7 @@ opsRouter.post('/integrations/:id/test', async (req, res) => {
     fetch: fetch as any,
     pingDatabase: async () => (await pingDatabase()).message,
     pingFirebase,
+    pingDrive: companyDrive() ? () => companyDrive()!.check() : undefined,
   });
   res.json({ success: true, ...result });
 });
@@ -130,7 +132,7 @@ const MAINTENANCE: Record<string, () => Promise<string>> = {
   async test_integrations() {
     const results = [];
     for (const i of describeIntegrations(process.env).filter((x) => x.testable && x.configured)) {
-      const r = await testIntegration(i.id, { env: process.env, fetch: fetch as any, pingDatabase: async () => (await pingDatabase()).message, pingFirebase });
+      const r = await testIntegration(i.id, { env: process.env, fetch: fetch as any, pingDatabase: async () => (await pingDatabase()).message, pingFirebase, pingDrive: companyDrive() ? () => companyDrive()!.check() : undefined });
       results.push(`${i.name}: ${r.ok ? 'OK' : `FALLA (${r.message})`}`);
     }
     return results.length ? results.join(' · ') : 'No hay conexiones configuradas para probar.';
