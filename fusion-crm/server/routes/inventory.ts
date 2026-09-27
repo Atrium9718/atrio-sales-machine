@@ -1,6 +1,8 @@
 import { Router, type Response } from 'express';
 import { inventoryService } from '../services/inventoryService';
-import { getActiveTariff } from '../services/tariffStore';
+import { getActiveTariff, getTariffVersion } from '../services/tariffStore';
+import { repositories } from '../repositories';
+import { paperPlanFromItems } from '../../packages/core/src/inventory/paperPlan';
 
 /** Inventario: existencias, kárdex, compras, consumos, mermas, cortes de pliego y conteos. */
 export const inventoryRouter = Router();
@@ -80,6 +82,60 @@ inventoryRouter.post('/count', async (req, res) => {
     const entries = Array.isArray(req.body?.entries) ? req.body.entries : [];
     if (!entries.length) return res.status(400).json({ success: false, error: 'No hay conteos' });
     res.json({ success: true, ...(await inventoryService().count(entries, by(req), req.body?.note)) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ── Papel de cada OT ─────────────────────────────────────────────────────
+const projectsRepo = () => repositories().projects;
+
+/** Papel de la OT calculado de su cotización (con el tarifario con que se cotizó). */
+export async function computeProjectPaperPlan(project: any) {
+  const quote: any = project.quoteId ? await repositories().quotes.get(project.quoteId) : null;
+  const items = quote?.items ?? project.itemsDetail ?? [];
+  const cuts = getTariffVersion(quote?.tariffVersionId).snapshot.sheetCuts;
+  return paperPlanFromItems(items, cuts);
+}
+
+const loadProject = async (id: string) => {
+  const project: any = await projectsRepo().get(id);
+  if (!project) throw Object.assign(new Error('OT no encontrada'), { status: 404 });
+  return project;
+};
+
+/** Recalcula y vuelve a reservar el papel (para OT creadas antes o si cambió la cotización). */
+inventoryRouter.post('/projects/:id/plan', async (req, res) => {
+  try {
+    const project = await loadProject(req.params.id);
+    const plan = await inventoryService().reservePlan(project, await computeProjectPaperPlan(project), by(req));
+    res.json({ success: true, project: await projectsRepo().patch(project.id, { paperPlan: plan }) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/** Descarga el papel de la OT del inventario y lo suma a su costo de materiales. */
+inventoryRouter.post('/projects/:id/discharge', async (req, res) => {
+  try {
+    const project = await loadProject(req.params.id);
+    const r = await inventoryService().dischargePlan(project, by(req));
+    const patched = await projectsRepo().patch(project.id, {
+      paperPlan: r.plan,
+      consumedMaterials: [...(project.consumedMaterials || []), ...r.consumed],
+      materialCost: Math.round(((Number(project.materialCost) || 0) + r.total) * 100) / 100,
+    });
+    res.json({ success: true, project: patched, total: r.total });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+inventoryRouter.post('/projects/:id/release', async (req, res) => {
+  try {
+    const project = await loadProject(req.params.id);
+    const plan = await inventoryService().releasePlan(project, by(req));
+    res.json({ success: true, project: plan ? await projectsRepo().patch(project.id, { paperPlan: plan }) : project });
   } catch (err) {
     fail(res, err);
   }

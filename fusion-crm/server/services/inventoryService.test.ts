@@ -3,6 +3,7 @@ import { createMemoryRepository } from '../repositories/documentStore';
 import { createInventoryService, normalizeItem } from './inventoryService';
 import { toPlainTariff } from './tariffStore';
 import { DEFAULT_OFFICIAL_TARIFF } from '../../packages/core/src/pricing/press/defaultTariff';
+import { paperPlanFromItems } from '../../packages/core/src/inventory/paperPlan';
 
 const make = () => {
   const items = createMemoryRepository() as any;
@@ -56,5 +57,73 @@ describe('servicio de inventario', () => {
       minStock: 0,
       active: true,
     });
+  });
+});
+
+describe('papel de las OT: reservar y descargar', () => {
+  const cuts = toPlainTariff(DEFAULT_OFFICIAL_TARIFF).sheetCuts;
+  const item = (sheetsNeeded: number, paperSheets: number) => ({
+    description: 'Volantes',
+    quantity: 5000,
+    printTechnique: 'LITHO',
+    paperTypeId: 'Propalcote 150g',
+    paperSheets,
+    sheetsNeeded,
+    assistInput: { sheetFormat: 'S70X100', sheetCutCode: '.1/8' },
+  });
+
+  it('reserva al aprobar y al entrar a producción corta lo que falta y carga las hojas a la OT', async () => {
+    const { service } = make();
+    const pliego = await service.saveItem({ paper: { name: 'Propalcote 150g', sheetFormat: 'S70X100' }, initialQuantity: 500, initialCost: 640 }, 'Ana');
+    // Ya había 100 hojas de 1/8 cortadas
+    await service.transform({ sourceId: pliego.id, targetCutCode: '.1/8', sheets: 13, wastePieces: 4 }, 'Ana');
+
+    const project: any = { id: 'proj-1', number: 'OT-00012' };
+    project.paperPlan = await service.reservePlan(project, paperPlanFromItems([item(2700, 338)], cuts), 'Ana');
+    expect(project.paperPlan.status).toBe('RESERVADO');
+    expect((await service.list()).find((i) => i.id === pliego.id)!.reserved).toBe(338);
+
+    const r = await service.dischargePlan(project, 'Luis');
+    expect(r.plan.status).toBe('DESCARGADO');
+    // 2700 hojas − 100 ya cortadas = 2600 → 325 pliegos cortados (2600 hojas)
+    const items = await service.list();
+    const p = items.find((i) => i.id === pliego.id)!;
+    const cut = items.find((i) => i.id === 'paper-propalcote-150g-s70x100-1-8')!;
+    expect(p).toMatchObject({ available: 500 - 13 - 325, reserved: 0 });
+    expect(cut.available).toBe(0);
+    expect(r.consumed).toHaveLength(1);
+    expect(r.consumed[0]).toMatchObject({ itemId: cut.id, quantity: 2700, kind: 'CONSUMO' });
+    expect(r.total).toBeGreaterThan(0);
+    await expect(service.dischargePlan({ ...project, paperPlan: r.plan }, 'Luis')).rejects.toMatchObject({ status: 409 });
+
+    const kardex = await service.movements({ projectId: 'proj-1' });
+    expect(kardex.map((m) => m.type).sort()).toEqual(['CONSUMPTION_OUT', 'RELEASE', 'RESERVE']);
+  });
+
+  it('si falta papel no descarga nada y dice cuánto falta', async () => {
+    const { service } = make();
+    const pliego = await service.saveItem({ paper: { name: 'Propalcote 150g', sheetFormat: 'S70X100' }, initialQuantity: 100, initialCost: 640 }, 'Ana');
+    const project: any = { id: 'proj-2', number: 'OT-00013' };
+    project.paperPlan = await service.reservePlan(project, paperPlanFromItems([item(2700, 338)], cuts), 'Ana');
+    await expect(service.dischargePlan(project, 'Luis')).rejects.toThrow(/se necesitan 338 pliegos .* hay 100/);
+    const p = (await service.list()).find((i) => i.id === pliego.id)!;
+    expect(p).toMatchObject({ available: 100, reserved: 338 });
+    // Liberar (OT cancelada)
+    const released = await service.releasePlan(project, 'Ana');
+    expect(released!.status).toBe('PENDIENTE');
+    expect((await service.list()).find((i) => i.id === pliego.id)!.reserved).toBe(0);
+  });
+
+  it('papel que no está en el inventario queda pendiente, y recalcular no duplica la reserva', async () => {
+    const { service } = make();
+    const project: any = { id: 'proj-3', number: 'OT-00014' };
+    const plan = await service.reservePlan(project, paperPlanFromItems([item(800, 100)], cuts), 'Ana');
+    expect(plan).toMatchObject({ status: 'PENDIENTE' });
+    expect(plan.lines[0].inInventory).toBe(false);
+
+    await service.saveItem({ paper: { name: 'Propalcote 150g', sheetFormat: 'S70X100' }, initialQuantity: 300, initialCost: 640 }, 'Ana');
+    project.paperPlan = await service.reservePlan({ ...project, paperPlan: plan }, paperPlanFromItems([item(800, 100)], cuts), 'Ana');
+    project.paperPlan = await service.reservePlan(project, paperPlanFromItems([item(800, 100)], cuts), 'Ana');
+    expect((await service.list())[0].reserved).toBe(100);
   });
 });

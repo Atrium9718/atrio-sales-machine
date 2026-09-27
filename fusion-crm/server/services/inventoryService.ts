@@ -18,6 +18,7 @@ import {
   type StockItem,
   type StockMovement,
 } from '../../packages/core/src/inventory/stock';
+import { pliegosToCut, type PaperPlan } from '../../packages/core/src/inventory/paperPlan';
 
 /**
  * Inventario en el servidor: toda entrada, salida, corte o conteo pasa por aquí, uno a la vez,
@@ -87,6 +88,94 @@ export function createInventoryService(deps: InventoryDeps) {
     for (const m of movements) await deps.movements.upsert(JSON.parse(JSON.stringify(m)));
   };
 
+  /** Corte sin tomar el turno (lo usan transform y el descargo de papel de una OT). */
+  async function transformUnlocked(input: { sourceId: string; targetCutCode: string; sheets: number; wastePieces?: number; note?: string }, by: string) {
+    const source = await getItem(input.sourceId);
+    if (!source.paper) throw fail('Solo se corta papel');
+    const spec = paperSpecFrom(deps.tariff(), source.paper.name, source.paper.sheetFormat, input.targetCutCode);
+    if (!piecesPerSheet(source.paper, spec)) throw fail(`${source.paper.cutCode.replace('.', '')} no se puede cortar en ${spec.cutCode.replace('.', '')} exactos`);
+    const targetId = paperItemId(spec);
+    const target = normalizeItem(
+      (await deps.items.get(targetId)) ?? {
+        id: targetId,
+        name: paperItemName(spec),
+        category: 'Papel',
+        kind: 'PAPER',
+        unit: 'hoja',
+        paper: spec,
+        location: source.location,
+        createdAt: deps.now().toISOString(),
+      },
+    );
+    const ctx = ctxFor(by);
+    const r = transform(source, target, input, { ...ctx, groupId: `cut-${crypto.randomBytes(5).toString('hex')}` });
+    await persist([r.source, r.target], r.movements);
+    return r;
+  }
+
+  async function issueUnlocked(input: { itemId: string; quantity: number; type?: 'CONSUMPTION_OUT' | 'DAMAGE_OUT'; projectId?: string; projectNumber?: string; note?: string }, by: string) {
+    const r = issue(await getItem(input.itemId), input, ctxFor(by));
+    await persist([r.item], [r.movement]);
+    return r;
+  }
+
+  const reservationMovement = (item: StockItem, type: 'RESERVE' | 'RELEASE', qty: number, project: { id: string; number?: string }, by: string): StockMovement => {
+    const ctx = ctxFor(by);
+    return {
+      id: ctx.id(),
+      itemId: item.id,
+      itemName: item.name,
+      type,
+      quantity: qty,
+      unitCost: item.unitCost,
+      totalCost: 0,
+      balanceAfter: item.available,
+      avgCostAfter: item.unitCost,
+      projectId: project.id,
+      projectNumber: project.number,
+      note: `${type === 'RESERVE' ? 'Apartados' : 'Liberados'} ${qty} ${item.unit} para ${project.number || project.id}`,
+      by,
+      at: ctx.at,
+    };
+  };
+
+  /** Libera lo que una OT tenía apartado. */
+  async function releaseUnlocked(project: { id: string; number?: string }, plan: PaperPlan, by: string): Promise<PaperPlan> {
+    const lines = [];
+    for (const line of plan.lines) {
+      const itemId = (line as any).reservedItemId || line.sourceItemId;
+      const raw = line.reserved ? await deps.items.get(itemId) : null;
+      if (raw && line.reserved) {
+        const item = normalizeItem(raw);
+        const next = { ...item, reserved: Math.max(0, item.reserved - line.reserved), updatedAt: deps.now().toISOString() };
+        await persist([next], [reservationMovement(next, 'RELEASE', line.reserved, project, by)]);
+      }
+      lines.push({ ...line, reserved: 0 });
+    }
+    return { ...plan, lines, status: plan.status === 'RESERVADO' ? 'PENDIENTE' : plan.status };
+  }
+
+  /** Aparta los pliegos (o, si solo hay cortes en bodega, las hojas cortadas). */
+  async function reserveUnlocked(project: { id: string; number?: string }, plan: PaperPlan, by: string): Promise<PaperPlan> {
+    const lines = [];
+    let any = false;
+    for (const line of plan.lines) {
+      const source = await deps.items.get(line.sourceItemId);
+      const cut = line.divisor > 1 ? await deps.items.get(line.cutItemId) : null;
+      const target = source ? normalizeItem(source) : cut ? normalizeItem(cut) : null;
+      if (!target) {
+        lines.push({ ...line, reserved: 0, inInventory: false });
+        continue;
+      }
+      const qty = source ? line.pliegos : line.cutSheets;
+      const next = { ...target, reserved: target.reserved + qty, updatedAt: deps.now().toISOString() };
+      await persist([next], [reservationMovement(next, 'RESERVE', qty, project, by)]);
+      lines.push({ ...line, reserved: qty, reservedItemId: target.id, inInventory: true } as any);
+      any = true;
+    }
+    return { ...plan, lines, status: any ? 'RESERVADO' : plan.lines.length ? 'PENDIENTE' : 'SIN_PAPEL', reservedAt: any ? deps.now().toISOString() : plan.reservedAt };
+  }
+
   return {
     async list() {
       return (await deps.items.list()).map(normalizeItem).sort((a, b) => a.category.localeCompare(b.category, 'es') || a.name.localeCompare(b.name, 'es'));
@@ -154,37 +243,87 @@ export function createInventoryService(deps: InventoryDeps) {
     },
 
     async issue(input: { itemId: string; quantity: number; type?: 'CONSUMPTION_OUT' | 'DAMAGE_OUT'; projectId?: string; projectNumber?: string; note?: string }, by: string) {
-      return exclusive(async () => {
-        const r = issue(await getItem(input.itemId), input, ctxFor(by));
-        await persist([r.item], [r.movement]);
-        return r;
-      });
+      return exclusive(() => issueUnlocked(input, by));
     },
 
     /** Corta hojas de un papel (pliego o corte) en un corte más pequeño del mismo papel. */
     async transform(input: { sourceId: string; targetCutCode: string; sheets: number; wastePieces?: number; note?: string }, by: string) {
+      return exclusive(() => transformUnlocked(input, by));
+    },
+
+    /** Reserva el papel de una OT (libera antes lo que tuviera apartado). */
+    async reservePlan(project: { id: string; number?: string; paperPlan?: PaperPlan | null }, plan: PaperPlan, by: string) {
       return exclusive(async () => {
-        const source = await getItem(input.sourceId);
-        if (!source.paper) throw fail('Solo se corta papel');
-        const spec = paperSpecFrom(deps.tariff(), source.paper.name, source.paper.sheetFormat, input.targetCutCode);
-        if (!piecesPerSheet(source.paper, spec)) throw fail(`${source.paper.cutCode.replace('.', '')} no se puede cortar en ${spec.cutCode.replace('.', '')} exactos`);
-        const targetId = paperItemId(spec);
-        const target = normalizeItem(
-          (await deps.items.get(targetId)) ?? {
-            id: targetId,
-            name: paperItemName(spec),
-            category: 'Papel',
-            kind: 'PAPER',
-            unit: 'hoja',
-            paper: spec,
-            location: source.location,
-            createdAt: deps.now().toISOString(),
-          },
-        );
-        const ctx = ctxFor(by);
-        const r = transform(source, target, input, { ...ctx, groupId: `cut-${crypto.randomBytes(5).toString('hex')}` });
-        await persist([r.source, r.target], r.movements);
-        return r;
+        if (project.paperPlan?.status === 'DESCARGADO') throw fail('El papel de esta OT ya se descargó del inventario', 409);
+        if (project.paperPlan) await releaseUnlocked(project, project.paperPlan, by);
+        return reserveUnlocked(project, plan, by);
+      });
+    },
+
+    async releasePlan(project: { id: string; number?: string; paperPlan?: PaperPlan | null }, by: string) {
+      return exclusive(async () => (project.paperPlan ? releaseUnlocked(project, project.paperPlan, by) : null));
+    },
+
+    /**
+     * Descarga el papel de la OT: si se imprime en un corte, usa primero las hojas ya cortadas
+     * y corta los pliegos que falten; luego carga las hojas a la OT. Si falta papel no descarga
+     * nada y dice cuánto falta.
+     */
+    async dischargePlan(project: { id: string; number?: string; paperPlan?: PaperPlan | null }, by: string) {
+      return exclusive(async () => {
+        const plan = project.paperPlan;
+        if (!plan || !plan.lines.length) throw fail('Esta OT no tiene papel calculado de la cotización');
+        if (plan.status === 'DESCARGADO') throw fail('El papel de esta OT ya se descargó', 409);
+
+        const steps = [];
+        const shortages: string[] = [];
+        for (const line of plan.lines) {
+          const source = await deps.items.get(line.sourceItemId).then((r) => (r ? normalizeItem(r) : null));
+          if (line.divisor <= 1) {
+            if ((source?.available ?? 0) < line.pliegos) shortages.push(`${line.paperName} ${line.sheetFormat}: faltan ${line.pliegos - (source?.available ?? 0)} pliegos`);
+            steps.push({ line, toCut: 0 });
+            continue;
+          }
+          const cut = await deps.items.get(line.cutItemId).then((r) => (r ? normalizeItem(r) : null));
+          const toCut = pliegosToCut(line, cut?.available ?? 0);
+          if (toCut > 0 && (source?.available ?? 0) < toCut) {
+            shortages.push(`${line.paperName} ${line.sheetFormat}: se necesitan ${toCut} pliegos para cortar en ${line.cutCode.replace('.', '')} y hay ${source?.available ?? 0}`);
+          }
+          steps.push({ line, toCut });
+        }
+        if (shortages.length) throw fail(`Falta papel en bodega. ${shortages.join('; ')}`, 409);
+
+        await releaseUnlocked(project, plan, by);
+        const consumed = [];
+        const note = `Papel de ${project.number || 'la OT'} calculado de la cotización`;
+        for (const { line, toCut } of steps) {
+          if (toCut > 0) await transformUnlocked({ sourceId: line.sourceItemId, targetCutCode: line.cutCode, sheets: toCut, note: `Para ${project.number || project.id}` }, by);
+          const itemId = line.divisor <= 1 ? line.sourceItemId : line.cutItemId;
+          const quantity = line.divisor <= 1 ? line.pliegos : line.cutSheets;
+          const r = await issueUnlocked({ itemId, quantity, projectId: project.id, projectNumber: project.number, note }, by);
+          consumed.push({
+            id: r.movement.id,
+            movementId: r.movement.id,
+            itemId,
+            kind: 'CONSUMO' as const,
+            name: r.item.name,
+            unit: r.item.unit,
+            quantity,
+            unitCost: r.movement.unitCost,
+            totalCost: r.movement.totalCost,
+            note: toCut > 0 ? `${note} (se cortaron ${toCut} pliegos)` : note,
+            date: new Date(r.movement.at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }),
+          });
+        }
+        const done: PaperPlan = {
+          ...plan,
+          lines: plan.lines.map((l) => ({ ...l, reserved: 0 })),
+          status: 'DESCARGADO',
+          dischargedAt: deps.now().toISOString(),
+          dischargedBy: by,
+          discharged: consumed.map((c) => ({ itemName: c.name, quantity: c.quantity, unit: c.unit, cost: c.totalCost })),
+        };
+        return { plan: done, consumed, total: Math.round(consumed.reduce((sum, c) => sum + c.totalCost, 0) * 100) / 100 };
       });
     },
 

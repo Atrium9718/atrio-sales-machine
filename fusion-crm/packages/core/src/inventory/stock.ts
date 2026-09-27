@@ -49,7 +49,9 @@ export type MovementType =
   | 'DAMAGE_OUT' // merma o daño
   | 'TRANSFORM_OUT' // pliegos que entran a corte
   | 'TRANSFORM_IN' // cortes que salen de la guillotina
-  | 'COUNT_ADJUST'; // ajuste por conteo físico
+  | 'COUNT_ADJUST' // ajuste por conteo físico
+  | 'RESERVE' // apartado para una OT (no cambia la existencia)
+  | 'RELEASE'; // se libera lo apartado
 
 export const MOVEMENT_LABEL: Record<MovementType, string> = {
   INITIAL: 'Saldo inicial',
@@ -60,7 +62,12 @@ export const MOVEMENT_LABEL: Record<MovementType, string> = {
   TRANSFORM_OUT: 'Corte (sale)',
   TRANSFORM_IN: 'Corte (entra)',
   COUNT_ADJUST: 'Ajuste por conteo',
+  RESERVE: 'Reserva para OT',
+  RELEASE: 'Libera reserva',
 };
+
+/** Reservas: no cambian la existencia física, solo lo comprometido. */
+export const isReservationMovement = (t: MovementType) => t === 'RESERVE' || t === 'RELEASE';
 
 export interface StockMovement {
   id: string;

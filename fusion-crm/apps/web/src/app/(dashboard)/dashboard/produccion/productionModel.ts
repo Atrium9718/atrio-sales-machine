@@ -1,3 +1,4 @@
+import type { PaperPlan } from '../../../../../../../packages/core/src/inventory/paperPlan';
 import { getCurrentUser } from '@/lib/currentUser';
 
 // --- TYPES ---
@@ -90,6 +91,8 @@ export interface ProductionProject {
   totalRealHours: number;
   timeEntries: TimeEntry[];
   /** Salidas de bodega cargadas a la OT (itemId/movementId desde el kárdex; las antiguas no los tienen). */
+  /** Papel calculado de la cotización: reservado al aprobar, descargado al entrar a producción. */
+  paperPlan?: PaperPlan | null;
   consumedMaterials: { id: string; name: string; quantity: number; unitCost: number; totalCost: number; date: string; itemId?: string; movementId?: string; kind?: 'CONSUMO' | 'MERMA'; unit?: string; note?: string }[];
   
   artworkKeys: string[];

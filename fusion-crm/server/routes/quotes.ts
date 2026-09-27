@@ -8,6 +8,9 @@ import { reviewQuote, approvalBlockReason } from '../services/quoteReviewService
 import { isApprovedStatus } from '../../packages/core/src/pricing/quoteReview';
 import { repositories, writeContextFrom } from '../repositories';
 import { systemConfig } from '../services/systemConfig';
+import { inventoryService } from '../services/inventoryService';
+import { getTariffVersion } from '../services/tariffStore';
+import { paperPlanFromItems } from '../../packages/core/src/inventory/paperPlan';
 import { orderNumberFor } from '../../packages/core/src/numbering/numbering';
 import { dueDateFor } from '../../packages/core/src/calendar/workCalendar';
 
@@ -313,6 +316,14 @@ quotesRouter.post('/:id/approve', async (req, res) => {
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
+
+        // Papel de la OT calculado de la cotización y apartado en bodega
+        try {
+          const plan = paperPlanFromItems(newProject.itemsDetail, getTariffVersion(updates.tariffVersionId || quoteData.tariffVersionId).snapshot.sheetCuts);
+          newProject.paperPlan = await inventoryService().reservePlan({ id: newProject.id, number: projectNumber }, plan, actor(req).name || 'Sistema');
+        } catch (planErr) {
+          console.warn('No se pudo reservar el papel de la OT:', planErr);
+        }
 
         await repositories().projects.upsert(newProject);
         console.log(`Proyecto (OT) creado: ${projectNumber}`);
@@ -694,6 +705,10 @@ quotesRouter.delete('/projects/:id', async (req, res) => {
       (p: any) => p.id === id || (targetQuoteId && p.quoteId === targetQuoteId) || (quoteNumber && p.quoteNumber === quoteNumber)
     );
     const ids = new Set([id, ...related.map((p: any) => p.id)]);
+    // El papel apartado para esas OT vuelve a quedar libre
+    for (const p of related) {
+      if (p.paperPlan?.status === 'RESERVADO') await inventoryService().releasePlan(p, actor(req).name || 'Sistema').catch((e) => console.warn('No se pudo liberar el papel:', e));
+    }
     for (const projectId of ids) await projects.delete(projectId);
 
     res.json({ success: true, message: `Proyecto ${id} eliminado con éxito` });
@@ -720,6 +735,22 @@ quotesRouter.patch('/projects/:id/stage', async (req, res) => {
     const now = new Date().toISOString();
     await projects.upsert({ ...(current || { id }), id, stageId: toStage, stage: toStage, stageEnteredAt: now, updatedAt: now });
 
+    // Al entrar a producción se descarga el papel reservado (si falta, la OT avanza igual y se avisa)
+    let paperDischarge: { ok: boolean; message: string } | null = null;
+    if ((toStage === '3' || toStage === 'EN_PRODUCCION') && current?.paperPlan?.status === 'RESERVADO') {
+      try {
+        const r = await inventoryService().dischargePlan({ ...current, id }, actor(req).name || 'Sistema');
+        await projects.patch(id, {
+          paperPlan: r.plan,
+          consumedMaterials: [...(current.consumedMaterials || []), ...r.consumed],
+          materialCost: Math.round(((Number(current.materialCost) || 0) + r.total) * 100) / 100,
+        });
+        paperDischarge = { ok: true, message: `Papel descargado: $${Math.round(r.total).toLocaleString('es-CO')}` };
+      } catch (err: any) {
+        paperDischarge = { ok: false, message: err.message };
+      }
+    }
+
     // Publicar evento en el Domain Event Bus
     eventBus.publish('PROJECT_STAGE_CHANGED', {
       projectId: id,
@@ -732,6 +763,7 @@ quotesRouter.patch('/projects/:id/stage', async (req, res) => {
       projectId: id,
       fromStage,
       toStage,
+      paperDischarge,
       timestamp: new Date().toISOString()
     });
   } catch (err: any) {

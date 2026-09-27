@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Search, Package, TrendingDown, AlertTriangle, Plus, Scissors, ClipboardCheck, ShoppingCart, Pencil, History, MinusCircle, Wallet } from 'lucide-react';
 import { notify } from '@/lib/notify';
 import { getInventory, getInventoryCatalog, getInventorySummary, inventoryApi, inventoryCollection, type InventoryItem, type StockMovement } from '../../../../lib/inventoryStore';
-import { MOVEMENT_LABEL, isLowStock } from '../../../../../../../packages/core/src/inventory/stock';
+import { MOVEMENT_LABEL, isLowStock, isReservationMovement } from '../../../../../../../packages/core/src/inventory/stock';
 import { CutDialog, MaterialDialog, PurchaseDialog, WriteOffDialog, money } from './InventoryDialogs';
 
 type Tab = 'STOCK' | 'KARDEX' | 'COUNT';
@@ -256,7 +256,9 @@ export default function InventarioDashboardPage() {
                       <td className="px-4 py-2 whitespace-nowrap text-xs text-muted-foreground">{new Date(m.at).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}</td>
                       <td className="px-4 py-2 whitespace-nowrap">{MOVEMENT_LABEL[m.type] ?? m.type}</td>
                       {!kardexItem && <td className="px-4 py-2">{m.itemName}</td>}
-                      <td className={`px-4 py-2 text-right font-mono ${m.quantity < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{m.quantity > 0 ? `+${m.quantity}` : m.quantity}</td>
+                      <td className={`px-4 py-2 text-right font-mono ${isReservationMovement(m.type) ? 'text-muted-foreground' : m.quantity < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {isReservationMovement(m.type) ? `(${m.quantity})` : m.quantity > 0 ? `+${m.quantity}` : m.quantity}
+                      </td>
                       <td className="px-4 py-2 text-right">{money(m.unitCost)}</td>
                       <td className="px-4 py-2 text-right font-medium">{m.balanceAfter}</td>
                       <td className="px-4 py-2 text-xs">{[m.projectNumber && `OT ${m.projectNumber}`, m.supplier, m.document && `Doc. ${m.document}`, m.note].filter(Boolean).join(' · ')}</td>

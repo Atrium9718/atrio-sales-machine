@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, X, Undo2 } from 'lucide-react';
+import { Plus, X, Undo2, Layers, RefreshCw, PackageCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { notify } from '@/lib/notify';
 import { getInventory, inventoryApi, type InventoryItem, type StockMovement } from '../../../../../lib/inventoryStore';
-import { MOVEMENT_LABEL } from '../../../../../../../../packages/core/src/inventory/stock';
+import { MOVEMENT_LABEL, SHEET_FORMAT_LABEL, isReservationMovement } from '../../../../../../../../packages/core/src/inventory/stock';
+import { pliegosToCut, type PaperPlan } from '../../../../../../../../packages/core/src/inventory/paperPlan';
 import { formatCOP, type ProductionProject } from '../productionModel';
 
 type Consumed = ProductionProject['consumedMaterials'][number];
@@ -144,6 +145,8 @@ export function ProjectMaterials({ project, onChange }: { project: ProductionPro
 
   return (
     <div className="space-y-6">
+      <PaperPlanCard project={project} onChange={onChange} />
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <Kpi label="Costo de materiales" value={formatCOP(project.materialCost)} />
         <Kpi label="Papel (pliegos y hojas)" value={String(paperSheets)} />
@@ -192,7 +195,9 @@ export function ProjectMaterials({ project, onChange }: { project: ProductionPro
                   <tr key={m.id}>
                     <td className="px-4 py-3">{MOVEMENT_LABEL[m.type]}</td>
                     <td className="px-4 py-3">{m.itemName}</td>
-                    <td className={`px-4 py-3 font-mono ${m.quantity < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{m.quantity > 0 ? `+${m.quantity}` : m.quantity}</td>
+                    <td className={`px-4 py-3 font-mono ${isReservationMovement(m.type) ? 'text-muted-foreground' : m.quantity < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {isReservationMovement(m.type) ? `(${m.quantity})` : m.quantity > 0 ? `+${m.quantity}` : m.quantity}
+                    </td>
                     <td className="px-4 py-3">{formatCOP(m.totalCost)}</td>
                     <td className="px-4 py-3">{m.by}</td>
                     <td className="px-4 py-3 text-muted-foreground">{new Date(m.at).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}</td>
@@ -281,6 +286,156 @@ function Kpi({ label, value, warn }: { label: string; value: string; warn?: bool
     <div className={`p-4 border rounded-xl shadow-sm ${warn ? 'bg-red-50 border-red-100 dark:bg-red-950/30 dark:border-red-900' : 'bg-card border-border'}`}>
       <p className={`text-xs font-bold mb-1 ${warn ? 'text-red-600' : 'text-muted-foreground'}`}>{label}</p>
       <p className="text-xl font-black">{value}</p>
+    </div>
+  );
+}
+
+const PLAN_BADGE: Record<PaperPlan['status'], { label: string; cls: string }> = {
+  PENDIENTE: { label: 'Sin reservar', cls: 'bg-amber-500/10 text-amber-700' },
+  RESERVADO: { label: 'Reservado en bodega', cls: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' },
+  DESCARGADO: { label: 'Descargado del inventario', cls: 'bg-emerald-500/10 text-emerald-700' },
+  SIN_PAPEL: { label: 'Sin papel calculado', cls: 'bg-muted text-muted-foreground' },
+};
+
+/** Papel del trabajo según la cotización: lo que hay que sacar, lo apartado y si alcanza. */
+export function PaperPlanCard({ project, onChange }: { project: ProductionProject; onChange: (updater: (p: ProductionProject) => ProductionProject) => void }) {
+  const [busy, setBusy] = useState<'' | 'plan' | 'discharge'>('');
+  const plan = project.paperPlan;
+  const stock = getInventory();
+  const find = (id: string) => stock.find((i) => i.id === id);
+
+  const apply = (updated: any) =>
+    onChange((p) => ({ ...p, paperPlan: updated.paperPlan, consumedMaterials: updated.consumedMaterials ?? p.consumedMaterials, materialCost: updated.materialCost ?? p.materialCost }));
+
+  const recompute = async () => {
+    setBusy('plan');
+    try {
+      const { project: updated } = await inventoryApi.planProject(project.id);
+      apply(updated);
+      notify(updated.paperPlan?.status === 'RESERVADO' ? 'Papel calculado y reservado' : 'Papel calculado', 'success');
+    } catch (err: any) {
+      notify(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const discharge = async () => {
+    if (!confirm('Se descuenta el papel de la bodega (cortando los pliegos que haga falta) y se carga a esta OT. ¿Continuar?')) return;
+    setBusy('discharge');
+    try {
+      const { project: updated, total } = await inventoryApi.dischargeProject(project.id);
+      apply(updated);
+      notify(`Papel descargado: ${formatCOP(total)} cargados a ${project.number}`, 'success');
+    } catch (err: any) {
+      notify(err.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  if (!plan) {
+    return (
+      <div className="p-4 rounded-xl border border-dashed border-border flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-muted-foreground flex items-center gap-2">
+          <Layers className="w-4 h-4" /> Esta OT no tiene el papel calculado (se hizo antes de esta función o sin la Ayuda para cotizar).
+        </div>
+        <button onClick={recompute} disabled={!!busy} className="px-3 py-1.5 border border-border rounded-md text-xs font-bold hover:bg-muted flex items-center gap-1 disabled:opacity-50">
+          <RefreshCw className={`w-3 h-3 ${busy === 'plan' ? 'animate-spin' : ''}`} /> Calcular papel de la cotización
+        </button>
+      </div>
+    );
+  }
+
+  const badge = PLAN_BADGE[plan.status];
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="p-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Layers className="w-5 h-5 text-primary" />
+          <h3 className="font-bold">Papel del trabajo</h3>
+          <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${badge.cls}`}>{badge.label}</span>
+        </div>
+        <div className="flex gap-2">
+          {plan.status !== 'DESCARGADO' && (
+            <button onClick={recompute} disabled={!!busy} className="px-3 py-1.5 border border-border rounded-md text-xs font-bold hover:bg-muted flex items-center gap-1 disabled:opacity-50" title="Vuelve a calcular con la cotización actual y reserva de nuevo">
+              <RefreshCw className={`w-3 h-3 ${busy === 'plan' ? 'animate-spin' : ''}`} /> Recalcular
+            </button>
+          )}
+          {plan.lines.length > 0 && plan.status !== 'DESCARGADO' && (
+            <button onClick={discharge} disabled={!!busy} className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-bold hover:bg-primary/90 flex items-center gap-1 disabled:opacity-50">
+              <PackageCheck className="w-3 h-3" /> {busy === 'discharge' ? 'Descargando…' : 'Descargar del inventario'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {plan.lines.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-muted/40 text-muted-foreground text-xs uppercase">
+              <tr>
+                <th className="px-4 py-2">Papel</th>
+                <th className="px-4 py-2 text-right">Hojas a imprimir</th>
+                <th className="px-4 py-2 text-right">Pliegos</th>
+                <th className="px-4 py-2">En bodega</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {plan.lines.map((l) => {
+                const source = find(l.sourceItemId);
+                const cut = l.divisor > 1 ? find(l.cutItemId) : undefined;
+                const toCut = l.divisor > 1 ? pliegosToCut(l, cut?.available ?? 0) : l.pliegos;
+                const enough = (source?.available ?? 0) >= toCut;
+                return (
+                  <tr key={l.key}>
+                    <td className="px-4 py-2">
+                      <div className="font-medium">
+                        {l.paperName} · {SHEET_FORMAT_LABEL[l.sheetFormat]}
+                        {l.divisor > 1 ? ` cortado en ${l.cutCode.replace('.', '')}` : ' (pliego entero)'}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{l.items.join(' · ')}</div>
+                    </td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">{l.cutSheets.toLocaleString('es-CO')} {l.divisor > 1 ? `hojas de ${l.cutCode.replace('.', '')}` : 'pliegos'}</td>
+                    <td className="px-4 py-2 text-right font-bold">{l.pliegos.toLocaleString('es-CO')}</td>
+                    <td className="px-4 py-2 text-xs">
+                      {plan.status === 'DESCARGADO' ? (
+                        <span className="text-emerald-700">Descargado</span>
+                      ) : !source && !cut ? (
+                        <span className="text-amber-700">No está en el inventario: créalo en Inventario para reservarlo</span>
+                      ) : (
+                        <span className={enough ? '' : 'text-red-600 font-bold'}>
+                          {source ? `${source.available} pliegos` : 'sin pliegos'}
+                          {cut ? ` · ${cut.available} hojas ya cortadas` : ''}
+                          {l.reserved ? ` · ${l.reserved} apartados` : ''}
+                          {!enough && ` · faltan ${toCut - (source?.available ?? 0)} pliegos`}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="p-3 text-xs text-muted-foreground space-y-1">
+        {plan.status === 'DESCARGADO' ? (
+          <p>
+            Descargado el {plan.dischargedAt ? new Date(plan.dischargedAt).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : ''} por {plan.dischargedBy}:{' '}
+            {(plan.discharged ?? []).map((d) => `${d.quantity} ${d.unit} de ${d.itemName} (${formatCOP(d.cost)})`).join('; ')}.
+          </p>
+        ) : plan.lines.length > 0 ? (
+          <p>Se descarga solo al pasar la OT a "En producción" (o con el botón). Si se imprime en un corte, primero se usan las hojas ya cortadas y se cortan los pliegos que falten.</p>
+        ) : null}
+        {plan.digital.length > 0 && <p>Digital: {plan.digital.map((d) => `${d.sheets} hojas ${d.format} (${d.description})`).join('; ')}. La cotización no dice el papel: regístralo con "Sacar de bodega".</p>}
+        {plan.notes.map((n) => (
+          <p key={n} className="text-amber-700">
+            {n}
+          </p>
+        ))}
+      </div>
     </div>
   );
 }

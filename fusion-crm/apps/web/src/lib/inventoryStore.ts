@@ -80,6 +80,10 @@ export const inventoryApi = {
   transform: (input: { sourceId: string; targetCutCode: string; sheets: number; wastePieces?: number; note?: string }) =>
     call<{ source: InventoryItem; target: InventoryItem; produced: number; waste: number; pieceCost: number }>('/transform', input).then(refresh),
   count: (entries: { itemId: string; counted: number }[], note?: string) => call<{ counted: number; adjusted: number }>('/count', { entries, note }).then(refresh),
+  /** Papel de una OT: recalcular y reservar, descargar del inventario o liberar. Devuelven la OT actualizada. */
+  planProject: (projectId: string) => call<{ project: any }>(`/projects/${encodeURIComponent(projectId)}/plan`, {}).then(refresh),
+  dischargeProject: (projectId: string) => call<{ project: any; total: number }>(`/projects/${encodeURIComponent(projectId)}/discharge`, {}).then(refresh),
+  releaseProject: (projectId: string) => call<{ project: any }>(`/projects/${encodeURIComponent(projectId)}/release`, {}).then(refresh),
   movements: (filter: { itemId?: string; projectId?: string; limit?: number } = {}) => {
     const q = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]));
     return fetch(`/api/inventory/movements?${q}`)

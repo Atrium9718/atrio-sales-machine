@@ -16,17 +16,24 @@ suite('inventario (integración)', () => {
   beforeAll(async () => {
     Object.assign(process.env, { DATABASE_URL: url, DATA_BACKEND: 'postgres' });
     prismaMod = await import('../repositories/prisma/client');
-    await prismaMod.getPrisma().storedDocument.deleteMany({ where: { collection: { in: ['inventory_items', 'inventory_movements'] } } });
+    const db = prismaMod.getPrisma();
+    await db.storedDocument.deleteMany({ where: { collection: { in: ['inventory_items', 'inventory_movements', 'system_config'] } } });
+    await db.quoteItem.deleteMany({});
+    await db.quote.deleteMany({});
+    await db.productionProject.deleteMany({});
     const { inventoryRouter } = await import('./inventory');
     const { dataRouter } = await import('./data');
+    const { quotesRouter } = await import('./quotes');
     const app = express();
     app.use(express.json());
     app.use((req, _res, next) => {
       req.headers['x-user-name'] = 'Laura';
+      req.headers['x-user-role'] = 'admin';
       next();
     });
     app.use('/api/inventory', inventoryRouter);
     app.use('/api/data', dataRouter);
+    app.use('/api/quotes', quotesRouter);
     server = app.listen(0);
     await new Promise((r) => server.once('listening', r));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -68,5 +75,43 @@ suite('inventario (integración)', () => {
     // Las existencias no se editan por la API genérica (no dejaría movimiento)
     expect((await call('PUT', `/api/data/inventory/${id}`, { id, available: 1_000 })).status).toBe(405);
     expect((await call('GET', '/api/data/inventory')).status).toBe(200);
+  });
+
+  it('aprobar reserva el papel y pasar a producción lo descarga y lo carga a la OT', async () => {
+    const pliegoId = 'paper-propalcote-150g-s70x100-1';
+    const before = (await call('GET', '/api/inventory')).body.items.find((i: any) => i.id === pliegoId);
+    const item = {
+      id: 'i1',
+      description: 'Volantes 1/8 4x4',
+      quantity: 1000,
+      unitPrice: 300,
+      applyVat: true,
+      vatRate: 0.19,
+      printTechnique: 'LITHO',
+      paperTypeId: 'Propalcote 150g',
+      paperSheets: 40,
+      sheetsNeeded: 320,
+      assistInput: { technique: 'LITHO', paperName: 'Propalcote 150g', sheetFormat: 'S70X100', sheetCutCode: '.1/8' },
+    };
+    const saved = await call('POST', '/api/quotes', { id: 'q-paper', status: 'Borrador', clientName: 'Pintuco', items: [item] });
+    expect(saved.status).toBe(200);
+    const approved = await call('POST', '/api/quotes/q-paper/approve', {});
+    const project = approved.body.project;
+    expect(project.paperPlan).toMatchObject({ status: 'RESERVADO' });
+    expect(project.paperPlan.lines[0]).toMatchObject({ pliegos: 40, cutSheets: 320, reserved: 40 });
+    const reserved = (await call('GET', '/api/inventory')).body.items.find((i: any) => i.id === pliegoId);
+    expect(reserved.reserved).toBe(before.reserved + 40);
+
+    const moved = await call('PATCH', `/api/quotes/projects/${project.id}/stage`, { stageId: '3' });
+    expect(moved.body.paperDischarge).toMatchObject({ ok: true });
+    const after = (await call('GET', '/api/inventory')).body.items;
+    // Había 30 hojas de 1/8 ya cortadas: se cortan ceil(290/8) = 37 pliegos
+    expect(after.find((i: any) => i.id === pliegoId)).toMatchObject({ available: before.available - 37, reserved: before.reserved });
+    expect(after.find((i: any) => i.id === 'paper-propalcote-150g-s70x100-1-8').available).toBe(30 + 37 * 8 - 320);
+
+    const ot = (await call('GET', '/api/quotes/projects-sync')).body.projects.find((p: any) => p.id === project.id);
+    expect(ot.paperPlan.status).toBe('DESCARGADO');
+    expect(ot.consumedMaterials).toHaveLength(1);
+    expect(ot.materialCost).toBeGreaterThan(0);
   });
 });

@@ -12,6 +12,7 @@ import { useSettingValue } from '@/hooks/useSettingValue';
 import { EditProjectForm } from './components/EditProjectForm';
 import { WorkloadView } from './components/WorkloadView';
 import { ProjectMaterials } from './components/ProjectMaterials';
+import { inventoryApi } from '../../../../lib/inventoryStore';
 import { ProjectFiles } from './components/ProjectFiles';
 import { uploadFile, type FileRef } from '@/lib/files';
 import { notify } from '@/lib/notify';
@@ -364,6 +365,19 @@ export default function ProduccionKanbanPage() {
       }
       return p;
     }));
+
+    // Al entrar a producción se descarga del inventario el papel reservado de la cotización
+    if (newStage.key === 'EN_PRODUCCION' && project.paperPlan?.status === 'RESERVADO') {
+      inventoryApi
+        .dischargeProject(projectId)
+        .then(({ project: updated, total }) => {
+          setProjectsWithSync((prev: ProductionProject[]) =>
+            prev.map((x) => (x.id === projectId ? { ...x, paperPlan: updated.paperPlan, consumedMaterials: updated.consumedMaterials ?? x.consumedMaterials, materialCost: updated.materialCost ?? x.materialCost } : x)),
+          );
+          notify(`${project.number}: papel descargado del inventario (${formatCOP(total)})`, 'success');
+        })
+        .catch((err) => notify(`${project.number}: no se descargó el papel. ${err.message}. Descárgalo desde Materiales cuando haya.`, 'error'));
+    }
   };
 
   const handleApproveQuality = (projectId: string, stageId: string) => {
