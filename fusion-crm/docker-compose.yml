@@ -6,6 +6,7 @@ networks:
 
 volumes:
   postgres_data:
+  backups:
   redis_data:
   minio_data:
   traefik_certificates:
@@ -16,7 +17,7 @@ volumes:
 services:
   # ── Reverse Proxy & SSL (Traefik v3) ─────────────────────────
   traefik:
-    image: traefik:v3.1
+    image: traefik:v3.6
     container_name: fusion-traefik
     restart: unless-stopped
     command:
@@ -103,6 +104,29 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    networks:
+      - fusion-internal
+
+  # ── Respaldo diario de Postgres (ver infra/backup y DEPLOY.md) ──
+  backup:
+    build: ./infra/backup
+    container_name: fusion-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: fusion_crm
+      TZ: ${TZ:-America/Bogota}
+      BACKUP_HOUR: ${BACKUP_HOUR:-02}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+    volumes:
+      - backups:/backups
+      - ./secrets/rclone:/config/rclone:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - fusion-internal
 

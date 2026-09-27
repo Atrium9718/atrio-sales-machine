@@ -1,0 +1,110 @@
+# Despliegue mínimo para un VPS: app + Postgres + respaldos + HTTPS automático.
+# Sin telefonía (Asterisk), videollamadas (LiveKit/Coturn) ni MinIO: se agregan
+# después con docker-compose.yml completo. Guía paso a paso: DEPLOY.md
+#
+#   docker compose -f docker-compose.minimal.yml up -d --build
+#
+# Variables obligatorias en .env: DOMAIN, ACME_EMAIL, DB_PASSWORD (ver .env.example)
+
+networks:
+  fusion-internal:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  traefik_certificates:
+  backups:
+
+services:
+  traefik:
+    image: traefik:v3.6
+    container_name: fusion-traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:?Defina ACME_EMAIL en .env}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certificates:/letsencrypt
+    networks:
+      - fusion-internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fusion-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      APP_URL: https://${DOMAIN:?Defina DOMAIN en .env}
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@postgres:5432/fusion_crm?schema=public
+      DATA_BACKEND: ${DATA_BACKEND:-firestore}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/secrets/firebase-service-account.json
+    volumes:
+      - ./secrets/firebase-service-account.json:/app/secrets/firebase-service-account.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+    networks:
+      - fusion-internal
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: fusion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fusion_crm
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fusion_crm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - fusion-internal
+
+  # Respaldo diario de la base de datos (ver infra/backup y DEPLOY.md)
+  backup:
+    build: ./infra/backup
+    container_name: fusion-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: fusion_crm
+      TZ: ${TZ:-America/Bogota}
+      BACKUP_HOUR: ${BACKUP_HOUR:-02}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+    volumes:
+      - backups:/backups
+      - ./secrets/rclone:/config/rclone:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fusion-internal

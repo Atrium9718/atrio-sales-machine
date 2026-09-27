@@ -110,6 +110,10 @@ Clientes, cotizaciones (con sus ítems) y proyectos de producción pueden vivir 
 
 ### Docker / VPS
 
+**Guía completa para poner el sistema en un VPS: [DEPLOY.md](DEPLOY.md)** (dominio, Firebase,
+`.env`, `scripts/check-deploy.sh`, arranque con `docker-compose.minimal.yml` y respaldos diarios
+con restauración vía `scripts/restore-db.sh`).
+
 `firebase-applet-config.json` debe existir en el directorio antes de construir la imagen (el frontend lo importa en tiempo de compilación).
 
 ```bash

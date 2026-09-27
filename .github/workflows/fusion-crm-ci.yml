@@ -95,3 +95,19 @@ jobs:
           for i in $(seq 1 30); do curl -fs localhost:3000/api/health && exit 0; sleep 2; done
           docker logs app
           exit 1
+
+      - name: Despliegue mínimo y respaldos (compose válido, respaldo y restauración)
+        run: |
+          printf 'DOMAIN=ci.example.test\nACME_EMAIL=ci@example.test\nDB_PASSWORD=ci_password_123456\n' > .env
+          C="docker compose -p fusionci -f docker-compose.minimal.yml"
+          $C config -q
+          docker compose -f docker-compose.yml config -q
+          $C up -d --build postgres backup
+          for i in $(seq 1 30); do docker logs fusion-backup 2>&1 | grep -q 'listo' && break; sleep 2; done
+          docker exec fusion-postgres psql -U postgres -d fusion_crm -qc "create table ci_check(v text); insert into ci_check values ('ok');"
+          docker exec fusion-backup backup.sh
+          docker exec fusion-postgres psql -U postgres -d fusion_crm -qc "drop table ci_check;"
+          F=$(docker exec fusion-backup sh -c 'ls -t /backups/*.dump | head -1')
+          echo RESTAURAR | ./scripts/restore-db.sh "$F"
+          test "$(docker exec fusion-postgres psql -U postgres -d fusion_crm -tAc 'select v from ci_check')" = ok
+          $C down -v
