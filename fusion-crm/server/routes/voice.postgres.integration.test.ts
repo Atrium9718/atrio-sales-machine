@@ -172,13 +172,13 @@ suite('telefonía con Postgres (integración)', () => {
 
   it('identifica a quien llama con los clientes y cotizaciones del CRM', async () => {
     const { repositories } = await import('../repositories');
-    await repositories().clients.upsert({ id: 'cli-voz-1', name: 'Pinturas Andinas', nit: '900123456-1', phone1: '310 555 1234', temp: 'HOT' } as any);
-    await repositories().quotes.upsert({ id: 'q-voz-1', number: 'COT-9901', status: 'Enviada', clientId: 'cli-voz-1', clientName: 'Pinturas Andinas', items: [], total: 500000, date: '2026-09-20' } as any);
-    const who = await call('comercial', 'GET', '/api/voice/identify?number=%2B573105551234');
-    expect(who.body.identity).toMatchObject({ customerId: 'cli-voz-1', customerName: 'Pinturas Andinas', openQuote: { number: 'COT-9901', total: null } });
-    const whoAdmin = await call('admin', 'GET', '/api/voice/identify?number=3105551234');
+    await repositories().clients.upsert({ id: 'cli-voz-identifica', name: 'Pinturas Andinas', nit: '901555222-3', phone1: '310 555 4321', temp: 'HOT' } as any);
+    await repositories().quotes.upsert({ id: 'q-voz-1', number: 'COT-9901', status: 'Enviada', clientId: 'cli-voz-identifica', clientName: 'Pinturas Andinas', items: [], total: 500000, date: '2026-09-20' } as any);
+    const who = await call('comercial', 'GET', '/api/voice/identify?number=%2B573105554321');
+    expect(who.body.identity, JSON.stringify(who.body.identity)).toMatchObject({ customerId: 'cli-voz-identifica', customerName: 'Pinturas Andinas', openQuote: { number: 'COT-9901', total: null } });
+    const whoAdmin = await call('admin', 'GET', '/api/voice/identify?number=3105554321');
     expect(whoAdmin.body.identity.openQuote.total).toBe(500000);
     await repositories().quotes.delete('q-voz-1');
-    await repositories().clients.delete('cli-voz-1');
+    await repositories().clients.delete('cli-voz-identifica');
   });
 });

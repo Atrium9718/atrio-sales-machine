@@ -17,7 +17,7 @@ import {
   executeCrmLookup,
   runFlowStep,
 } from '@fusion/core/src/voice/ivrEngine';
-import { bogotaYmd, holidaysOf, isOpenAt, sanitizeWorkCalendar } from '@fusion/core/src/calendar/workCalendar';
+import { businessStatusAt } from '@fusion/core/src/calendar/workCalendar';
 import { ActiveCall, callRegistry } from '../state/registry';
 import { finishCall, moveCall } from '../state/lifecycle';
 import { prisma, persistence } from './persist';
@@ -26,7 +26,8 @@ import { answerCaller } from './connect';
 import { promptMedia } from './queue';
 import type { MediaController } from './media';
 
-export type BusinessStatus = 'abierto' | 'cerrado' | 'festivo';
+export type { BusinessStatus } from '@fusion/core/src/calendar/workCalendar';
+import type { BusinessStatus } from '@fusion/core/src/calendar/workCalendar';
 
 export interface IvrStore {
   /** Versión publicada del flujo (null si no existe o no está publicado). */
@@ -50,14 +51,8 @@ export interface IvrAri {
 }
 
 /** Estado de atención según el calendario laboral de la empresa (Administración → Calendario). */
-export function businessStatusFor(now: Date, calendarValue: unknown): BusinessStatus {
-  const cal = sanitizeWorkCalendar(calendarValue ?? {});
-  if (isOpenAt(now, cal)) return 'abierto';
-  const ymd = bogotaYmd(now);
-  const openByException = cal.exceptions.some((e) => e.date === ymd && e.type === 'OPEN');
-  const holiday = holidaysOf(Number(ymd.slice(0, 4))).some((h) => h.date === ymd);
-  return holiday && !openByException ? 'festivo' : 'cerrado';
-}
+export const businessStatusFor = (now: Date, calendarValue: unknown, closedUntil?: string | null): BusinessStatus =>
+  businessStatusAt(now, calendarValue, closedUntil);
 
 export const prismaIvrStore: IvrStore = {
   async loadFlow(flowId, organizationId) {
@@ -71,10 +66,11 @@ export const prismaIvrStore: IvrStore = {
     return new Map(rows.flatMap((p) => (promptMedia(p.asteriskFilename) ? [[p.id, promptMedia(p.asteriskFilename)!] as [string, string]] : [])));
   },
   async businessStatus(now) {
-    const doc = await prisma.storedDocument
-      .findUnique({ where: { collection_id: { collection: 'system_config', id: 'work_calendar' } } })
-      .catch(() => null);
-    return businessStatusFor(now, (doc?.data as any)?.value);
+    const [cal, override] = await Promise.all([
+      prisma.storedDocument.findUnique({ where: { collection_id: { collection: 'system_config', id: 'work_calendar' } } }).catch(() => null),
+      prisma.storedDocument.findUnique({ where: { collection_id: { collection: 'voice_settings', id: 'override' } } }).catch(() => null),
+    ]);
+    return businessStatusFor(now, (cal?.data as any)?.value, (override?.data as any)?.closedUntil ?? null);
   },
   async addDoNotCall(organizationId, phone, customerId) {
     await prisma.voiceDoNotCall.upsert({

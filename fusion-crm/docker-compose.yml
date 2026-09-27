@@ -87,6 +87,8 @@ services:
       TRUNK_MAX_CHANNELS: ${TRUNK_MAX_CHANNELS:-10}
       VOICE_CALLER_ID: ${VOICE_CALLER_ID:-}
       TURN_SECRET: ${TURN_SECRET:-}
+      VOICE_SOUNDS_DIR: /app/voice-sounds
+      VOICE_RECORDINGS_DIR: /app/voice-recordings
       # Cifra las contraseñas SIP guardadas en la base (openssl rand -hex 32). No cambiarla después.
       SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
     extra_hosts:
@@ -97,6 +99,9 @@ services:
       - backups:/backups:ro
       # Archivos subidos (adjuntos del portal); se incluyen en el respaldo diario
       - uploads:/app/uploads
+      # Telefonía: locuciones que reproduce Asterisk y grabaciones (buzón y llamadas) para escucharlas
+      - asterisk_sounds:/app/voice-sounds
+      - asterisk_recordings:/app/voice-recordings:ro
     depends_on:
       postgres:
         condition: service_healthy

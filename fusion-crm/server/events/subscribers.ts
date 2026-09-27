@@ -1,5 +1,6 @@
 import { eventBus } from './DomainEventBus';
-import { inMemoryAgentStatuses } from '../routes/voice';
+import { setAgentState } from '../routes/voicePbx';
+import { voiceDbAvailable } from '../services/voiceStore';
 import { inMemoryPresences } from '../routes/chat';
 import { startStageNotifications } from '../omnichannel/runtime';
 
@@ -17,10 +18,9 @@ export function registerDomainSubscribers() {
 
   // 1. Reacción a DESACTIVACIÓN DE EMPLEADO (Soft-Delete)
   eventBus.subscribe('EMPLOYEE_DEACTIVATED', ({ employeeId, timestamp }) => {
-    // A. Módulo de Telefonía / Voz: Remover estado de agente disponible en memoria
-    if (inMemoryAgentStatuses.has(employeeId)) {
-      inMemoryAgentStatuses.delete(employeeId);
-      console.log(`[Voice Module 📞] Agente ${employeeId} retirado de colas y estados PBX tras inactivación.`);
+    // A. Telefonía: queda desconectado y las colas dejan de timbrarle
+    if (voiceDbAvailable()) {
+      setAgentState(employeeId, 'OFFLINE', 'Colaborador inactivo').catch((err) => console.error('[Voz] No se pudo desconectar al asesor inactivo:', err));
     }
 
     // B. Módulo de Chat: Limpiar presencia activa y desconectar sesión
@@ -34,15 +34,6 @@ export function registerDomainSubscribers() {
 
   // 2. Reacción a ACTUALIZACIÓN DE EMPLEADO
   eventBus.subscribe('EMPLOYEE_UPDATED', ({ employee, previousState }) => {
-    // Si cambió su extensión o cargo, refrescar en telefonía
-    if (inMemoryAgentStatuses.has(employee.id)) {
-      const current = inMemoryAgentStatuses.get(employee.id);
-      if (current) {
-        current.updatedAt = new Date().toISOString();
-      }
-      console.log(`[Voice Module 📞] Perfil sincronizado para agente ${employee.name} (${employee.extension || 'Sin ext'}).`);
-    }
-
     // Si cambió de rol o área, actualizar presencia en Chat
     if (inMemoryPresences[employee.id]) {
       inMemoryPresences[employee.id].updatedAt = new Date().toISOString();

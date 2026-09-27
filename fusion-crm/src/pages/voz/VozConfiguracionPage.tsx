@@ -1056,20 +1056,16 @@ export function VozConfiguracionPage() {
                 ))}
               </div>
 
-              {/* Acciones de enrutamiento por horario */}
-              <div className="border-t border-slate-100 pt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900">
-                  <span className="font-bold block mb-1">En Horario Abierto</span>
-                  <span>Enruta a Flujo IVR Principal con agentes humanos y colas.</span>
-                </div>
-                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
-                  <span className="font-bold block mb-1">Fuera de Horario</span>
-                  <span>Transfiere inmediatamente al Agente de IA Clara (24/7).</span>
-                </div>
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-900">
-                  <span className="font-bold block mb-1">Días Festivos</span>
-                  <span>Respuesta institucional de festivo + captura de requerimiento con IA.</span>
-                </div>
+              {/* De dónde sale el horario y qué pasa en cada caso */}
+              <div className="border-t border-slate-100 pt-4 space-y-2 text-xs text-slate-600">
+                <p>
+                  Este horario es el <strong>calendario laboral de la empresa</strong> (el mismo de las fechas de entrega).
+                  Se cambia en <a href="/dashboard/admin/calendario" className="text-indigo-700 underline">Administración → Calendario laboral</a>.
+                </p>
+                <p>
+                  Qué oye quien llama abierto, cerrado o en festivo lo decide el <strong>menú de opciones</strong> con su paso «Horario».
+                  «Cerrar ahora» hace que ese paso tome la salida de cerrado hasta la hora indicada.
+                </p>
               </div>
             </div>
 

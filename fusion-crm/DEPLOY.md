@@ -336,6 +336,18 @@ extensiones y números.
    asesor y registre los números con su destino. En Panel de voz cada asesor ve si su
    teléfono quedó conectado.
 
+7. **Colas, menú y buzón** (Voz en el menú lateral):
+   - *Locuciones*: grabe con el micrófono o suba un audio (se convierte solo a calidad de teléfono).
+   - *Colas*: cree las colas (p. ej. Ventas) y marque qué asesores atienden en cada una.
+   - *Menú de opciones*: arme el menú (bienvenida, horario, «marque 1…», el 0 siempre a una persona),
+     valídelo y publíquelo. Luego, en la configuración de voz, apunte el número a ese menú.
+   - El horario de atención es el calendario laboral (Administración → Calendario laboral).
+   - Si nadie contesta, la llamada va al *buzón*: el mensaje queda en Voz → Buzón con una tarea para
+     devolverlo. Las llamadas grabadas se escuchan en el detalle de cada llamada.
+
+   Locuciones y grabaciones viven en los volúmenes `asterisk_sounds` y `asterisk_recordings`
+   (compartidos entre Asterisk y el CRM). Inclúyalos en sus copias de seguridad si las necesita.
+
 Verificación rápida en el servidor:
 
 ```bash

@@ -26,18 +26,17 @@ import { employeeService } from '../services/employeeService';
 import { systemConfig } from '../services/systemConfig';
 import { isOpenAt } from '../../packages/core/src/calendar/workCalendar';
 import { permissionsForRequest } from '../auth/userPermissions';
-import { voiceIvrRouter } from './voiceIvrRoutes';
 import { normalizeColombianPhone } from '../../packages/core/src/voice/normalizePhone';
 import { trunkFromEnv, loadVoiceStore, saveNumber, deleteNumber, saveExtension, voiceDbAvailable, DEFAULT_TRUNK_ID } from '../services/voiceStore';
 import { voiceCallsRouter } from './voiceCalls';
 import { getPrisma } from '../repositories/prisma/client';
-import { voiceQueueRouter } from './voiceQueueRoutes';
+import { voicePbxRouter } from './voicePbx';
 
 export const voiceRouter = Router();
 
 // Configurar la central (troncal, números, extensiones, horarios, IVR, locuciones y colas)
 // exige voice:manage_all; el uso diario (contestar, notas, estado, buzón) solo voice:use.
-const MANAGE_PATHS = [/^\/trunk(\/|$)/, /^\/numbers(\/|$)/, /^\/extensions(\/|$)/, /^\/schedules(\/|$)/, /^\/prompts(\/|$)/, /^\/ivr-flows(\/|$)/, /^\/queues$/];
+const MANAGE_PATHS = [/^\/trunk(\/|$)/, /^\/numbers(\/|$)/, /^\/extensions(\/|$)/, /^\/schedules(\/|$)/, /^\/prompts(\/|$)/, /^\/ivr-flows(\/|$)/, /^\/queues(\/|$)/];
 voiceRouter.use((req, res, next) => {
   // Si la telefonía está encendida lo consulta cualquier pantalla (no revela nada sensible)
   if (req.path === '/config') return next();
@@ -55,11 +54,8 @@ voiceRouter.use((req, res, next) => {
 // Historial, detalle y resumen del día (llamadas registradas por el puente de voz)
 voiceRouter.use('/', voiceCallsRouter);
 
-// Sub-Etapa 17.5: Locuciones, Flujos de IVR y Horarios de Atención
-voiceRouter.use('/', voiceIvrRouter);
-
-// Sub-Etapa 17.6: Colas de Atención, Estados de Agentes y Buzón de Voz
-voiceRouter.use('/', voiceQueueRouter);
+// Colas, estado de asesores, buzón, locuciones, menús de opciones y horario (en la base)
+voiceRouter.use('/', voicePbxRouter);
 
 // Estado en memoria de Troncal SIP (VoiceTrunk)
 export interface VoiceTrunkConfig {
@@ -380,101 +376,13 @@ voiceRouter.post('/extensions/reconcile', async (_req: Request, res: Response) =
   res.json(result);
 });
 
-// -----------------------------------------------------------------------------
-// HORARIOS Y FESTIVOS (VOICE SCHEDULES)
-// -----------------------------------------------------------------------------
-
-voiceRouter.get('/schedules', (_req: Request, res: Response) => {
-  const bogotaStatus = getCurrentBogotaStatus(activeSchedule);
-  const holidays = getColombianHolidays(new Date().getFullYear());
-  const nextHoliday = getNextColombianHoliday();
-
-  res.json({
-    schedule: activeSchedule,
-    realtimeBogota: bogotaStatus,
-    nextHoliday,
-    upcomingHolidays: holidays.slice(0, 6),
-  });
-});
-
-voiceRouter.post('/schedules', (req: Request, res: Response) => {
-  const body = req.body;
-  activeSchedule = {
-    ...activeSchedule,
-    name: body.name || activeSchedule.name,
-    timezone: body.timezone || activeSchedule.timezone,
-    weeklyHours: body.weeklyHours || activeSchedule.weeklyHours,
-    holidaysFollowLaw51: body.holidaysFollowLaw51 !== undefined ? body.holidaysFollowLaw51 : activeSchedule.holidaysFollowLaw51,
-    openAction: body.openAction || activeSchedule.openAction,
-    closedAction: body.closedAction || activeSchedule.closedAction,
-    holidayAction: body.holidayAction || activeSchedule.holidayAction,
-  };
-
-  inMemoryAuditLogs.push({
-    id: `audit_${Date.now()}`,
-    action: 'VOICE_SCHEDULE_UPDATED',
-    userId: (req.headers['x-user-id'] as string) || 'ADMIN',
-    details: { scheduleId: activeSchedule.id },
-    timestamp: new Date().toISOString(),
-  });
-
-  const bogotaStatus = getCurrentBogotaStatus(activeSchedule);
-  res.json({ success: true, schedule: activeSchedule, realtimeBogota: bogotaStatus });
-});
 
 // -----------------------------------------------------------------------------
 // ETAPA 17.4: SOFTPHONE EN EL NAVEGADOR Y EN EL CELULAR
 // -----------------------------------------------------------------------------
 
-// Estado en memoria de Agentes de Voz (VoiceAgentStatus)
-export interface VoiceAgentStatusEntry {
-  userId: string;
-  status: 'DISPONIBLE' | 'OCUPADO' | 'EN_PAUSA' | 'DESCONECTADO';
-  reason?: string | null;
-  updatedAt: string;
-}
-
-export const inMemoryAgentStatuses = new Map<string, VoiceAgentStatusEntry>();
-
-const initializeAgentStatuses = () => {
-  if (inMemoryAgentStatuses.size > 0) return;
-  const employees = employeeService.getEmployees();
-  employees.forEach(e => {
-    inMemoryAgentStatuses.set(e.id, {
-      userId: e.id,
-      status: 'DISPONIBLE',
-      reason: null,
-      updatedAt: new Date().toISOString()
-    });
-  });
-};
-
 // Estado en memoria de llamadas activas para notas y control de medios
 export const inMemoryVoiceCallNotes = new Map<string, { notes: string; updatedAt: string }>();
-
-// Estado en memoria de buzón de voz (Voicemails)
-export const inMemoryVoicemails = [
-  {
-    id: 'vm_001',
-    callerNumber: '+573105559876',
-    callerName: 'Alejandro Restrepo (Café del Sol)',
-    durationSeconds: 38,
-    createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-    audioUrl: '/audio/voicemail-sample-1.mp3',
-    transcription: 'Hola Cristian, te llamo de Café del Sol para confirmar si alcanzamos a tener las 5000 etiquetas metalizadas para el jueves. Por favor me devuelves la llamada.',
-    isRead: false,
-  },
-  {
-    id: 'vm_002',
-    callerNumber: '+573009876543',
-    callerName: 'Beatriz Morales (Empaques del Valle)',
-    durationSeconds: 24,
-    createdAt: new Date(Date.now() - 180 * 60 * 1000).toISOString(),
-    audioUrl: '/audio/voicemail-sample-2.mp3',
-    transcription: 'Buenas tardes, requerimos cotización formal para 2000 cajas plegadizas con acabado barniz UV. Quedo atenta.',
-    isRead: false,
-  },
-];
 
 // Helper para extraer contexto de usuario y verificar permisos (SSOT)
 function resolveVoiceUserAuth(req: Request) {
@@ -607,119 +515,6 @@ function handleGetSoftphoneCredentials(req: Request, res: Response) {
 voiceRouter.get('/softphone/credentials', handleGetSoftphoneCredentials);
 voiceRouter.post('/softphone/credentials', handleGetSoftphoneCredentials);
 
-/**
- * BLOQUE B: ESTADO DEL AGENTE (VoiceAgentStatus)
- */
-voiceRouter.get('/agent-status', (req: Request, res: Response) => {
-  initializeAgentStatuses();
-  const auth = resolveVoiceUserAuth(req);
-  const current = inMemoryAgentStatuses.get(auth.userId) || {
-    userId: auth.userId,
-    status: 'DISPONIBLE',
-    reason: null,
-    updatedAt: new Date().toISOString(),
-  };
-  res.json({ success: true, agentStatus: current });
-});
-
-voiceRouter.post('/agent-status', (req: Request, res: Response) => {
-  initializeAgentStatuses();
-  const auth = resolveVoiceUserAuth(req);
-  const { status, reason } = req.body;
-
-  const validStatuses = ['DISPONIBLE', 'OCUPADO', 'EN_PAUSA', 'DESCONECTADO'];
-  if (!validStatuses.includes(status)) {
-    return res.status(400).json({ success: false, error: `Estado no válido: ${status}` });
-  }
-
-  const updated: VoiceAgentStatusEntry = {
-    userId: auth.userId,
-    status,
-    reason: status === 'EN_PAUSA' ? reason || 'OTRO' : null,
-    updatedAt: new Date().toISOString(),
-  };
-
-  inMemoryAgentStatuses.set(auth.userId, updated);
-
-  inMemoryAuditLogs.push({
-    id: `audit_agent_status_${Date.now()}`,
-    action: 'VOICE_AGENT_STATUS_CHANGED',
-    userId: auth.userId,
-    details: { status, reason },
-    timestamp: new Date().toISOString(),
-  });
-
-  // Difundir por tiempo real SSE
-  try {
-    realtimeStreamManager.publish({
-      organizationId: (auth as any).organizationId || ORGANIZATION_ID,
-      type: 'user_notification' as any,
-      channelId: `voice:user:${auth.userId}`,
-      payload: {
-        userId: auth.userId,
-        event: 'voice.agent_status_changed',
-        agentStatus: updated,
-      },
-    });
-  } catch {}
-
-  res.json({ success: true, agentStatus: updated });
-});
-
-/**
- * BLOQUE B & D: Directorio de agentes para transferencias con estado en tiempo real
- */
-voiceRouter.get('/agents/directory', (_req: Request, res: Response) => {
-  initializeAgentStatuses();
-  const employees = employeeService.getEmployees();
-  const directory = employees.map(e => ({
-    userId: e.id,
-    name: e.name,
-    role: e.roleName,
-    extension: e.extension || 'N/A',
-    avatar: null,
-    status: inMemoryAgentStatuses.get(e.id)?.status || 'DISPONIBLE',
-    reason: inMemoryAgentStatuses.get(e.id)?.reason || null,
-  }));
-
-  res.json({ success: true, agents: directory });
-});
-
-/**
- * BLOQUE B: Estado de las colas a las que pertenece el agente
- */
-voiceRouter.get('/queues/status', (_req: Request, res: Response) => {
-  const queues = [
-    {
-      id: 'queue_ventas',
-      name: 'Ventas y Cotizaciones',
-      waitingCallsCount: 1,
-      longestWaitSeconds: 18,
-      activeAgentsCount: 3,
-    },
-    {
-      id: 'queue_soporte',
-      name: 'Soporte y Estado de Pedidos',
-      waitingCallsCount: 0,
-      longestWaitSeconds: 0,
-      activeAgentsCount: 2,
-    },
-  ];
-
-  res.json({ success: true, queues });
-});
-
-/**
- * BLOQUE B: Contador de buzón de voz y listado de mensajes
- */
-voiceRouter.get('/voicemail/unread-count', (_req: Request, res: Response) => {
-  const unread = inMemoryVoicemails.filter((v) => !v.isRead).length;
-  res.json({ success: true, unreadCount: unread });
-});
-
-voiceRouter.get('/voicemail/messages', (_req: Request, res: Response) => {
-  res.json({ success: true, messages: inMemoryVoicemails });
-});
 
 /**
  * BLOQUE D: Auto-guardado en vivo de notas de llamada (VoiceCall.notes)

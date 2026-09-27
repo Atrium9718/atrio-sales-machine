@@ -25,7 +25,9 @@ interface IvrFlowSummary {
   id: string;
   name: string;
   description?: string;
-  didIds: string[];
+  numbers: string[];
+  isLive?: boolean;
+  hasPendingChanges?: boolean;
   version: number;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   publishedAt?: string;
@@ -240,7 +242,8 @@ export function VozIvrPage() {
                   <div className="flex items-center gap-1.5">
                     <PhoneCall className="w-4 h-4 text-gray-400" />
                     <span>
-                      {flow.didIds.length > 0 ? `DID: +576017441234` : 'Sin número asignado'}
+                      {flow.numbers?.length ? flow.numbers.join(', ') : 'Ningún número entra a este menú'}
+                      {flow.hasPendingChanges ? ' · cambios sin publicar' : ''}
                     </span>
                   </div>
                 </div>

@@ -25,15 +25,17 @@ interface CallDetail extends CallListItem {
 export function VozLlamadaDetallePage() {
   const { id } = useParams<{ id: string }>();
   const [call, setCall] = React.useState<CallDetail | null>(null);
+  const [audio, setAudio] = React.useState<{ recordingUrl: string | null; voicemailUrl: string | null }>({ recordingUrl: null, voicemailUrl: null });
   const [error, setError] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!id) return;
-    voiceApi<{ call: CallDetail }>(`/api/voice/calls/${encodeURIComponent(id)}`)
+    voiceApi<{ call: CallDetail; recordingUrl: string | null; voicemailUrl: string | null }>(`/api/voice/calls/${encodeURIComponent(id)}`)
       .then((d) => {
         setCall(d.call);
+        setAudio({ recordingUrl: d.recordingUrl ?? null, voicemailUrl: d.voicemailUrl ?? null });
         setNotes(d.call.notes || '');
       })
       .catch((err) => setError(err?.message || 'No se pudo cargar la llamada'));
@@ -139,6 +141,23 @@ export function VozLlamadaDetallePage() {
           )}
         </section>
       </div>
+
+      {(audio.recordingUrl || audio.voicemailUrl) && (
+        <section className="bg-card border border-border rounded-xl shadow-sm p-5 space-y-3">
+          {audio.voicemailUrl && (
+            <div className="space-y-1.5">
+              <h2 className="font-semibold text-sm">Mensaje de voz</h2>
+              <audio controls preload="none" src={audio.voicemailUrl} className="w-full" />
+            </div>
+          )}
+          {audio.recordingUrl && (
+            <div className="space-y-1.5">
+              <h2 className="font-semibold text-sm">Grabación de la llamada</h2>
+              <audio controls preload="none" src={audio.recordingUrl} className="w-full" />
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="bg-card border border-border rounded-xl shadow-sm p-5 space-y-3">
         <label htmlFor="voz-notas" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">

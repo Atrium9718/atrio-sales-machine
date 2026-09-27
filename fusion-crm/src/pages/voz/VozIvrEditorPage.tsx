@@ -205,6 +205,23 @@ export function VozIvrEditorPage() {
   // Toast
   const [toastMessage, setToastMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Locuciones y colas reales para los selectores de los pasos
+  const [catalog, setCatalog] = React.useState<{ prompts: { id: string; name: string }[]; queues: { id: string; name: string }[] }>({ prompts: [], queues: [] });
+  React.useEffect(() => {
+    Promise.all([
+      fetch('/api/voice/prompts').then((r) => r.json()).catch(() => ({})),
+      fetch('/api/voice/queues').then((r) => r.json()).catch(() => ({})),
+    ]).then(([p, q]) => setCatalog({ prompts: p?.data ?? [], queues: (q?.queues ?? []).map((x: any) => ({ id: x.id, name: x.name })) }));
+  }, []);
+  const promptOptions = (
+    <>
+      <option value="">Elige una locución…</option>
+      {catalog.prompts.map((p) => (
+        <option key={p.id} value={p.id}>{p.name}</option>
+      ))}
+    </>
+  );
+
   const showToast = (type: 'success' | 'error', text: string) => {
     setToastMessage({ type, text });
     setTimeout(() => setToastMessage(null), 4000);
@@ -214,7 +231,7 @@ export function VozIvrEditorPage() {
   const fetchFlow = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/voice/ivr-flows/${id || 'flow_main_01'}`);
+      const res = await fetch(`/api/voice/ivr-flows/${id}`);
       const json = await res.json();
       if (json.success && json.data) {
         setFlow(json.data);
@@ -745,23 +762,18 @@ export function VozIvrEditorPage() {
                   <div className="space-y-2 pt-2 border-t text-xs">
                     <label className="block font-semibold text-gray-700">Locución asignada</label>
                     <select
-                      value={selectedNode.data?.promptId || 'prompt_saludo_general'}
+                      value={selectedNode.data?.promptId || ''}
                       onChange={(e) => {
                         const updated = {
                           ...selectedNode,
-                          data: { ...selectedNode.data, promptId: e.target.value, promptName: e.target.value },
+                          data: { ...selectedNode.data, promptId: e.target.value, promptName: catalog.prompts.find((p) => p.id === e.target.value)?.name ?? '' },
                         };
                         setSelectedNode(updated);
                         setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? (updated as any) : n)));
                       }}
                       className="w-full border rounded-lg p-1.5 text-xs bg-white"
                     >
-                      <option value="prompt_legal_grabacion">Aviso Legal Grabación (Habeas Data)</option>
-                      <option value="prompt_saludo_general">Bienvenida General Comercial</option>
-                      <option value="prompt_fuera_de_horario">Atención Fuera de Horario</option>
-                      <option value="prompt_festivo">Aviso Día Festivo Colombia</option>
-                      <option value="prompt_cola_espera">Mensaje Cola de Espera</option>
-                      <option value="prompt_despedida">Despedida Institucional</option>
+                      {promptOptions}
                     </select>
 
                     <label className="flex items-center gap-2 pt-1 text-gray-700">
@@ -792,18 +804,18 @@ export function VozIvrEditorPage() {
                   <div className="space-y-2 pt-2 border-t text-xs">
                     <label className="block font-semibold text-gray-700">Audio del Menú</label>
                     <select
-                      value={selectedNode.data?.promptId || 'prompt_saludo_general'}
+                      value={selectedNode.data?.promptId || ''}
                       onChange={(e) => {
                         const updated = {
                           ...selectedNode,
-                          data: { ...selectedNode.data, promptId: e.target.value },
+                          data: { ...selectedNode.data, promptId: e.target.value, promptName: catalog.prompts.find((p) => p.id === e.target.value)?.name ?? '' },
                         };
                         setSelectedNode(updated);
                         setNodes((nds) => nds.map((n) => (n.id === selectedNode.id ? (updated as any) : n)));
                       }}
                       className="w-full border rounded-lg p-1.5 text-xs bg-white"
                     >
-                      <option value="prompt_saludo_general">Bienvenida Comercial (1 Ventas, 2 Pedido, 0 Asesor)</option>
+                      {promptOptions}
                     </select>
 
                     <div className="grid grid-cols-2 gap-2 pt-2">
@@ -852,14 +864,14 @@ export function VozIvrEditorPage() {
                   <div className="space-y-2 pt-2 border-t text-xs">
                     <label className="block font-semibold text-gray-700">Cola de Destino</label>
                     <select
-                      value={selectedNode.data?.queueId || 'queue_comercial_01'}
+                      value={selectedNode.data?.queueId || ''}
                       onChange={(e) => {
                         const updated = {
                           ...selectedNode,
                           data: {
                             ...selectedNode.data,
                             queueId: e.target.value,
-                            queueName: e.target.value === 'queue_comercial_01' ? 'Ventas y Cotizaciones' : 'Soporte',
+                            queueName: catalog.queues.find((q) => q.id === e.target.value)?.name ?? '',
                           },
                         };
                         setSelectedNode(updated);
@@ -867,8 +879,10 @@ export function VozIvrEditorPage() {
                       }}
                       className="w-full border rounded-lg p-1.5 text-xs bg-white"
                     >
-                      <option value="queue_comercial_01">Cola Comercial (Ventas)</option>
-                      <option value="queue_soporte_01">Cola Soporte y Reclamos</option>
+                      <option value="">Elige una cola…</option>
+                      {catalog.queues.map((q) => (
+                        <option key={q.id} value={q.id}>{q.name}</option>
+                      ))}
                     </select>
                   </div>
                 )}
@@ -879,7 +893,8 @@ export function VozIvrEditorPage() {
                     <label className="block font-semibold text-gray-700">Número de Extensión</label>
                     <input
                       type="text"
-                      value={selectedNode.data?.extension || '101'}
+                      value={selectedNode.data?.extension || ''}
+                      placeholder="101"
                       onChange={(e) => {
                         const updated = {
                           ...selectedNode,

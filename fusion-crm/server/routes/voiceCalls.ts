@@ -8,6 +8,8 @@ import { summarizeCalls, startOfBogotaDay, isMissedCall, pendingCallbacks } from
 import { voiceDbAvailable } from '../services/voiceStore';
 import { repositories } from '../repositories';
 import { identifyCaller } from '../../packages/core/src/voice/identifyCaller';
+import fs from 'node:fs';
+import { recordingPath } from './voicePbx';
 
 /**
  * Historial de llamadas: lo que el puente de voz (apps/voice) registra en Postgres.
@@ -126,10 +128,31 @@ voiceCallsRouter.get('/calls/:id', async (req, res, next) => {
     });
     if (!call) return res.status(404).json({ success: false, error: 'Llamada no encontrada' });
     const [row] = await withNames([call]);
+    const recording = await getPrisma().voiceRecording.findFirst({ where: { callId: call.id, deletedAt: null } });
+    const voicemail = await getPrisma().voiceVoicemail.findFirst({ where: { callId: call.id, deletedAt: null } });
     res.json({
+      recordingUrl: recording ? `/api/voice/calls/${call.id}/recording` : null,
+      recordingSeconds: recording ? Number(recording.durationSeconds) : null,
+      voicemailUrl: voicemail ? `/api/voice/voicemails/${voicemail.id}/audio` : null,
       success: true,
       call: { ...row, events: call.events.map((e) => ({ id: e.id, at: e.at, type: e.type, actorUserId: e.actorUserId, payload: e.payload })) },
     });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || String(err) });
+  }
+});
+
+// GET /api/voice/calls/:id/recording — escuchar la grabación (quien puede ver la llamada)
+voiceCallsRouter.get('/calls/:id/recording', async (req, res) => {
+  if (!voiceDbAvailable()) return noDb(res);
+  try {
+    const call = await getPrisma().voiceCall.findFirst({ where: { AND: [{ id: req.params.id, organizationId: ORGANIZATION_ID, deletedAt: null }, visibilityWhere(req)] } });
+    const rec = call ? await getPrisma().voiceRecording.findFirst({ where: { callId: call.id, deletedAt: null } }) : null;
+    const file = rec ? recordingPath(rec.storageKey) : null;
+    if (!file || !fs.existsSync(file)) return res.status(404).json({ success: false, error: 'Esta llamada no tiene grabación disponible.' });
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.sendFile(file, { acceptRanges: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || String(err) });
   }

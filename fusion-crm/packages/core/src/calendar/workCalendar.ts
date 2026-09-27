@@ -156,3 +156,20 @@ export function yearOverview(year: number, cal: WorkCalendar) {
   const own = cal.exceptions.filter((e) => e.date.startsWith(`${year}-`)).map((e) => ({ date: e.date, label: e.label, kind: e.type }));
   return [...holidays, ...own].sort((a, b) => a.date.localeCompare(b.date));
 }
+
+export type BusinessStatus = 'abierto' | 'cerrado' | 'festivo';
+
+/**
+ * Estado de atención (lo usa el nodo Horario del menú telefónico): abierto según el calendario,
+ * festivo si es festivo de Colombia sin excepción que lo abra, y si no, cerrado.
+ * `closedUntil` es el cierre de emergencia ("Cerrar ahora") hasta esa hora.
+ */
+export function businessStatusAt(now: Date, calendarValue: unknown, closedUntil?: string | null): BusinessStatus {
+  const cal = sanitizeWorkCalendar(calendarValue ?? {});
+  if (closedUntil && Date.parse(closedUntil) > now.getTime()) return 'cerrado';
+  if (isOpenAt(now, cal)) return 'abierto';
+  const ymd = bogotaYmd(now);
+  const openByException = cal.exceptions.some((e) => e.date === ymd && e.type === 'OPEN');
+  const holiday = holidaysOf(Number(ymd.slice(0, 4))).some((h) => h.date === ymd);
+  return holiday && !openByException ? 'festivo' : 'cerrado';
+}

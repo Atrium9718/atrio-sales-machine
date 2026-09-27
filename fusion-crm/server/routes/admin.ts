@@ -18,7 +18,7 @@ import {
 import { saveStateToFirestore, markStateDirty } from '../services/persistenceService';
 import { resetTransientHomeTasks } from './home';
 import { memoryGoals } from './performance';
-import { inMemoryVoicemails, inMemoryVoiceCallNotes } from './voice';
+import { inMemoryVoiceCallNotes } from './voice';
 
 export const adminRouter = Router();
 
@@ -487,7 +487,6 @@ adminRouter.post('/system/purge-transient-data', async (req, res) => {
     inMemoryCallInvitations.clear();
     inMemoryActivities.length = 0;
     inMemoryAuditLogs.length = 0;
-    inMemoryVoicemails.length = 0;
     inMemoryVoiceCallNotes.clear();
 
     // D. Tareas temporales de widgets de inicio
