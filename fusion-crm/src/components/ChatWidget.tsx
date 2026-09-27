@@ -36,7 +36,7 @@ export default function ChatWidget({ open, onOpenChange, hideLauncher = false }:
     setSessionId(sid);
     
     // Check initial sync
-    fetch('/api/widget/sync/' + sid)
+    fetch('/api/assistant/sync/' + sid)
       .then(res => res.json())
       .then(data => {
         if (data.messages && data.messages.length > 0) {
@@ -54,7 +54,7 @@ export default function ChatWidget({ open, onOpenChange, hideLauncher = false }:
   useEffect(() => {
     if (!isOpen || !sessionId) return;
     const interval = setInterval(() => {
-      fetch('/api/widget/sync/' + sessionId)
+      fetch('/api/assistant/sync/' + sessionId)
         .then(res => res.json())
         .then(data => {
           if (data.messages && data.messages.length > messages.length) {
@@ -90,7 +90,7 @@ export default function ChatWidget({ open, onOpenChange, hideLauncher = false }:
         };
       }
 
-      const res = await fetch('/api/widget/message', {
+      const res = await fetch('/api/assistant/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

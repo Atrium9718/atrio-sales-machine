@@ -98,6 +98,34 @@ export function generateToken(): string {
   return crypto.randomBytes(24).toString('base64url');
 }
 
+/** Crea un enlace del portal y devuelve la ruta con el token en claro (única vez que se conoce). */
+export async function createPortalLinkRecord(
+  db: Firestore,
+  data: { clientName: string; clientNit: string; createdById: string; createdByName: string }
+): Promise<{ link: PortalLink; path: string }> {
+  const token = generateToken();
+  const link: PortalLink = {
+    id: hashToken(token),
+    clientName: data.clientName,
+    clientNit: data.clientNit,
+    createdAt: new Date().toISOString(),
+    createdById: data.createdById,
+    createdByName: data.createdByName,
+    revokedAt: null,
+    lastAccessAt: null,
+  };
+  await setDoc(doc(db, LINKS, link.id), link);
+  return { link, path: `/portal/${token}` };
+}
+
+/** Enlace del portal creado por el asistente IA (sin petición HTTP de por medio). */
+export async function createPortalLinkForAssistant(client: { name: string; nit: string }): Promise<string> {
+  const db = getDb();
+  if (!db) throw new Error('Firestore no está disponible para crear el enlace del portal');
+  const { path } = await createPortalLinkRecord(db, { clientName: client.name, clientNit: client.nit, createdById: 'ai-assistant', createdByName: 'Asistente IA' });
+  return path;
+}
+
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32}$/;
 
 // ── Vista del cliente ───────────────────────────────────────────
@@ -386,20 +414,14 @@ clientPortalRouter.post('/links', async (req, res) => {
     return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || 'Datos inválidos' });
   }
   try {
-    const token = generateToken();
-    const link: PortalLink = {
-      id: hashToken(token),
+    const { link, path } = await createPortalLinkRecord(db, {
       clientName: parsed.data.clientName,
       clientNit: parsed.data.clientNit,
-      createdAt: new Date().toISOString(),
       createdById: String(req.headers['x-user-id'] || ''),
       createdByName: String(req.headers['x-user-name'] || ''),
-      revokedAt: null,
-      lastAccessAt: null,
-    };
-    await setDoc(doc(db, LINKS, link.id), link);
+    });
     // El token en claro solo se devuelve aquí; después no se puede recuperar.
-    res.status(201).json({ success: true, link, path: `/portal/${token}` });
+    res.status(201).json({ success: true, link, path });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

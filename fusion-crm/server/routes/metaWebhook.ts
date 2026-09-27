@@ -1,46 +1,78 @@
 import { Router } from 'express';
-import { getApps, initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import fs from 'fs';
-import path from 'path';
+import type { ChannelKind } from '../../packages/core/src/omnichannel';
 import { metaVerifyToken, requireMetaSignature } from '../security/metaSignature';
+import { omnichannel } from '../omnichannel/runtime';
+import type { InboundMessage } from '../omnichannel/service';
 
 export const metaWebhookRouter = Router();
 
-// Retrieve Firebase configuration
-let firebaseConfig: any = {};
-try {
-  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-} catch (e) {
-  console.warn('Could not read firebase-applet-config.json', e);
+export interface DeliveryUpdate {
+  externalId: string;
+  status: 'delivered' | 'read' | 'failed';
+  error?: string;
 }
 
-if (!getApps().length && firebaseConfig.projectId) {
-  try {
-    initializeApp(firebaseConfig);
-  } catch (err) {
-    console.error('Firebase init error', err);
+const MEDIA_LABEL: Record<string, string> = {
+  image: 'una imagen',
+  audio: 'un audio',
+  voice: 'una nota de voz',
+  video: 'un video',
+  document: 'un documento',
+  sticker: 'un sticker',
+  location: 'una ubicación',
+  contacts: 'un contacto',
+};
+
+/** Traduce el cuerpo del webhook de Meta a mensajes entrantes y actualizaciones de entrega. */
+export function parseMetaWebhook(body: any): { messages: InboundMessage[]; statuses: DeliveryUpdate[] } {
+  const messages: InboundMessage[] = [];
+  const statuses: DeliveryUpdate[] = [];
+
+  for (const entry of body?.entry ?? []) {
+    // WhatsApp Cloud API
+    for (const change of entry?.changes ?? []) {
+      const value = change?.value ?? {};
+      const names = new Map<string, string>((value.contacts ?? []).map((c: any) => [String(c.wa_id), String(c.profile?.name || '')]));
+      for (const m of value.messages ?? []) {
+        let text = '';
+        if (m.type === 'text') text = m.text?.body ?? '';
+        else if (m.type === 'button') text = m.button?.text ?? '';
+        else if (m.type === 'interactive') text = m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? '';
+        else {
+          const caption = m[m.type]?.caption ? `: ${m[m.type].caption}` : '';
+          text = `[El cliente envió ${MEDIA_LABEL[m.type] || 'un archivo'}${caption}]`;
+        }
+        if (!m.from || !text) continue;
+        messages.push({ channel: 'whatsapp', externalUserId: String(m.from), contactName: names.get(String(m.from)) || null, text, externalId: m.id ?? null });
+      }
+      for (const s of value.statuses ?? []) {
+        if (!s?.id || !['delivered', 'read', 'failed'].includes(s.status)) continue;
+        statuses.push({ externalId: String(s.id), status: s.status, error: s.errors?.[0]?.title || s.errors?.[0]?.message });
+      }
+    }
+
+    // Messenger / Instagram
+    const channel: ChannelKind = body?.object === 'instagram' ? 'instagram' : 'messenger';
+    for (const ev of entry?.messaging ?? []) {
+      if (ev?.message?.is_echo) continue; // copia de nuestros propios envíos
+      const text = ev?.message?.text ?? (ev?.message?.attachments?.length ? '[El cliente envió un archivo adjunto]' : ev?.postback?.title ?? '');
+      if (!ev?.sender?.id || !text) continue;
+      messages.push({ channel, externalUserId: String(ev.sender.id), contactName: null, text, externalId: ev?.message?.mid ?? null });
+    }
   }
+  return { messages, statuses };
 }
 
-function getDb() {
-  if (!getApps().length) throw new Error('Firebase not initialized');
-  return getFirestore(getApps()[0], firebaseConfig.firestoreDatabaseId);
-}
-
-// Verify Webhook (Meta Requirement)
+// Verificación de la suscripción (Meta hace un GET al configurar el webhook)
 metaWebhookRouter.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
-
-  // Debe coincidir con el token configurado en el panel de la app de Meta
-  const VERIFY_TOKEN = metaVerifyToken();
+  const expected = metaVerifyToken();
 
   if (mode && token) {
-    if (mode === 'subscribe' && VERIFY_TOKEN && token === VERIFY_TOKEN) {
-      console.log('WEBHOOK_VERIFIED');
+    if (mode === 'subscribe' && expected && token === expected) {
+      console.log('[meta-webhook] Suscripción verificada');
       res.status(200).send(challenge);
     } else {
       res.sendStatus(403);
@@ -50,81 +82,28 @@ metaWebhookRouter.get('/', (req, res) => {
   }
 });
 
-// Receive Messages
-metaWebhookRouter.post('/', requireMetaSignature, async (req, res) => {
-  try {
-    const body = req.body;
+// Eventos entrantes: se responde 200 de inmediato (Meta reintenta si tarda) y se procesan después
+metaWebhookRouter.post('/', requireMetaSignature, (req, res) => {
+  const body = req.body;
+  if (!['whatsapp_business_account', 'page', 'instagram'].includes(body?.object)) return res.sendStatus(404);
+  res.status(200).send('EVENT_RECEIVED');
 
-    // Check if it's an event from a Page/WhatsApp
-    if (body.object === 'whatsapp_business_account' || body.object === 'page' || body.object === 'instagram') {
-      
-      for (const entry of body.entry) {
-        // WhatsApp messages are in entry.changes
-        if (entry.changes) {
-          for (const change of entry.changes) {
-            if (change.value && change.value.messages) {
-              for (const msg of change.value.messages) {
-                // Ignore statuses, only process actual messages
-                if (msg.type === 'text') {
-                  const from = msg.from; // Sender's phone number
-                  const text = msg.text.body;
-                  const contactName = change.value.contacts?.[0]?.profile?.name || 'Cliente WhatsApp';
-
-                  await saveMessageToFirestore('whatsapp', from, text, contactName);
-                }
-              }
-            }
-          }
-        }
-        
-        // Messenger/Instagram messages are in entry.messaging
-        if (entry.messaging) {
-          for (const event of entry.messaging) {
-            if (event.message && event.message.text) {
-              const senderId = event.sender.id;
-              const text = event.message.text;
-              
-              await saveMessageToFirestore(body.object, senderId, text, 'Cliente ' + body.object);
-            }
-          }
-        }
+  const { messages, statuses } = parseMetaWebhook(body);
+  const svc = omnichannel();
+  void (async () => {
+    for (const m of messages) {
+      try {
+        await svc.handleInbound(m);
+      } catch (err) {
+        console.error(`[meta-webhook] Error procesando mensaje de ${m.channel}:`, err);
       }
-
-      res.status(200).send('EVENT_RECEIVED');
-    } else {
-      res.sendStatus(404);
     }
-  } catch (error) {
-    console.error('Webhook processing error:', error);
-    res.sendStatus(500);
-  }
+    for (const s of statuses) {
+      try {
+        await svc.updateDeliveryStatus(s.externalId, s.status, s.error);
+      } catch (err) {
+        console.error('[meta-webhook] Error actualizando estado de entrega:', err);
+      }
+    }
+  })();
 });
-
-async function saveMessageToFirestore(channel: string, senderId: string, text: string, contactName: string) {
-  const sessionId = `${channel}_${senderId}`;
-  const chatRef = doc(getDb(), 'chats', sessionId);
-  const chatDoc = await getDoc(chatRef);
-  
-  let messages = [];
-  if (chatDoc.exists()) {
-    messages = chatDoc.data().messages || [];
-  }
-  
-  messages.push({
-    id: Date.now(),
-    sender: 'user',
-    text: text,
-    time: new Date().toISOString()
-  });
-
-  await setDoc(chatRef, {
-    channel: channel,
-    contactName: contactName,
-    updatedAt: new Date().toISOString(),
-    status: chatDoc.exists() ? chatDoc.data().status : 'active',
-    messages: messages
-  }, { merge: true });
-  
-  // NOTE: If status is 'active', you can trigger the AI Bot here 
-  // to automatically reply via WhatsApp/Messenger APIs!
-}

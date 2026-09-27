@@ -62,6 +62,8 @@ export interface Conversation {
   unread: number;
   /** Ruta del portal de avance generada para este cliente (se reutiliza). */
   portalPath: string | null;
+  /** Chat web: ids de mensajes ya mostrados al visitante. */
+  widgetSeen?: string[];
   messages: ConversationMessage[];
   createdAt: string;
   updatedAt: string;

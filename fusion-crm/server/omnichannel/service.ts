@@ -297,6 +297,32 @@ export function createOmnichannelService(deps: OmnichannelDeps) {
       });
     },
 
+    /** Crea la conversación (sin mensaje) si no existe; p. ej. cuando el visitante del chat web se presenta. */
+    ensureConversation(msg: Omit<InboundMessage, 'text' | 'externalId'>): Promise<Conversation> {
+      const id = conversationId(msg.channel, msg.externalUserId);
+      return serialized(id, async () => {
+        const existing = await deps.conversations.get(id);
+        if (existing) return existing;
+        const conv = newConversation({ ...msg, text: '' }, await deps.loadConfig());
+        conv.updatedAt = iso();
+        await deps.conversations.upsert(conv);
+        return conv;
+      });
+    },
+
+    /** Chat web: marca mensajes como ya mostrados al visitante (sin notificar a la bandeja). */
+    markWidgetSeen(id: string, messageIds: string[]): Promise<void> {
+      if (!messageIds.length) return Promise.resolve();
+      return serialized(id, async () => {
+        const conv = await deps.conversations.get(id);
+        if (!conv) return;
+        const seen = new Set(conv.widgetSeen ?? []);
+        messageIds.forEach((m) => seen.add(m));
+        conv.widgetSeen = [...seen].slice(-500);
+        await deps.conversations.upsert(conv);
+      });
+    },
+
     async list(): Promise<Conversation[]> {
       const all = await deps.conversations.list();
       return all.sort((a, b) => String(b.lastMessageAt).localeCompare(String(a.lastMessageAt)));

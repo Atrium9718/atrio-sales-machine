@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { metaWebhookRouter } from './routes/metaWebhook';
 import { widgetRouter } from './routes/widget';
+import { assistantRouter } from './routes/assistant';
+import { omnichannelRouter } from './routes/omnichannel';
 import { voiceRouter } from './routes/voice';
 import { checkMetaTokens } from './metaCron';
 import { settingsRouter } from './routes/settings';
@@ -57,6 +59,8 @@ export async function startServer() {
   
   app.use('/api/webhooks/meta', metaWebhookRouter);
   app.use('/api/widget', widgetRouter);
+  app.use('/api/assistant', assistantRouter);
+  app.use('/api/omnichannel', omnichannelRouter);
   app.use('/api/voice', voiceRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/admin', adminRouter);
