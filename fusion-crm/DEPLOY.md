@@ -18,6 +18,19 @@ Plus 4 o Hostinger KVM 2). Sistema: **Ubuntu 24.04 LTS** (o 26.04 LTS).
 
 ---
 
+### Si el VPS es de InterServer
+- Se compra por *slices* (1 slice = 1 núcleo, 2 GB de RAM, 30 GB SSD). Recomendado **4 slices**
+  (4 núcleos, 8 GB); mínimo 3. Tipo **Linux KVM** (Docker necesita KVM), sistema **Ubuntu 24.04**,
+  ubicación en la costa este de EE. UU. (Secaucus/Nueva York: menor latencia hacia Colombia).
+- La IP y la contraseña de root llegan al correo y están en *my.interserver.net → VPS*. Desde ese
+  panel también hay consola web por si SSH no responde.
+- El puerto 25 de salida suele estar bloqueado: para el correo del portal usa SMTP en el puerto
+  **587** (o 465), que funciona sin pedir nada.
+
+> **Antes de clonar:** fusiona el PR #1 en `main` desde GitHub (botón *Merge pull request*); el
+> código del sistema está en esa rama. Si prefieres no fusionar aún, clona con
+> `git clone -b claude/analizar-proyectos-6prize …`.
+
 ## 1. Apuntar el dominio
 
 En el panel donde compraste el dominio, crea un registro **A**:
@@ -37,7 +50,13 @@ Entra al VPS (terminal del panel del proveedor o `ssh root@IP`) y ejecuta:
 curl -fsSL https://get.docker.com | sh
 
 # Cortafuegos: solo SSH y web
+apt-get update && apt-get install -y ufw git
 ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable
+
+# Hora de Colombia y memoria de respaldo (swap) para que la construcción no se quede sin RAM
+timedatectl set-timezone America/Bogota
+fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
 # Código
 git clone https://github.com/Atrium9718/atrio-sales-machine.git
