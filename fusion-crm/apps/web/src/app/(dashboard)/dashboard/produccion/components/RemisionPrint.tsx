@@ -1,4 +1,5 @@
 import { Printer } from "lucide-react";
+import { useSettingValue } from "@/hooks/useSettingValue";
 import { type DeliveryNote, type ProductionProject } from '../productionModel';
 
 export function PrintRemisionModal({ remisionId, remisiones, projects, onClose }: { remisionId: string, remisiones: DeliveryNote[], projects: ProductionProject[], onClose: () => void }) {
@@ -47,6 +48,10 @@ export function PrintRemisionModal({ remisionId, remisiones, projects, onClose }
 
 function RemisionCopy({ remision, project, type }: { remision: DeliveryNote, project: ProductionProject, type: string }) {
   const itemsText = project.itemsDetail.map(i => `${i.quantity} - ${i.name} ${i.size} ${i.material} ${i.finishings}`).join(', ');
+  // Datos de la empresa: Administración → Organización
+  const companyName = useSettingValue<string>('organization.business.name', 'Fusión Comunicación Gráfica S.A.S.');
+  const companyNit = useSettingValue<string>('organization.business.nit', '');
+  const companyAddress = useSettingValue<string>('organization.business.address', '');
   const dateStr = new Date(remision.createdAt).toLocaleDateString('es-CO');
 
   return (
@@ -55,9 +60,9 @@ function RemisionCopy({ remision, project, type }: { remision: DeliveryNote, pro
         <div>
           <h1 className="text-3xl font-bold text-teal-600 mb-6">REMISIÓN Nº {remision.number.replace('REM-', '')}</h1>
           <div className="text-sm space-y-0.5">
-            <p className="font-bold">Fusión Comunicación Gráfica S.A.S.</p>
-            <p className="text-muted-foreground">NIT: 900310298-2</p>
-            <p className="text-muted-foreground">Cra. 22 #24 - 47, Manizales, Caldas</p>
+            <p className="font-bold">{companyName}</p>
+            {companyNit && <p className="text-muted-foreground">NIT: {companyNit}</p>}
+            {companyAddress && <p className="text-muted-foreground">{companyAddress}</p>}
           </div>
         </div>
         <div className="w-24 h-24 border border-border bg-slate-50 flex flex-col items-center justify-center font-black text-slate-300 rounded-lg">

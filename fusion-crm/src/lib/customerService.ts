@@ -1,283 +1,120 @@
-import { idbSaveCustomers, idbGetAllCustomers, idbClearAllCustomers, StoredCustomer } from '@/lib/indexedDbService';
+import { idbGetAllCustomers, idbClearAllCustomers, StoredCustomer } from '@/lib/indexedDbService';
+
+/**
+ * Clientes: viven en el servidor (la misma base para todo el equipo, la ficha del cliente,
+ * la identificación de llamadas y el portal). Antes se guardaban solo en el navegador de cada
+ * persona; lo que haya quedado ahí se sube una vez al servidor y se borra del navegador.
+ */
 
 export interface Customer extends StoredCustomer {}
 
-const QUOTA_DATE_KEY = 'crm_firestore_quota_exhausted_date';
-const CLEARED_TIMESTAMP_KEY = 'crm_customers_cleared_timestamp';
+let cache: { at: number; list: Customer[] } | null = null;
+const CACHE_MS = 30_000;
 
-export function getClearedTimestamp(): number {
-  if (typeof window === 'undefined') return 0;
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.success === false) throw new Error(data.error || `Error ${res.status}`);
+  return data as T;
+}
+
+/** Sube al servidor los clientes que quedaron guardados solo en este navegador (una sola vez). */
+let migrated = false;
+async function migrateLocalCustomers(): Promise<void> {
+  if (migrated) return;
+  migrated = true;
+  let local: StoredCustomer[] = [];
   try {
-    const raw = localStorage.getItem(CLEARED_TIMESTAMP_KEY);
-    return raw ? parseInt(raw, 10) : 0;
+    local = await idbGetAllCustomers();
   } catch {
-    return 0;
+    return;
   }
-}
-
-export function setClearedTimestamp(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(CLEARED_TIMESTAMP_KEY, Date.now().toString());
-  } catch (e) {
-    console.error('Failed to set cleared timestamp', e);
+  if (!local.length) return;
+  const valid = local.filter((c) => String(c.name || '').trim() && !String(c.name).startsWith('Cliente #'));
+  for (let i = 0; i < valid.length; i += 2000) {
+    await api('/api/clients/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: valid.slice(i, i + 2000).map(({ syncedToCloud: _s, ...c }: any) => ({ ...c, id: String(c.id).startsWith('loc_') || String(c.id).startsWith('cust_') ? undefined : c.id })) }),
+    });
   }
+  await idbClearAllCustomers().catch(() => undefined);
+  cache = null;
 }
 
-export function getTodayDateString(): string {
-  return new Date().toISOString().slice(0, 10);
+async function loadAll(force = false): Promise<Customer[]> {
+  if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.list;
+  await migrateLocalCustomers().catch((err) => console.warn('No se pudieron subir los clientes del navegador:', err));
+  const data = await api<{ clients: Customer[] }>('/api/clients');
+  cache = { at: Date.now(), list: data.clients || [] };
+  return cache.list;
 }
 
+/** Todos los clientes del servidor. */
+export async function getAllCustomers(): Promise<{ customers: Customer[]; isQuotaExhausted: boolean; fromLocalCacheOnly: boolean }> {
+  const customers = await loadAll(true);
+  return { customers, isQuotaExhausted: false, fromLocalCacheOnly: false };
+}
+
+/** Ya no hay cuota de Firestore que se agote: se conserva para las pantallas que lo consultan. */
 export function isQuotaExhaustedToday(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    const raw = localStorage.getItem(QUOTA_DATE_KEY);
-    return raw === getTodayDateString();
-  } catch {
-    return false;
-  }
-}
-
-export function markQuotaExhausted(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(QUOTA_DATE_KEY, getTodayDateString());
-  } catch (e) {
-    console.error('Failed to set quota key in localStorage', e);
-  }
-}
-
-export function resetQuotaFlag(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(QUOTA_DATE_KEY);
-  } catch (e) {
-    console.error('Failed to remove quota key', e);
-  }
-}
-
-export function isFirestoreQuotaError(err: any): boolean {
-  if (!err) return false;
-  const code = String(err.code || '').toLowerCase();
-  const msg = String(err.message || '').toLowerCase();
-  return (
-    code.includes('resource-exhausted') ||
-    code.includes('quota') ||
-    msg.includes('quota limit exceeded') ||
-    msg.includes('resource-exhausted') ||
-    msg.includes('free daily write units per project')
-  );
+  return false;
 }
 
 /**
- * Filter out corrupt or dummy records that don't have a real name or NIT
- */
-function isValidCustomerRecord(c: any, clearedAt: number): boolean {
-  if (!c) return false;
-  
-  // Check if cleared
-  if (clearedAt > 0) {
-    const docTime = new Date(c.updatedAt || c.createdAt || 0).getTime();
-    if (docTime > 0 && docTime <= clearedAt) {
-      return false;
-    }
-  }
-
-  // Filter dummy records like "Cliente #1846" with no NIT
-  const name = String(c.name || '').trim();
-  const nit = String(c.nit || c.doc || '').trim();
-  if (name.startsWith('Cliente #') && (!nit || nit === '')) {
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Fetch all customers reading from IndexedDB (ultra-fast, unlimited capacity, quota-free)
- */
-export async function getAllCustomers(): Promise<{
-  customers: Customer[];
-  isQuotaExhausted: boolean;
-  fromLocalCacheOnly: boolean;
-}> {
-  const clearedAt = getClearedTimestamp();
-  let localList: Customer[] = [];
-  try {
-    localList = await idbGetAllCustomers();
-  } catch (e) {
-    console.warn('Could not read from IndexedDB:', e);
-  }
-
-  // Filter local list against cleared timestamp and dummy rows
-  localList = localList.filter(c => isValidCustomerRecord(c, clearedAt));
-
-  return { customers: localList, isQuotaExhausted: true, fromLocalCacheOnly: true };
-}
-
-/**
- * Import customers: saves immediately to IndexedDB (handles 50,000+ records with zero quota limits).
- * Completely avoids Firestore write quotas to prevent RESOURCE_EXHAUSTED errors.
+ * Importa clientes (Excel). El servidor actualiza al que ya exista con el mismo NIT en vez de
+ * duplicarlo. Se envía por partes para que una lista grande no falle de una vez.
  */
 export async function importCustomers(
   items: Array<Omit<Customer, 'id'>>,
   onProgress?: (processed: number, total: number) => void
-): Promise<{
-  success: boolean;
-  total: number;
-  cloudSynced: boolean;
-  quotaHit: boolean;
-  message: string;
-}> {
+): Promise<{ success: boolean; total: number; cloudSynced: boolean; quotaHit: boolean; message: string }> {
   const total = items.length;
-  if (total === 0) {
-    return { success: true, total: 0, cloudSynced: false, quotaHit: false, message: 'No hay datos válidos para importar.' };
+  if (!total) return { success: true, total: 0, cloudSynced: true, quotaHit: false, message: 'No hay datos válidos para importar.' };
+  let done = 0;
+  for (let i = 0; i < total; i += 1000) {
+    const part = items.slice(i, i + 1000);
+    await api('/api/clients/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: part }) });
+    done += part.length;
+    onProgress?.(done, total);
   }
-
-  // 1. Read existing records from IndexedDB
-  let existing: Customer[] = [];
-  try {
-    existing = await idbGetAllCustomers();
-  } catch (e) {
-    console.warn('Error reading existing customers:', e);
-  }
-
-  const timestamp = Date.now();
-  const preparedList: Customer[] = items.map((item, idx) => {
-    const id = `loc_${timestamp}_${idx}`;
-    return {
-      ...item,
-      id,
-      code: item.code || `CLI-${timestamp}-${idx}`,
-      createdAt: item.createdAt || new Date().toISOString(),
-      updatedAt: item.updatedAt || new Date().toISOString(),
-      syncedToCloud: false,
-    };
-  });
-
-  // Map to deduplicate / update by NIT
-  const existingMap = new Map<string, Customer>();
-  existing.forEach((c) => {
-    if (c.nit) existingMap.set(c.nit.trim(), c);
-  });
-  
-  // Combine: update existing or add new
-  preparedList.forEach((p) => {
-    if (p.nit) existingMap.set(p.nit.trim(), p);
-    else existingMap.set(p.id, p);
-  });
-
-  const combined = Array.from(existingMap.values());
-  await idbSaveCustomers(combined);
-
-  if (onProgress) onProgress(total, total);
-
-  return {
-    success: true,
-    total,
-    cloudSynced: false,
-    quotaHit: false,
-    message: `¡${total.toLocaleString()} clientes importados exitosamente y guardados en la aplicación!`,
-  };
+  cache = null;
+  return { success: true, total, cloudSynced: true, quotaHit: false, message: `${total.toLocaleString('es-CO')} clientes importados. Los que ya existían con el mismo NIT se actualizaron.` };
 }
 
-/**
- * Add a single customer directly to IndexedDB
- */
+/** Crea un cliente. */
 export async function addCustomer(data: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer> {
-  const timestamp = new Date().toISOString();
-  const localId = `cust_${Date.now()}`;
-  const newCust: Customer = {
-    ...data,
-    id: localId,
-    code: data.code || `CLI-${Date.now()}`,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    syncedToCloud: false,
-  };
-
-  // Save to IndexedDB
-  await idbSaveCustomers([newCust]);
-  return newCust;
+  const res = await api<{ client: Customer }>('/api/clients', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  cache = null;
+  return res.client;
 }
 
-/**
- * Fast search over customers: searches IndexedDB store directly (instantaneous & offline safe)
- */
+/** Búsqueda rápida por nombre, NIT, teléfono, correo, contacto o dirección. */
 export async function searchCustomers(q: string): Promise<Customer[]> {
   const trimmed = (q || '').trim().toLowerCase();
   if (trimmed.length < 2) return [];
-
-  const clearedAt = getClearedTimestamp();
-  let localList: Customer[] = [];
+  let list: Customer[] = [];
   try {
-    localList = await idbGetAllCustomers();
+    list = await loadAll();
   } catch (e) {
-    console.warn('Error fetching for search:', e);
+    console.warn('No se pudieron buscar clientes:', e);
+    return [];
   }
-
-  const localMatches = localList
-    .filter(c => isValidCustomerRecord(c, clearedAt))
-    .filter((c) => {
-      const name = (c.name || '').toLowerCase();
-      const tradeName = (c.tradeName || '').toLowerCase();
-      const nit = (c.nit || c.doc || '').toLowerCase();
-      const phone = (c.phone1 || c.phone || '').toLowerCase();
-      const email = (c.email || '').toLowerCase();
-      const billingContact = (c.billingContact || '').toLowerCase();
-      const address = (c.address || '').toLowerCase();
-
-      return (
-        name.includes(trimmed) ||
-        tradeName.includes(trimmed) ||
-        nit.includes(trimmed) ||
-        phone.includes(trimmed) ||
-        email.includes(trimmed) ||
-        billingContact.includes(trimmed) ||
-        address.includes(trimmed)
-      );
-    });
-
-  return localMatches.slice(0, 15);
+  return list
+    .filter((c) =>
+      [c.name, c.tradeName, c.nit || (c as any).doc, c.phone1 || (c as any).phone, c.email, c.billingContact, c.address].some((v) =>
+        String(v || '').toLowerCase().includes(trimmed)
+      )
+    )
+    .slice(0, 15);
 }
 
-/**
- * Reload/Seed the database with real sample data from the server
- */
-export async function seedCustomerDatabase(): Promise<{ success: boolean; message: string }> {
-  try {
-    const res = await fetch('/api/clients/seed', { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      // Clear IndexedDB first to avoid duplicates or keep it clean
-      await idbClearAllCustomers();
-      // Import from cloud to local
-      const cloudRes = await fetch('/api/clients');
-      const cloudData = await cloudRes.json();
-      if (cloudData.success && Array.isArray(cloudData.clients)) {
-        await idbSaveCustomers(cloudData.clients);
-      }
-      return { success: true, message: data.message };
-    }
-    return { success: false, message: data.error || 'Error al sembrar base de datos' };
-  } catch (err: any) {
-    return { success: false, message: err.message };
-  }
-}
-
-/**
- * Clear all customers: empties IndexedDB store, resets cache, and permanently removes old records
- */
+/** Olvida la copia local (no borra nada del servidor). */
 export async function clearAllCustomers(): Promise<{ success: boolean; cloudCleared: boolean; message: string }> {
-  // 1. Mark cleared timestamp immediately so any old or corrupted docs are permanently ignored
-  setClearedTimestamp();
-
-  // 2. Clear IndexedDB
-  await idbClearAllCustomers();
-
-  return {
-    success: true,
-    cloudCleared: false,
-    message: 'Base de datos de clientes vaciada con éxito. Ahora puedes cargar tu archivo Excel limpio.',
-  };
+  cache = null;
+  return { success: true, cloudCleared: false, message: 'Los clientes se conservan; la importación actualiza los que tengan el mismo NIT.' };
 }

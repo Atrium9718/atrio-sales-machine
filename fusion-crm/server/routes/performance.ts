@@ -200,10 +200,10 @@ performanceRouter.get('/me', async (req, res) => {
     const windowEnd = now;
 
     // Cálculo de tareas (inicia en 0 al no haber iniciado operaciones)
-    const mockTasks: any[] = [];
+    const tasks: any[] = [];
 
     const taskCompliance = computeTaskCompliance({
-      tasks: mockTasks,
+      tasks,
       windowStart,
       windowEnd,
       now,

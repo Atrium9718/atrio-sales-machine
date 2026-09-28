@@ -28,6 +28,10 @@ import {
 import { realtimeStreamManager } from '../../packages/core/src/realtime/stream';
 import { validateAttachment } from '../../packages/core/src/announcements/mime-validation';
 import { employeeService } from '../services/employeeService';
+import { repositories } from '../repositories';
+import { permissionsForRequest } from '../auth/userPermissions';
+import { can } from '../../packages/core/src/auth/permissions';
+import { lookupChatEntities, quoteEntity, projectEntity, clientEntity, type ChatEntity } from '../../packages/core/src/chat/entityLookup';
 
 export const chatRouter = Router();
 
@@ -47,7 +51,7 @@ export const inMemoryChannels: ChatChannel[] = [
     icon: 'Hash',
     isArchived: false,
     isReadOnly: false,
-    messageCount: 12,
+    messageCount: 0,
     createdAt: '2026-08-01T08:00:00.000Z',
     updatedAt: new Date().toISOString(),
     createdById: 'emp-03',
@@ -63,7 +67,7 @@ export const inMemoryChannels: ChatChannel[] = [
     icon: 'Briefcase',
     isArchived: false,
     isReadOnly: false,
-    messageCount: 8,
+    messageCount: 0,
     createdAt: '2026-08-01T08:00:00.000Z',
     updatedAt: new Date().toISOString(),
     createdById: 'emp-03',
@@ -79,7 +83,7 @@ export const inMemoryChannels: ChatChannel[] = [
     icon: 'Factory',
     isArchived: false,
     isReadOnly: false,
-    messageCount: 15,
+    messageCount: 0,
     createdAt: '2026-08-01T08:00:00.000Z',
     updatedAt: new Date().toISOString(),
     createdById: 'emp-03',
@@ -95,7 +99,7 @@ export const inMemoryChannels: ChatChannel[] = [
     icon: 'Megaphone',
     isArchived: false,
     isReadOnly: true,
-    messageCount: 4,
+    messageCount: 0,
     createdAt: '2026-08-01T08:00:00.000Z',
     updatedAt: new Date().toISOString(),
     createdById: 'emp-03',
@@ -132,7 +136,7 @@ export const inMemorySavedReplies: SavedReply[] = [
     shortcut: '/cotiza',
     title: 'Envío de propuesta económica',
     body: 'Hola, te comparto la cotización formal con especificaciones técnicas de materiales y tiempos de entrega. Quedo muy atento a tus comentarios para proceder con la orden de producción.',
-    usageCount: 18,
+    usageCount: 0,
     createdAt: '2026-08-10T09:00:00.000Z',
     updatedAt: '2026-08-10T09:00:00.000Z',
   },
@@ -142,17 +146,7 @@ export const inMemorySavedReplies: SavedReply[] = [
     shortcut: '/gracias',
     title: 'Agradecimiento por confirmación',
     body: '¡Muchas gracias por la aprobación! El pedido ha ingresado a la cola de programación de planta y te estaremos notificando apenas iniciemos impresión y corte.',
-    usageCount: 34,
-    createdAt: '2026-08-10T09:00:00.000Z',
-    updatedAt: '2026-08-10T09:00:00.000Z',
-  },
-  {
-    id: 'rep-3',
-    organizationId: 'org-1',
-    shortcut: '/datos-bancarios',
-    title: 'Cuentas para transferencias',
-    body: 'Para el pago del anticipo: Banco Bancolombia, Cuenta Corriente No. 1029-3849-21 a nombre de Fusion Publicidad S.A.S., NIT 901.234.567-8. Por favor remitir comprobante a contabilidad@fusion.com.co.',
-    usageCount: 29,
+    usageCount: 0,
     createdAt: '2026-08-10T09:00:00.000Z',
     updatedAt: '2026-08-10T09:00:00.000Z',
   },
@@ -162,7 +156,7 @@ export const inMemorySavedReplies: SavedReply[] = [
     shortcut: '/muestras',
     title: 'Retiro de pruebas de color',
     body: 'Las muestras físicas de sustratos y pruebas de color en tintas UV ya se encuentran impresas y listas para retiro o despacho en recepción de planta.',
-    usageCount: 12,
+    usageCount: 0,
     createdAt: '2026-08-15T14:00:00.000Z',
     updatedAt: '2026-08-15T14:00:00.000Z',
   },
@@ -962,24 +956,40 @@ chatRouter.post('/export/:channelId', async (req: Request, res: Response) => {
 // LOOKUP DE ENTIDADES PARA AUTOCOMPLETADO CON '#'
 // ============================================================================
 
-chatRouter.get('/entities/lookup', (req: Request, res: Response) => {
-  const query = (req.query.q as string || '').toLowerCase().trim();
+chatRouter.get('/entities/lookup', async (req: Request, res: Response) => {
+  try {
+    const repo = repositories();
+    const [quotes, projects, clients] = await Promise.all([repo.quotes.list(), repo.projects.list(), repo.clients.list()]);
+    const { permissions } = permissionsForRequest(req);
+    const entities = lookupChatEntities(String(req.query.q || ''), { quotes, projects, clients }, { includeAmounts: can(permissions, 'cost:read') });
+    return res.json({ entities });
+  } catch (err: any) {
+    return res.status(500).json({ entities: [], error: err?.message || String(err) });
+  }
+});
 
-  // Catálogo de entidades vinculables con código, título y estado
-  const entities = [
-    { type: 'QUOTE', id: 'cot-1045', code: 'COT-1045', title: 'Bancolombia S.A. — Señalética Torre Norte', subtitle: '$ 48.500.000 COP · En negociación', status: 'NEGOCIACION', statusVariant: 'warning' },
-    { type: 'QUOTE', id: 'cot-1046', code: 'COT-1046', title: 'Cervecería BBC — Cajas de Luz Barra Bar', subtitle: '$ 18.200.000 COP · Aprobada', status: 'APROBADA', statusVariant: 'success' },
-    { type: 'PRODUCTION_PROJECT', id: 'prj-801', code: 'PRJ-801', title: 'Almacenes Éxito — 120 Cajas LED Acrílicas', subtitle: 'Avance: 68% · Cama Plana y Corte', status: 'EN_PRODUCCION', statusVariant: 'info' },
-    { type: 'PRODUCTION_PROJECT', id: 'prj-802', code: 'PRJ-802', title: 'Clínica Las Américas — Avisos Bioseguridad', subtitle: 'Avance: 92% · Ensamble final', status: 'CONTROL_CALIDAD', statusVariant: 'info' },
-    { type: 'CLIENT', id: 'cli-101', code: 'CLI-101', title: 'Bancolombia S.A.', subtitle: 'NIT: 890.903.938-8 · Corporativo', status: 'ACTIVO', statusVariant: 'success' },
-    { type: 'CLIENT', id: 'cli-102', code: 'CLI-102', title: 'Almacenes Éxito S.A.', subtitle: 'NIT: 890.900.608-9 · Gran Cuenta', status: 'ACTIVO', statusVariant: 'success' },
-  ];
-
-  const filtered = query
-    ? entities.filter((e) => e.code.toLowerCase().includes(query) || e.title.toLowerCase().includes(query))
-    : entities;
-
-  return res.json({ entities: filtered });
+// Ficha rápida de lo que se citó con # en un mensaje
+chatRouter.get('/entities/:type/:id', async (req: Request, res: Response) => {
+  try {
+    const repo = repositories();
+    const { permissions } = permissionsForRequest(req);
+    const { type, id } = req.params;
+    let entity: ChatEntity | null = null;
+    if (type === 'QUOTE') {
+      const q = (await repo.quotes.list()).find((x: any) => x.id === id);
+      if (q) entity = quoteEntity(q, can(permissions, 'cost:read'));
+    } else if (type === 'PRODUCTION_PROJECT') {
+      const p = (await repo.projects.list()).find((x: any) => x.id === id);
+      if (p) entity = projectEntity(p);
+    } else if (type === 'CLIENT') {
+      const c = (await repo.clients.list()).find((x: any) => x.id === id);
+      if (c) entity = clientEntity(c);
+    }
+    if (!entity) return res.status(404).json({ success: false, error: 'Ya no existe' });
+    return res.json({ success: true, entity });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || String(err) });
+  }
 });
 
 // ============================================================================

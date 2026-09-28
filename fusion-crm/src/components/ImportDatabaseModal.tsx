@@ -520,39 +520,8 @@ export function ImportDatabaseModal({ onClose, onImportComplete }: Props) {
         {/* Footer */}
         {!stats && (
           <div className="p-4 border-t border-border flex flex-wrap justify-between items-center gap-3 bg-muted/20 shrink-0">
-            <button
-              onClick={handleClearDb}
-              disabled={loading || clearing}
-              className="px-3.5 py-2 text-xs font-bold rounded-lg bg-danger/10 text-danger hover:bg-danger/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              {clearing ? 'Vaciando...' : 'Vaciar DB Actual'}
-            </button>
+            <span />
             <div className="flex items-center gap-2">
-              <button
-                onClick={async () => {
-                  if (!confirm('¿Deseas cargar la base de datos de clientes inicial (reales de ejemplo)? Esto reemplazará tu lista local.')) return;
-                  setLoading(true);
-                  try {
-                    const { seedCustomerDatabase } = await import('@/lib/customerService');
-                    const res = await seedCustomerDatabase();
-                    notify(res.message, 'error');
-                    if (res.success) {
-                      onImportComplete();
-                      onClose();
-                    }
-                  } catch (e: any) {
-                    notify('Error: ' + e.message);
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                disabled={loading}
-                className="px-3.5 py-2 text-xs font-bold rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Cargar Base Real
-              </button>
               <button
                 onClick={onClose}
                 disabled={loading}
@@ -560,17 +529,6 @@ export function ImportDatabaseModal({ onClose, onImportComplete }: Props) {
               >
                 Cancelar
               </button>
-              {parsedRows.length > 0 && (
-                <button
-                  onClick={() => processUpload(true)}
-                  disabled={loading}
-                  className="px-4 py-2 text-xs font-bold rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
-                  title="Elimina los registros defectuosos anteriores y carga este archivo completamente"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Reemplazar y Cargar Todo ({parsedRows.length.toLocaleString()})
-                </button>
-              )}
               <button
                 onClick={() => processUpload(false)}
                 disabled={!file || loading || parsedRows.length === 0}

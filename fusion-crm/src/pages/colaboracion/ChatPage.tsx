@@ -247,6 +247,17 @@ export const ChatPage: React.FC = () => {
     }
   };
 
+  const openEntityPreview = async (type: string, id: string) => {
+    setSelectedEntityPreview({ type, id, loaded: false, entity: null });
+    try {
+      const res = await fetch(`/api/chat/entities/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+      const data = await res.json().catch(() => ({}));
+      setSelectedEntityPreview({ type, id, loaded: true, entity: data.success ? data.entity : null });
+    } catch {
+      setSelectedEntityPreview({ type, id, loaded: true, entity: null });
+    }
+  };
+
   const loadEntities = async (query = '') => {
     try {
       const res = await fetch(`/api/chat/entities/lookup?q=${encodeURIComponent(query)}`);
@@ -1191,10 +1202,7 @@ export const ChatPage: React.FC = () => {
                     {msg.linkedEntityType && msg.linkedEntityId && (
                       <div
                         onClick={() =>
-                          setSelectedEntityPreview({
-                            type: msg.linkedEntityType,
-                            id: msg.linkedEntityId,
-                          })
+                          openEntityPreview(msg.linkedEntityType, msg.linkedEntityId)
                         }
                         className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary font-semibold hover:bg-primary/10 cursor-pointer transition-colors mt-1"
                       >
@@ -1855,10 +1863,10 @@ export const ChatPage: React.FC = () => {
               <FolderKanban className="w-5 h-5 text-primary" />
               <div>
                 <h4 className="font-bold text-xs text-foreground">
-                  Ficha de #{selectedEntityPreview.id}
+                  {selectedEntityPreview.entity?.code ? `#${selectedEntityPreview.entity.code}` : 'Referencia'}
                 </h4>
                 <p className="text-[10px] text-muted-foreground">
-                  {selectedEntityPreview.type === 'QUOTE' ? 'Cotización Comercial' : 'Proyecto Operativo'}
+                  {selectedEntityPreview.type === 'QUOTE' ? 'Cotización' : selectedEntityPreview.type === 'CLIENT' ? 'Cliente' : 'Orden de trabajo'}
                 </p>
               </div>
             </div>
@@ -1871,40 +1879,36 @@ export const ChatPage: React.FC = () => {
           </div>
 
           <div className="flex-1 space-y-3 text-xs">
-            <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-1">
-              <span className="text-[10px] text-muted-foreground uppercase font-bold">Estado</span>
-              <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                ● En Producción / Negociación
-              </p>
-            </div>
-
-            <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-1">
-              <span className="text-[10px] text-muted-foreground uppercase font-bold">Cliente</span>
-              <p className="font-bold text-foreground">Bancolombia S.A.</p>
-              <p className="text-[11px] text-muted-foreground">NIT: 890.903.938-8</p>
-            </div>
-
-            <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-1">
-              <span className="text-[10px] text-muted-foreground uppercase font-bold">Alcance</span>
-              <p className="text-foreground">
-                Señalética corporativa Torre Norte, corte acrílico 5mm e impresión UV directa.
-              </p>
-            </div>
+            {!selectedEntityPreview.loaded ? (
+              <p className="text-muted-foreground">Cargando…</p>
+            ) : !selectedEntityPreview.entity ? (
+              <p className="text-muted-foreground">Este registro ya no existe o no tienes acceso.</p>
+            ) : (
+              <>
+                <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-1">
+                  <span className="text-[10px] text-muted-foreground uppercase font-bold">{selectedEntityPreview.entity.code}</span>
+                  <p className="font-bold text-foreground">{selectedEntityPreview.entity.title}</p>
+                  <p className="text-[11px] text-muted-foreground">{selectedEntityPreview.entity.subtitle}</p>
+                </div>
+                {selectedEntityPreview.entity.clientName && selectedEntityPreview.entity.type !== 'CLIENT' && (
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-1">
+                    <span className="text-[10px] text-muted-foreground uppercase font-bold">Cliente</span>
+                    <p className="font-bold text-foreground">{selectedEntityPreview.entity.clientName}</p>
+                    {selectedEntityPreview.entity.clientNit && <p className="text-[11px] text-muted-foreground">NIT {selectedEntityPreview.entity.clientNit}</p>}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="border-t border-border pt-3 space-y-2">
             <button
-              onClick={() => {
-                navigate(
-                  selectedEntityPreview.type === 'QUOTE'
-                    ? `/dashboard/cotizador`
-                    : `/dashboard/produccion`
-                );
-              }}
-              className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-1.5"
+              disabled={!selectedEntityPreview.entity}
+              onClick={() => selectedEntityPreview.entity && navigate(selectedEntityPreview.entity.href)}
+              className="w-full py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              Abrir Registro en ERP
+              Abrir
             </button>
           </div>
         </div>

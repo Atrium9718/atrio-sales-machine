@@ -12,12 +12,12 @@ export default function OrganizacionPage() {
   const [logoSecundario, setLogoSecundario] = useState<string>('');
   const [primaryColor, setPrimaryColor] = useState<string>('#000000');
   const [razonSocial, setRazonSocial] = useState<string>('Fusión Comunicación Gráfica S.A.S.');
-  const [nit, setNit] = useState<string>('900.284.195-1');
-  const [direccion, setDireccion] = useState<string>('Medellín, Colombia');
-  const [telefono, setTelefono] = useState<string>('+57 (4) 444-0000');
-  const [email, setEmail] = useState<string>('contacto@fusion.com.co');
+  const [nit, setNit] = useState<string>('');
+  const [direccion, setDireccion] = useState<string>('');
+  const [telefono, setTelefono] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
   const [terminos, setTerminos] = useState<string>('Validez de la oferta: 15 días calendario. Anticipo del 50%, saldo contra entrega.');
-  const [datosBancarios, setDatosBancarios] = useState<string>('Bancolombia Cuenta de Ahorros N° 123-456789-01 a nombre de Fusión Comunicación Gráfica S.A.S.');
+  const [datosBancarios, setDatosBancarios] = useState<string>('');
 
   const primaryLogoInputRef = useRef<HTMLInputElement>(null);
   const secondaryLogoInputRef = useRef<HTMLInputElement>(null);
@@ -35,12 +35,12 @@ export default function OrganizacionPage() {
         setLogoSecundario(getVal('organization.branding.logoSecondaryUrl', ''));
         setPrimaryColor(getVal('organization.branding.primaryColor', '#000000'));
         setRazonSocial(getVal('organization.business.name', 'Fusión Comunicación Gráfica S.A.S.'));
-        setNit(getVal('organization.business.nit', '900.284.195-1'));
-        setDireccion(getVal('organization.business.address', 'Medellín, Colombia'));
-        setTelefono(getVal('organization.business.phone', '+57 (4) 444-0000'));
-        setEmail(getVal('organization.business.email', 'contacto@fusion.com.co'));
+        setNit(getVal('organization.business.nit', ''));
+        setDireccion(getVal('organization.business.address', ''));
+        setTelefono(getVal('organization.business.phone', ''));
+        setEmail(getVal('organization.business.email', ''));
         setTerminos(getVal('organization.legal.terms', 'Validez de la oferta: 15 días calendario. Anticipo del 50%, saldo contra entrega.'));
-        setDatosBancarios(getVal('organization.bankDetails', 'Bancolombia Cuenta de Ahorros N° 123-456789-01 a nombre de Fusión Comunicación Gráfica S.A.S.'));
+        setDatosBancarios(getVal('organization.bankDetails', ''));
         setLoading(false);
       })
       .catch(err => {

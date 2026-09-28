@@ -1097,17 +1097,26 @@ export default function ProduccionKanbanPage() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                      <div className="bg-card border border-border rounded-xl p-4 flex flex-col">
                         <div className="flex items-center gap-2 mb-4 text-muted-foreground"><User className="w-4 h-4"/> <h3 className="font-bold text-sm text-foreground">Cliente</h3></div>
-                        <div className="flex-1 space-y-2 text-sm">
-                           <p><span className="font-bold">Nombre:</span> {activeProject.client}</p>
-                           <p><span className="font-bold">Email:</span> contacto@cliente.com</p>
-                           <p><span className="font-bold">Teléfono:</span> +57 300 000 0000</p>
-                           <p><span className="font-bold">Ciudad:</span> {(activeProject as any).clientCity || 'Bogotá'}</p>
-                           <p><span className="font-bold">Documento:</span> NIT 900.000.000-1</p>
-                        </div>
-                        <div className="flex gap-2 mt-4 pt-4 border-t border-border">
-                           <button className="flex-1 px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded-md">Ver cliente</button>
-                           <button className="flex-1 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md">Comunicaciones</button>
-                        </div>
+{(() => {
+                          // Datos del cliente tal como quedaron en la cotización que originó la OT
+                          const q: any = quotesList.find((x) => x.number === activeProject.quoteNumber) || quotesList.find((x) => x.id === (activeProject as any).quoteId);
+                          return (
+                            <>
+                              <div className="flex-1 space-y-2 text-sm">
+                                <p><span className="font-bold">Nombre:</span> {activeProject.client}</p>
+                                <p><span className="font-bold">Email:</span> {q?.clientEmail || '—'}</p>
+                                <p><span className="font-bold">Teléfono:</span> {q?.clientPhone || '—'}</p>
+                                <p><span className="font-bold">Ciudad:</span> {q?.clientCity || (activeProject as any).clientCity || '—'}</p>
+                                <p><span className="font-bold">Documento:</span> {q?.clientNit ? `NIT ${q.clientNit}` : '—'}</p>
+                              </div>
+                              {q?.clientId && (
+                                <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+                                  <a href={`/dashboard/clientes/${encodeURIComponent(q.clientId)}`} className="flex-1 text-center px-3 py-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 rounded-md">Ver cliente</a>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                      </div>
                      <div className="space-y-4">
                         <div className="bg-card border border-border rounded-xl p-4">

@@ -21,7 +21,7 @@ export interface CallerIdentity {
   activeProject: { id: string; number: string; name: string; stageName: string; dueDate: string | null } | null;
 }
 
-function phonesOf(client: any): { phone: string; contactName: string | null }[] {
+export function phonesOf(client: any): { phone: string; contactName: string | null }[] {
   const out: { phone: string; contactName: string | null }[] = [];
   for (const f of PHONE_FIELDS) if (client?.[f]) out.push({ phone: String(client[f]), contactName: null });
   for (const c of Array.isArray(client?.contacts) ? client.contacts : []) {
@@ -74,4 +74,25 @@ export function identifyCaller(
       ? { id: project.id, number: String(project.number || ''), name: String(project.name || ''), stageName: STAGE_NAMES[String(project.stageId)] || 'En curso', dueDate: project.dueDate || null }
       : null,
   };
+}
+
+/** Directorio del marcador: clientes y contactos con teléfono que coinciden con lo escrito. */
+export function searchDialDirectory(query: string, clients: any[], limit = 20) {
+  const q = String(query || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const qDigits = q.replace(/\D/g, '');
+  const out: Array<{ id: string; type: 'CUSTOMER'; customerId: string; name: string; contactName: string | null; phone: string; displayPhone: string; temperature: string | null }> = [];
+  for (const c of clients) {
+    const name = String(c.name || c.tradeName || '');
+    const plain = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    for (const p of phonesOf(c)) {
+      const e164 = normalizeColombianPhone(p.phone);
+      if (!e164) continue;
+      const contact = String(p.contactName || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const hit = !q || plain.includes(q) || (contact && contact.includes(q)) || (qDigits.length >= 3 && e164.replace(/\D/g, '').includes(qDigits));
+      if (!hit) continue;
+      out.push({ id: `${c.id}:${e164}`, type: 'CUSTOMER', customerId: String(c.id), name, contactName: p.contactName, phone: e164, displayPhone: p.phone, temperature: c.temp ?? null });
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
 }

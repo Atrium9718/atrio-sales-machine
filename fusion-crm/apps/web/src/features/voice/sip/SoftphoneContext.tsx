@@ -98,7 +98,7 @@ export const SoftphoneProvider: React.FC<{ children: React.ReactNode; userPermis
                 id: payload.callId,
                 direction: 'INBOUND',
                 state: 'RINGING_INBOUND',
-                remoteNumber: payload.fromNumber || '+573105559876',
+                remoteNumber: payload.fromNumber || '',
                 remoteDisplayName: payload.context?.customerName || payload.fromNumber || 'Llamada Entrante',
                 startedAt: new Date().toISOString(),
                 durationSeconds: 0,

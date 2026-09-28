@@ -5,7 +5,7 @@ import { Activity, Users, Plus, Search, FileText, UploadCloud, Phone, Mail, Buil
 import { ImportDatabaseModal } from "@/components/ImportDatabaseModal";
 import { ClientFormModal } from "@/components/ClientFormModal";
 import { ClientDetailModal } from "@/components/ClientDetailModal";
-import { getAllCustomers, isQuotaExhaustedToday, clearAllCustomers } from "@/lib/customerService";
+import { getAllCustomers, isQuotaExhaustedToday } from "@/lib/customerService";
 import { useNavigate } from "react-router-dom";
 import { PhoneLink } from "@fusion/ui";
 import { notify } from '@/lib/notify';
@@ -18,25 +18,10 @@ export default function ClientsPage() {
 
   const [clients, setClients] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [clearing, setClearing] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedType, setSelectedType] = React.useState("");
   const [selectedTemp, setSelectedTemp] = React.useState("");
   const [quotaNotice, setQuotaNotice] = React.useState(false);
-
-  const handleClearDatabase = async () => {
-    if (!confirm('¿Estás seguro de que deseas vaciar TODOS los clientes actuales de la base de datos? Esto removerá los registros defectuosos anteriores para que puedas cargar la lista limpia.')) return;
-    setClearing(true);
-    try {
-      const res = await clearAllCustomers();
-      notify(res.message || 'Base de datos limpiada exitosamente.');
-      await fetchClients();
-    } catch (err: any) {
-      notify('Error al vaciar base de datos: ' + err.message);
-    } finally {
-      setClearing(false);
-    }
-  };
 
   const fetchClients = async () => {
     setLoading(true);
@@ -143,17 +128,6 @@ export default function ClientsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {clients.length > 0 && (
-            <button
-              onClick={handleClearDatabase}
-              disabled={clearing}
-              className="inline-flex items-center justify-center rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 border border-danger/20 text-danger hover:bg-danger/10 h-9 px-3 py-2 shadow-sm"
-              title="Eliminar los registros anteriores para cargar una base limpia"
-            >
-              <Trash2 className="w-4 h-4 mr-1.5" />
-              {clearing ? "Vaciando..." : "Vaciar DB"}
-            </button>
-          )}
           <button
             onClick={() => setShowImport(true)}
             className="inline-flex items-center justify-center rounded-lg text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 border border-input bg-card hover:bg-muted h-9 px-4 py-2 shadow-sm"

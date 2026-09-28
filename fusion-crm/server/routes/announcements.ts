@@ -852,31 +852,3 @@ announcementsRouter.post('/shoutouts', async (req: Request, res: Response) => {
     return res.status(500).json({ error: error.message });
   }
 });
-
-// 15. SUBIDA Y VALIDACIÓN DE ADJUNTO (MinIO / Archivos)
-announcementsRouter.post('/upload-attachment', async (req: Request, res: Response) => {
-  try {
-    const { name, size, mimeType } = req.body;
-    const val = validateAttachment({ name, size, mimeType });
-
-    if (!val.isValid) {
-      return res.status(400).json({ error: val.error });
-    }
-
-    // Mock almacenamiento en MinIO
-    const safeKey = `announcements/${Date.now()}_${name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-
-    return res.json({
-      success: true,
-      attachment: {
-        name,
-        key: safeKey,
-        size,
-        mimeType: val.sanitizedMime,
-        url: `#minio/${safeKey}`,
-      },
-    });
-  } catch (error: any) {
-    return res.status(500).json({ error: error.message });
-  }
-});

@@ -112,6 +112,30 @@ Abre `https://app.tudominio.com`. El certificado HTTPS se emite solo en el prime
 
 Las tablas de la base de datos se crean solas al arrancar la app.
 
+### 5.1 Primer ingreso y datos de la empresa (antes de salir en vivo)
+
+El sistema arranca **vacío**: sin clientes, cotizaciones ni datos de ejemplo. Solo trae la
+plantilla de empleados (nombres, cargos y correos) para que el equipo pueda entrar.
+
+1. **Entrar como súper administrador** con Google, usando el correo del súper administrador
+   de la plantilla. Solo entran los correos de empleados activos.
+2. **Equipo → Empleados:** revisa la plantilla; completa el **celular** de cada asesor (sale en
+   las cotizaciones) y desactiva a quien ya no esté. Los teléfonos vienen vacíos a propósito.
+3. **Administración → Identidad de la empresa:** completa **razón social, NIT, dirección, teléfono, correo y
+   datos bancarios**. Vienen vacíos a propósito: salen en cotizaciones y remisiones.
+   Confirma también que el NIT y la dirección sean los correctos antes de
+   imprimir la primera remisión.
+4. **Clientes:** impórtalos desde *Clientes → Importar* (Excel/CSV). Quedan en el servidor y los
+   ve todo el equipo. Si alguien usó la versión anterior, la primera vez que abra *Clientes* su
+   navegador sube automáticamente los clientes que tenía guardados localmente.
+5. **Administración → Numeración** y **Calendario laboral:** consecutivos de cotización/OT y horario.
+6. **Administración → Integraciones:** todo lo marcado en rojo es una variable que falta en `.env`.
+7. Haz una cotización de prueba, conviértela en OT y descarga la remisión: revisa que los datos
+   de la empresa y del asesor salgan bien. Luego anúlala.
+
+Si en el futuro activas la telefonía, las tablas de voz ya existen: las migraciones de Postgres
+se aplican siempre al arrancar, con cualquier valor de `DATA_BACKEND`.
+
 ## 6. Respaldos
 
 El servicio `backup` hace un respaldo **al arrancar** y luego **todos los días a las 2:00 a. m.**

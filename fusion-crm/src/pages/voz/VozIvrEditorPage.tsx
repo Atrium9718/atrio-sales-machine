@@ -1033,7 +1033,7 @@ function IvrSimulatorDrawer({ flowId, onClose }: SimulatorProps) {
     setElapsedSeconds(0);
     setTraceLog([]);
     setDtmfInput('');
-    addTrace('📞 Llamada entrante conectada desde +573105559876 a DID +576017441234', 'info');
+    addTrace('📞 Llamada entrante conectada (simulación)', 'info');
 
     try {
       const res = await fetch(`/api/voice/ivr-flows/${flowId}/simulate-step`, {

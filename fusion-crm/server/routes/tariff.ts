@@ -22,7 +22,7 @@ const memoryTemplates: any[] = [
     name: 'Volantes media carta 4x4',
     technique: 'LITHO',
     isShared: true,
-    usageCount: 14,
+    usageCount: 0,
     createdAt: '2026-01-15T10:00:00.000Z',
     input: {
       technique: 'LITHO',
@@ -57,7 +57,7 @@ const memoryTemplates: any[] = [
     name: 'Cuadernos cosidos 1/4',
     technique: 'LITHO',
     isShared: true,
-    usageCount: 8,
+    usageCount: 0,
     createdAt: '2026-01-20T14:30:00.000Z',
     input: {
       technique: 'LITHO',
@@ -92,7 +92,7 @@ const memoryTemplates: any[] = [
     name: 'Tarjetas personales digital 4x0',
     technique: 'DIGITAL',
     isShared: true,
-    usageCount: 26,
+    usageCount: 0,
     createdAt: '2026-02-01T09:15:00.000Z',
     input: {
       technique: 'DIGITAL',
@@ -228,7 +228,7 @@ tariffRouter.post('/templates', async (req, res) => {
       name,
       technique: technique || input?.technique || 'LITHO',
       input: input || {},
-      usageCount: 1,
+      usageCount: 0,
       isShared: isShared ?? true,
       createdAt: new Date().toISOString(),
     };

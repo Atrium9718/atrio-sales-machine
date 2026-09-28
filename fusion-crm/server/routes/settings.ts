@@ -16,10 +16,10 @@ settingsRouter.get('/identity', (req, res) => {
     const logoUrl = values['organization.branding.logoUrl'] || '';
     const logoSecondaryUrl = values['organization.branding.logoSecondaryUrl'] || '';
     const primaryColor = values['organization.branding.primaryColor'] || '#000000';
-    const nit = values['organization.business.nit'] || '900.284.195-1';
-    const address = values['organization.business.address'] || 'Medellín, Colombia';
-    const phone = values['organization.business.phone'] || '+57 (4) 444-0000';
-    const email = values['organization.business.email'] || 'contacto@fusion.com.co';
+    const nit = values['organization.business.nit'] || '';
+    const address = values['organization.business.address'] || '';
+    const phone = values['organization.business.phone'] || '';
+    const email = values['organization.business.email'] || '';
 
     res.json({
       name,

@@ -116,10 +116,10 @@ describe('Chat API and Business Logic Integration (Etapa 15.5)', () => {
     expect(res3.auditPayload?.action).toBe('CHAT_DIRECT_EXPORT_LEGAL_OVERRIDE');
   });
 
-  it('includes saved replies shortcuts like /cotiza, /gracias, /datos-bancarios', () => {
+  it('includes saved replies shortcuts like /cotiza and /gracias, without made-up bank details', () => {
     const shortcuts = inMemorySavedReplies.map((r) => r.shortcut);
     expect(shortcuts).toContain('/cotiza');
     expect(shortcuts).toContain('/gracias');
-    expect(shortcuts).toContain('/datos-bancarios');
+    expect(shortcuts).not.toContain('/datos-bancarios');
   });
 });

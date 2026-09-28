@@ -1,5 +1,5 @@
 "use client";
-import { getCurrentUserName } from '@/lib/currentUser';
+import { getCurrentUser, getCurrentUserName } from '@/lib/currentUser';
 
 import { parseNumericInput } from "../../../../../../../packages/core/src/utils/format";
 import * as React from "react";
@@ -417,9 +417,10 @@ function QuoteEditor({
 
   // Asesor Comercial que elabora la propuesta
   const [advisorName, setAdvisorName] = React.useState(editingQuote?.advisorName || getCurrentUserName());
-  const [advisorRole, setAdvisorRole] = React.useState(editingQuote?.advisorRole || "Gerente de Mercadeo y Ventas");
-  const [advisorPhone, setAdvisorPhone] = React.useState(editingQuote?.advisorPhone || "+57 315 474 4830 | +57 316 010 3047");
-  const [advisorEmail, setAdvisorEmail] = React.useState(editingQuote?.advisorEmail || "fusioncg.gerencia@gmail.com");
+  // Por defecto, los datos de quien elabora la cotización (su ficha de colaborador)
+  const [advisorRole, setAdvisorRole] = React.useState(editingQuote?.advisorRole || getCurrentUser()?.jobTitle || "");
+  const [advisorPhone, setAdvisorPhone] = React.useState(editingQuote?.advisorPhone || getCurrentUser()?.phone || "");
+  const [advisorEmail, setAdvisorEmail] = React.useState(editingQuote?.advisorEmail || getCurrentUser()?.email || "");
 
   // Client search and selection
   const [clientId, setClientId] = React.useState<string | null>(editingQuote?.clientId || null);
@@ -2459,7 +2460,7 @@ function QuoteEditor({
                   value={advisorPhone}
                   onChange={(e) => setAdvisorPhone(e.target.value)}
                   className="w-full px-3 py-2 border border-input rounded-md text-sm font-medium bg-background focus:ring-2 focus:ring-primary/20 outline-none"
-                  placeholder="+57 315 474 4830"
+                  placeholder="Celular del asesor"
                 />
               </div>
               <div>

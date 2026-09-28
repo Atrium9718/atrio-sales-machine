@@ -31,6 +31,8 @@ import { trunkFromEnv, loadVoiceStore, saveNumber, deleteNumber, saveExtension, 
 import { voiceCallsRouter } from './voiceCalls';
 import { getPrisma } from '../repositories/prisma/client';
 import { voicePbxRouter } from './voicePbx';
+import { repositories } from '../repositories';
+import { searchDialDirectory } from '../../packages/core/src/voice/identifyCaller';
 
 export const voiceRouter = Router();
 
@@ -634,73 +636,13 @@ voiceRouter.post('/calls/:callId/recording/resume', (req: Request, res: Response
 /**
  * BLOQUE E: Búsqueda rápida de Clientes y Contactos para el Marcador
  */
-voiceRouter.get('/search-contacts', (req: Request, res: Response) => {
-  const query = String(req.query.q || '').trim().toLowerCase();
-
-  const directoryData = [
-    {
-      id: 'cust_01',
-      type: 'CUSTOMER',
-      name: 'Café del Sol S.A.S.',
-      contactName: 'Alejandro Restrepo',
-      contactRole: 'Gerente General',
-      phone: '+573105559876',
-      displayPhone: '+57 310 555 9876',
-      temperature: 'HOT',
-      lastCall: 'Ayer, 14:30 (4 min)',
-      openQuotesCount: 1,
-    },
-    {
-      id: 'cust_02',
-      type: 'CUSTOMER',
-      name: 'Empaques del Valle',
-      contactName: 'Beatriz Morales',
-      contactRole: 'Jefe de Compras',
-      phone: '+573009876543',
-      displayPhone: '+57 300 987 6543',
-      temperature: 'WARM',
-      lastCall: 'Hace 3 días (2 min)',
-      openQuotesCount: 2,
-    },
-    {
-      id: 'cust_03',
-      type: 'CUSTOMER',
-      name: 'Industrias Gráficas Antioquia',
-      contactName: 'Carlos Mario Vélez',
-      contactRole: 'Director de Planta',
-      phone: '+573147778899',
-      displayPhone: '+57 314 777 8899',
-      temperature: 'VIP',
-      lastCall: 'Hace 1 semana (8 min)',
-      openQuotesCount: 0,
-    },
-    {
-      id: 'cust_04',
-      type: 'CUSTOMER',
-      name: 'Chocolates La Montaña',
-      contactName: 'Diana Cardona',
-      contactRole: 'Mercadeo y Producto',
-      phone: '+573183334455',
-      displayPhone: '+57 318 333 4455',
-      temperature: 'COLD',
-      lastCall: 'Nunca',
-      openQuotesCount: 1,
-    },
-  ];
-
-  if (!query) {
-    return res.json({ success: true, results: directoryData });
+voiceRouter.get('/search-contacts', async (req: Request, res: Response) => {
+  try {
+    const clients = await repositories().clients.list();
+    res.json({ success: true, results: searchDialDirectory(String(req.query.q || ''), clients) });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || String(err), results: [] });
   }
-
-  const filtered = directoryData.filter((item) => {
-    return (
-      item.name.toLowerCase().includes(query) ||
-      item.contactName.toLowerCase().includes(query) ||
-      item.phone.replace(/\D/g, '').includes(query.replace(/\D/g, ''))
-    );
-  });
-
-  res.json({ success: true, results: filtered });
 });
 
 /**

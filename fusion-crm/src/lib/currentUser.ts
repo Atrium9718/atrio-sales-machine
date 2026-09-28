@@ -9,13 +9,15 @@ export interface CurrentUserInfo {
   name: string;
   initials: string;
   email?: string;
+  phone?: string;
+  jobTitle?: string;
 }
 
 export function getCurrentUser(): CurrentUserInfo | null {
   if (typeof window === 'undefined') return null;
   const u = (window as any).__FUSION_CURRENT_USER__;
   if (!u?.id || !u?.name) return null;
-  return { id: String(u.id), name: String(u.name), initials: String(u.initials || u.name.slice(0, 2)).toUpperCase(), email: u.email };
+  return { id: String(u.id), name: String(u.name), initials: String(u.initials || u.name.slice(0, 2)).toUpperCase(), email: u.email, phone: u.phone, jobTitle: u.jobTitle };
 }
 
 export function getCurrentUserName(fallback = ''): string {

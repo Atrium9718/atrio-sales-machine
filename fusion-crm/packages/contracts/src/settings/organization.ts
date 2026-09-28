@@ -53,7 +53,7 @@ export const organizationSettings = {
     description: 'Número de Identificación Tributaria con Dígito de Verificación.',
     valueType: "STRING",
     schema: z.string(),
-    defaultValue: '900.284.195-1',
+    defaultValue: '',
     group: 'Empresa'
   }),
   'organization.business.address': defineSetting({
@@ -63,7 +63,7 @@ export const organizationSettings = {
     description: 'Dirección fiscal y comercial.',
     valueType: "STRING",
     schema: z.string().optional(),
-    defaultValue: 'Medellín, Colombia',
+    defaultValue: '',
     group: 'Empresa'
   }),
   'organization.business.phone': defineSetting({
@@ -73,7 +73,7 @@ export const organizationSettings = {
     description: 'Línea de atención y ventas.',
     valueType: "STRING",
     schema: z.string().optional(),
-    defaultValue: '+57 (4) 444-0000',
+    defaultValue: '',
     group: 'Empresa'
   }),
   'organization.business.email': defineSetting({
@@ -83,7 +83,7 @@ export const organizationSettings = {
     description: 'Correo electrónico de contacto.',
     valueType: "STRING",
     schema: z.string().optional(),
-    defaultValue: 'contacto@fusion.com.co',
+    defaultValue: '',
     group: 'Empresa'
   }),
   'organization.legal.terms': defineSetting({
@@ -103,7 +103,7 @@ export const organizationSettings = {
     description: 'Información de cuentas para pago mostrada en cotizaciones y facturas.',
     valueType: "STRING",
     schema: z.string(),
-    defaultValue: 'Bancolombia Cuenta de Ahorros N° 123-456789-01 a nombre de Fusión Comunicación Gráfica S.A.S.',
+    defaultValue: '',
     group: 'Financiero'
   })
 } as const;

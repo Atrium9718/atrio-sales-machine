@@ -6,7 +6,6 @@ import { QuickActionsDock } from './components/QuickActionsDock';
 
 import * as React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import { CallPanel } from './components/CallPanel';
 import { AnimatePresence } from 'framer-motion';
 import { NewOpportunityModal } from './components/NewOpportunityModal';
 import { Link2, Network, Beaker, LayoutDashboard, MessageCircle, Plus, Users, TrendingUp, Calendar, FileText, Menu, X, Play, Package, Activity, DollarSign, Settings, Shield, ShieldAlert, FileCheck, Building, Database, Hash, Target, KeyRound, Blocks, DatabaseBackup, Wrench, Send, History , Bot, Home as HomeIcon, Megaphone, MessageSquare, PhoneCall, Sparkles, Calculator } from 'lucide-react';
@@ -55,12 +54,7 @@ const VozBuzonPage = React.lazy(() => import('./pages/voz/VozBuzonPage').then((m
 const VozIvrPage = React.lazy(() => import('./pages/voz/VozIvrPage').then((m) => ({ default: m.VozIvrPage })));
 const VozIvrEditorPage = React.lazy(() => import('./pages/voz/VozIvrEditorPage').then((m) => ({ default: m.VozIvrEditorPage })));
 const VozLocucionesPage = React.lazy(() => import('./pages/voz/VozLocucionesPage').then((m) => ({ default: m.VozLocucionesPage })));
-const VozAgenteIaPage = React.lazy(() => import('./pages/voz/VozAgenteIaPage').then((m) => ({ default: m.VozAgenteIaPage })));
-const VozCampanasPage = React.lazy(() => import('./pages/voz/VozCampanasPage').then((m) => ({ default: m.VozCampanasPage })));
-const VozSupervisionPage = React.lazy(() => import('./pages/voz/VozSupervisionPage').then((m) => ({ default: m.VozSupervisionPage })));
-const VozInformesPage = React.lazy(() => import('./pages/voz/VozInformesPage').then((m) => ({ default: m.VozInformesPage })));
 const VozConfiguracionPage = React.lazy(() => import('./pages/voz/VozConfiguracionPage').then((m) => ({ default: m.VozConfiguracionPage })));
-const WebchatConfigPage = React.lazy(() => import('./app/(dashboard)/dashboard/canales-config/chat-web/page'));
 
 const TarifarioProduccionPage = React.lazy(() => import('../apps/web/src/app/(app)/cotizaciones/tarifario/page'));
 const ClientesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/clientes/page'));
@@ -74,7 +68,6 @@ const ComercialDashboardPage = React.lazy(() => import("../apps/web/src/app/(das
 const PrecotizacionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/precotizaciones/page'));
 const ClientPortalPage = React.lazy(() => import('../apps/web/src/app/portal/[token]/page'));
 const PortalClientesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/portal-clientes/page'));
-const KioskPage = React.lazy(() => import('../apps/web/src/app/kiosko/page'));
 const CostosOmnicanalPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/costos-omnicanal/page'));
 
 const OrganizacionPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/organizacion/page'));
@@ -100,7 +93,6 @@ const ParametrosPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/
 const FlagsPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/flags/page'));
 const AuditoriaConfigPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/admin/auditoria/page'));
 
-const VoiceDashboardPage = React.lazy(() => import('./app/(dashboard)/dashboard/voice/page'));
 import { Phone } from 'lucide-react';
 const MetaConfigPage = React.lazy(() => import('./app/(dashboard)/dashboard/canales-config/meta/page'));
 
@@ -111,9 +103,7 @@ const InboxPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashb
 const ProduccionKanbanPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/produccion/page"));
 const RentabilidadRealPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/produccion/costos/page'));
 const InventarioDashboardPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/inventario/page'));
-const AdminIAPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/admin/ia/page'));
 
-const KioskoPlantaPage = React.lazy(() => import('../apps/web/src/app/kiosko-planta/page'));
 import { ClientRequestToasts, useNewClientRequestsCount } from './components/portal/ClientRequestAlerts';
 import { InboxAttentionNotifier, useInboxAttentionCount } from './components/omnichannel/InboxAttention';
 
@@ -239,7 +229,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
     ]),
     ...(hasVoiceUse && voiceStatus.enabled ? [
       group('Voz y Telefonía', 'voz', [
-        // Supervisión, informes, agente de IA y campañas: fases 2 y 3 (sus rutas siguen para administradores)
+        // Supervisión, informes, agente de IA y campañas: fases 2 y 3 (aún no existen)
         { name: 'Panel de Voz', path: '/voz', icon: Phone, permission: 'voice:use' },
         { name: 'Historial de Llamadas', path: '/voz/llamadas', icon: PhoneCall, permission: 'voice:use' },
         { name: 'Colas', path: '/voz/colas', icon: Users, permission: 'voice:use' },
@@ -526,8 +516,8 @@ export default function App() {
             <Routes>
             {/* Public Routes outside dashboard layout */}
             <Route path="/portal/:token" element={<ClientPortalPage />} />
-            <Route path="/kiosko" element={<KioskPage />} />
-            <Route path="/kiosko-planta" element={<KioskoPlantaPage />} />
+            <Route path="/kiosko" element={<Navigate to="/" replace />} />
+            <Route path="/kiosko-planta" element={<Navigate to="/" replace />} />
             <Route path="/preferencias/:token" element={<PreferenciasPage />} />
             <Route path="/habeas-data" element={<HabeasDataPage />} />
             <Route path="/empleados" element={<DashboardLayout><UsuariosPage /></DashboardLayout>} />
@@ -569,10 +559,10 @@ export default function App() {
           <Route path="/voz/ivr" element={<DashboardLayout><VozIvrPage /></DashboardLayout>} />
           <Route path="/voz/ivr/:id" element={<DashboardLayout><VozIvrEditorPage /></DashboardLayout>} />
           <Route path="/voz/locuciones" element={<DashboardLayout><VozLocucionesPage /></DashboardLayout>} />
-          <Route path="/voz/agente-ia" element={<DashboardLayout><VozAgenteIaPage /></DashboardLayout>} />
-          <Route path="/voz/campanas" element={<DashboardLayout><VozCampanasPage /></DashboardLayout>} />
-          <Route path="/voz/supervision" element={<DashboardLayout><VozSupervisionPage /></DashboardLayout>} />
-          <Route path="/voz/informes" element={<DashboardLayout><VozInformesPage /></DashboardLayout>} />
+          <Route path="/voz/agente-ia" element={<Navigate to="/voz" replace />} />
+          <Route path="/voz/campanas" element={<Navigate to="/voz" replace />} />
+          <Route path="/voz/supervision" element={<Navigate to="/voz" replace />} />
+          <Route path="/voz/informes" element={<Navigate to="/voz" replace />} />
           <Route path="/configuracion/voz" element={<DashboardLayout><VozConfiguracionPage /></DashboardLayout>} />
           <Route path="/interventoria" element={<Navigate to="/dashboard/admin/salud" replace />} />
           
@@ -591,10 +581,10 @@ export default function App() {
                     <Route path="voz/ivr" element={<VozIvrPage />} />
                     <Route path="voz/ivr/:id" element={<VozIvrEditorPage />} />
                     <Route path="voz/locuciones" element={<VozLocucionesPage />} />
-                    <Route path="voz/agente-ia" element={<VozAgenteIaPage />} />
-                    <Route path="voz/campanas" element={<VozCampanasPage />} />
-                    <Route path="voz/supervision" element={<VozSupervisionPage />} />
-                    <Route path="voz/informes" element={<VozInformesPage />} />
+                    <Route path="voz/agente-ia" element={<Navigate to="/voz" replace />} />
+                    <Route path="voz/campanas" element={<Navigate to="/voz" replace />} />
+                    <Route path="voz/supervision" element={<Navigate to="/voz" replace />} />
+                    <Route path="voz/informes" element={<Navigate to="/voz" replace />} />
                     <Route path="configuracion/voz" element={<VozConfiguracionPage />} />
                     {/* Rutas de colaboración como sub-rutas para retrocompatibilidad */}
                     <Route path="anuncios" element={<AnunciosPage />} />
@@ -640,10 +630,10 @@ export default function App() {
                     <Route path="ia/arquitectura" element={<Navigate to="/dashboard/inbox" replace />} />
                     <Route path="ia/testing" element={<Navigate to="/dashboard/inbox" replace />} />
                     <Route path="agentes" element={<Navigate to="/dashboard/inbox" replace />} />
-                    <Route path="admin/ia" element={<AdminIAPage />} />
+                    <Route path="admin/ia" element={<Navigate to="/dashboard/costos-omnicanal" replace />} />
                     <Route path="agentes/propuestas" element={<Navigate to="/dashboard/inbox" replace />} />
                     <Route path="compliance" element={<Navigate to="/dashboard/admin/salud" replace />} />
-                    <Route path="canales-config/chat-web" element={<WebchatConfigPage />} />
+                    <Route path="canales-config/chat-web" element={<Navigate to="/dashboard/canales-config/meta" replace />} />
                     <Route path="canales-config/meta" element={<MetaConfigPage />} />
                     <Route path="simulator" element={<Navigate to="/dashboard/inbox" replace />} />
                     
