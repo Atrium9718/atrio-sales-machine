@@ -70,6 +70,11 @@ cd atrio-sales-machine/fusion-crm
 
 ## 3. Configuración de Firebase
 
+> **Atajo:** sube la llave de la cuenta de servicio como `firebase-key.json` a esta carpeta y ejecuta
+> `./scripts/configurar.sh`. El asistente pide el bloque *firebaseConfig*, el dominio, el correo y
+> la llave de Gemini, genera las contraseñas internas y deja listos `firebase-applet-config.json`,
+> `secrets/` y `.env` (con `DATA_BACKEND=postgres`). Luego sigue en el paso 5.
+
 1. **Configuración web** — En la consola de Firebase → ⚙️ Configuración del proyecto → General →
    "Tus apps" → app web, copia los valores en el archivo:
    ```bash
