@@ -474,7 +474,7 @@ export default function PrecotizacionesView({ onOpenInCotizador }: Precotizacion
                     {/* Source tag */}
                     <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-primary" />
-                      {quote.source === 'WHATSAPP_AI' ? 'WhatsApp IA' : 'Agente IA'}
+                      {quote.source === 'KIOSK' ? 'Kiosco' : quote.source === 'WHATSAPP_AI' ? 'WhatsApp IA' : 'Agente IA'}
                     </span>
 
                     <span className="text-xs text-muted-foreground">

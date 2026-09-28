@@ -35,6 +35,8 @@ export const GENERIC_COLLECTIONS = [
   // Portal y omnicanal
   'client_portal_links',
   'client_requests',
+  'kiosk_settings',
+  'kiosk_devices',
   'omni_conversations',
   'omnichannel_settings',
   'omni_stage_notices',

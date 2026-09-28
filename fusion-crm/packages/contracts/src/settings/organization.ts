@@ -53,7 +53,7 @@ export const organizationSettings = {
     description: 'Número de Identificación Tributaria con Dígito de Verificación.',
     valueType: "STRING",
     schema: z.string(),
-    defaultValue: '',
+    defaultValue: '900310298-2',
     group: 'Empresa'
   }),
   'organization.business.address': defineSetting({
@@ -63,7 +63,7 @@ export const organizationSettings = {
     description: 'Dirección fiscal y comercial.',
     valueType: "STRING",
     schema: z.string().optional(),
-    defaultValue: '',
+    defaultValue: 'Cra. 22 #24-47, Manizales, Caldas',
     group: 'Empresa'
   }),
   'organization.business.phone': defineSetting({

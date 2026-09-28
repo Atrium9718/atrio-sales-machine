@@ -29,6 +29,7 @@ import { filesRouter } from './routes/files';
 import { inventoryRouter } from './routes/inventory';
 import { quoteShareRouter, quotePublicRouter } from './routes/quoteShare';
 import { portalPublicRouter, clientPortalRouter } from './routes/clientPortal';
+import { kioskPublicRouter, kioskRouter } from './routes/kiosk';
 import { callsService } from './services/callsService';
 import { loadStateFromFirestore, startStateSync, saveStateToFirestore, persistAfterWrites } from './services/persistenceService';
 import { loadTariffStore } from './services/tariffStore';
@@ -99,6 +100,8 @@ export async function startServer() {
   app.use('/api/portal', quotePublicRouter); // público: PDF de cotización por token
   app.use('/api/portal', portalPublicRouter); // público: acceso por token del cliente
   app.use('/api/client-portal', clientPortalRouter);
+  app.use('/api/kiosk-public', kioskPublicRouter); // público: pantalla del kiosco por enlace de equipo
+  app.use('/api/kiosk', kioskRouter);
 
   // Explicit route to serve quotation PDF template cleanly without SPA fallback
   app.get('/plantilla-cotizacion.pdf', (req, res) => {

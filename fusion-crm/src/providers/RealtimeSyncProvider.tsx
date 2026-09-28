@@ -203,6 +203,21 @@ export const RealtimeSyncProvider: React.FC<RealtimeSyncProviderProps> = ({ chil
             break;
           }
 
+          case 'KIOSK_ORDER_CREATED': {
+            window.dispatchEvent(new CustomEvent('fusion_client_request_created', {
+              detail: {
+                requestId: payload?.quoteId,
+                clientName: payload?.clientName,
+                preview: `${payload?.number} · ${payload?.preview}`,
+                attachmentCount: 0,
+                title: `Pedido del kiosco (${payload?.deviceName})`,
+                href: '/dashboard/kiosko',
+              },
+            }));
+            window.dispatchEvent(new Event('fusion_kiosk_order_created'));
+            break;
+          }
+
           // --- PURGA Y RESETEO DE DATOS TRANSITORIOS ---
           case 'SYSTEM_TRANSIENT_DATA_PURGED': {
             console.log(

@@ -8,7 +8,7 @@ import * as React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { NewOpportunityModal } from './components/NewOpportunityModal';
-import { Link2, Network, Beaker, LayoutDashboard, MessageCircle, Plus, Users, TrendingUp, Calendar, FileText, Menu, X, Play, Package, Activity, DollarSign, Settings, Shield, ShieldAlert, FileCheck, Building, Database, Hash, Target, KeyRound, Blocks, DatabaseBackup, Wrench, Send, History , Bot, Home as HomeIcon, Megaphone, MessageSquare, PhoneCall, Sparkles, Calculator } from 'lucide-react';
+import { Link2, Network, Beaker, LayoutDashboard, MessageCircle, Plus, Users, TrendingUp, Calendar, FileText, Menu, X, Play, Package, Activity, DollarSign, Settings, Shield, ShieldAlert, FileCheck, Building, Database, Hash, Target, KeyRound, Blocks, DatabaseBackup, Wrench, Send, History , Bot, Home as HomeIcon, Megaphone, MessageSquare, PhoneCall, Sparkles, Calculator, Store } from 'lucide-react';
 
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { useGlobalCalls } from './hooks/useGlobalCalls';
@@ -66,6 +66,8 @@ const CatalogoPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/da
 const AgendaComercialPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/agenda/page'));
 const ComercialDashboardPage = React.lazy(() => import("../apps/web/src/app/(dashboard)/dashboard/comercial/page"));
 const PrecotizacionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/precotizaciones/page'));
+const KioskPage = React.lazy(() => import('../apps/web/src/app/kiosko/[token]/page'));
+const KioskSettingsPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/kiosko/page'));
 const ClientPortalPage = React.lazy(() => import('../apps/web/src/app/portal/[token]/page'));
 const PortalClientesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/portal-clientes/page'));
 const CostosOmnicanalPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/costos-omnicanal/page'));
@@ -214,6 +216,7 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
       { name: 'Cotizador', path: '/dashboard/cotizador', icon: FileText },
       { name: 'Cotizaciones', path: '/dashboard/comercial/cotizaciones', icon: FileText },
       { name: 'Portal de clientes', path: '/dashboard/portal-clientes', icon: Link2 },
+      { name: 'Kiosco de pedidos', path: '/dashboard/kiosko', icon: Store },
       { name: 'Catálogo de productos', path: '/dashboard/catalogo', icon: Package },
       { name: 'Tarifario', path: '/cotizaciones/tarifario', icon: Calculator, permission: 'tariff:read' },
     ]),
@@ -516,7 +519,8 @@ export default function App() {
             <Routes>
             {/* Public Routes outside dashboard layout */}
             <Route path="/portal/:token" element={<ClientPortalPage />} />
-            <Route path="/kiosko" element={<Navigate to="/" replace />} />
+            <Route path="/kiosko/:token" element={<KioskPage />} />
+            <Route path="/kiosko" element={<Navigate to="/dashboard/kiosko" replace />} />
             <Route path="/kiosko-planta" element={<Navigate to="/" replace />} />
             <Route path="/preferencias/:token" element={<PreferenciasPage />} />
             <Route path="/habeas-data" element={<HabeasDataPage />} />
@@ -614,6 +618,7 @@ export default function App() {
                     <Route path="identidades" element={<Navigate to="/dashboard/inbox" replace />} />
                     <Route path="clientes" element={<ClientesPage />} />
                     <Route path="portal-clientes" element={<PortalClientesPage />} />
+                    <Route path="kiosko" element={<KioskSettingsPage />} />
                     <Route path="clientes/importar" element={<ClientesImportarPage />} />
                     <Route path="clientes/:id" element={<ClienteProfilePage />} />
                     <Route path="oportunidades" element={<OportunidadesPage />} />

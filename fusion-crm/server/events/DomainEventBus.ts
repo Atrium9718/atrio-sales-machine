@@ -32,6 +32,14 @@ export interface DomainEventPayloadMap {
     attachmentCount: number;
     createdAt: string;
   };
+  KIOSK_ORDER_CREATED: {
+    quoteId: string;
+    number: string;
+    clientName: string;
+    deviceName: string;
+    preview: string;
+    createdAt: string;
+  };
   OMNICHANNEL_CONVERSATION_UPDATED: {
     conversationId: string;
     channel: string;

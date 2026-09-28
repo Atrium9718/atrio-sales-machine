@@ -4,10 +4,10 @@ import { LogIn, ShieldCheck } from 'lucide-react';
 import { auth } from '../../lib/firebase';
 
 /**
- * Rutas que se ven sin iniciar sesión: portal del cliente, preferencias
+ * Rutas que se ven sin iniciar sesión: portal del cliente, kiosco de pedidos (con el enlace de su equipo), preferencias
  * y habeas data.
  */
-const PUBLIC_PATH_PREFIXES = ['/preferencias/', '/portal/'];
+const PUBLIC_PATH_PREFIXES = ['/preferencias/', '/portal/', '/kiosko/'];
 const PUBLIC_PATHS = ['/habeas-data'];
 
 export function isPublicPath(pathname: string): boolean {

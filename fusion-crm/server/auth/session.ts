@@ -22,15 +22,15 @@ const clientIp = (req: Request) => String(req.headers['x-forwarded-for'] || '').
 const MAX_SIGN_IN_AGE_S = 5 * 60;
 
 /**
- * Rutas de la API accesibles sin sesión: webhooks externos, widget público y portal del
- * cliente (este último se autentica con el token de su enlace).
+ * Rutas de la API accesibles sin sesión: webhooks externos, widget público, portal del
+ * cliente y kiosco (estos dos se autentican con el token de su enlace).
  */
-const PUBLIC_API_PREFIXES = ['/api/health', '/api/auth/', '/api/webhooks/meta', '/api/widget', '/api/portal'];
+const PUBLIC_API_PREFIXES = ['/api/health', '/api/auth/', '/api/webhooks/meta', '/api/widget', '/api/portal', '/api/kiosk-public'];
 
 /** Módulos que solo pueden usar administradores (cualquier método). */
 const ADMIN_ONLY_PREFIXES = ['/api/ops'];
 /** Módulos cuyas escrituras solo pueden hacer administradores. */
-const ADMIN_WRITE_PREFIXES = ['/api/admin', '/api/settings', '/api/maestros'];
+const ADMIN_WRITE_PREFIXES = ['/api/admin', '/api/settings', '/api/maestros', '/api/kiosk'];
 
 export function isAdminRole(roleKey: string | undefined): boolean {
   return roleKey === 'super_admin' || roleKey === 'admin';

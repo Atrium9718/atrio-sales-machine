@@ -130,7 +130,11 @@ plantilla de empleados (nombres, cargos y correos) para que el equipo pueda entr
    navegador sube automáticamente los clientes que tenía guardados localmente.
 5. **Administración → Numeración** y **Calendario laboral:** consecutivos de cotización/OT y horario.
 6. **Administración → Integraciones:** todo lo marcado en rojo es una variable que falta en `.env`.
-7. Haz una cotización de prueba, conviértela en OT y descarga la remisión: revisa que los datos
+7. **Comercial → Kiosco de pedidos** (si lo vas a usar): elige los productos del catálogo que se
+   ofrecen, crea un *equipo* por cada tablet y abre su enlace (`/kiosko/…`) en esa tablet, en
+   pantalla completa. Esa pantalla no tiene menú ni pide sesión; los pedidos llegan como
+   pre-cotizaciones y avisan al equipo. Si una tablet se pierde, desactívala allí mismo.
+8. Haz una cotización de prueba, conviértela en OT y descarga la remisión: revisa que los datos
    de la empresa y del asesor salgan bien. Luego anúlala.
 
 Si en el futuro activas la telefonía, las tablas de voz ya existen: las migraciones de Postgres

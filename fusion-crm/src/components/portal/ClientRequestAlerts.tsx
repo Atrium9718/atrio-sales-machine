@@ -49,6 +49,9 @@ interface ToastItem {
   clientName: string;
   preview: string;
   attachmentCount: number;
+  /** Otros avisos que reutilizan esta tarjeta (p. ej. pedidos del kiosco). */
+  title?: string;
+  href?: string;
 }
 
 export function ClientRequestToasts() {
@@ -79,7 +82,7 @@ export function ClientRequestToasts() {
             <Inbox className="w-4 h-4 text-primary" />
           </div>
           <div className="min-w-0 flex-1 space-y-1">
-            <p className="text-sm font-semibold text-foreground">Nueva solicitud de {t.clientName}</p>
+            <p className="text-sm font-semibold text-foreground">{t.title ? `${t.title}: ${t.clientName}` : `Nueva solicitud de ${t.clientName}`}</p>
             <p className="text-xs text-muted-foreground line-clamp-2 break-words">{t.preview}</p>
             {t.attachmentCount > 0 && (
               <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -87,11 +90,11 @@ export function ClientRequestToasts() {
               </p>
             )}
             <Link
-              to="/dashboard/portal-clientes"
+              to={t.href || '/dashboard/portal-clientes'}
               onClick={() => dismiss(t.requestId)}
               className="inline-block text-xs font-semibold text-primary hover:underline pt-0.5"
             >
-              Ver solicitud →
+              {t.href ? 'Ver pedido →' : 'Ver solicitud →'}
             </Link>
           </div>
           <button onClick={() => dismiss(t.requestId)} className="p-1 h-fit rounded text-muted-foreground hover:bg-muted" aria-label="Cerrar aviso">

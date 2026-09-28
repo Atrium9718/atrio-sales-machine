@@ -11,7 +11,8 @@ const FLAGS_PREFIX = 'flags.';
 // Fast endpoint to get corporate identity (Logo & Name)
 settingsRouter.get('/identity', (req, res) => {
   try {
-    const values = getSettings();
+    const defaults = Object.fromEntries(Object.values(SettingsCatalog).map((def: any) => [def.key, def.defaultValue]));
+    const values: Record<string, any> = { ...defaults, ...getSettings() };
     const name = values['organization.business.name'] || 'Fusión Comunicación Gráfica';
     const logoUrl = values['organization.branding.logoUrl'] || '';
     const logoSecondaryUrl = values['organization.branding.logoSecondaryUrl'] || '';
