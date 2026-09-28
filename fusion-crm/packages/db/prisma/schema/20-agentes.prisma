@@ -1,0 +1,220 @@
+enum AgentType {
+  CONVERSATIONAL
+  ANALYST
+  PLANNER
+  MONITOR
+  ASSISTANT
+}
+
+enum AgentDomain {
+  COMMERCIAL
+  QUOTING
+  PRODUCTION
+  CAPACITY
+  INVENTORY
+  FINANCE
+  SERVICE
+  DATA
+  MANAGEMENT
+}
+
+enum ModelPreference {
+  FAST
+  REASONING
+  AUTO
+}
+
+model Agent {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  key                String             @unique
+  name               String
+  description        String?
+  avatarIcon         String?
+  
+  type               AgentType
+  domain             AgentDomain
+  
+  systemPrompt       String             @db.Text
+  promptVersion      Int                @default(1)
+  
+  modelPreference    ModelPreference    @default(AUTO)
+  temperature        Decimal            @default(0.7) @db.Decimal(3,2)
+  maxOutputTokens    Int                @default(8192)
+  
+  allowedToolKeys    String[]
+  requiredPermission String?
+  
+  canRunAutonomously Boolean               @default(false)
+  requiresApprovalFor String[]
+  
+  isActive           Boolean            @default(true)
+  ownerId            String?
+  
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  promptVersions     AgentPromptVersion[]
+  runs               AgentRun[]
+  memories           AgentMemory[]
+  tasks              AgentTask[]
+}
+
+model AgentPromptVersion {
+  id                 String             @id @default(cuid())
+  agentId            String
+  version            Int
+  systemPrompt       String             @db.Text
+  
+  changedById        String?
+  changedAt          DateTime           @default(now())
+  notes              String?
+  
+  evalScore          Decimal?           @db.Decimal(5,2)
+
+  agent              Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+enum AgentRunTrigger {
+  USER_MESSAGE
+  EVENT
+  SCHEDULE
+  ANOTHER_AGENT
+  MANUAL
+}
+
+enum AgentRunStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  REFUSED
+  ESCALATED
+  BUDGET_BLOCKED
+}
+
+enum AgentRunFeedback {
+  NONE
+  POSITIVE
+  NEGATIVE
+}
+
+model AgentRun {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  agentId            String
+  promptVersion      Int
+  
+  trigger            AgentRunTrigger
+  triggerRef         String?
+  userId             String?
+  conversationId     String?
+  
+  input              Json
+  output             Json?
+  toolCalls          Json?
+  
+  model              String?
+  inputTokens        Int?
+  outputTokens       Int?
+  cachedTokens       Int?
+  costCop            Decimal?           @db.Decimal(18,2)
+  latencyMs          Int?
+  confidence         Decimal?           @db.Decimal(5,2)
+  
+  status             AgentRunStatus
+  errorDetail        String?            @db.Text
+  
+  feedback           AgentRunFeedback   @default(NONE)
+  feedbackNote       String?            @db.Text
+  
+  createdAt          DateTime           @default(now())
+  
+  agent              Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tasks              AgentTask[]
+}
+
+enum AgentMemoryScope {
+  GLOBAL
+  CLIENT
+  PROJECT
+  USER
+  MACHINE
+  SUPPLIER
+}
+
+enum AgentMemorySource {
+  STATED
+  DERIVED_APPROVED
+}
+
+model AgentMemory {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  agentId            String
+  
+  scope              AgentMemoryScope
+  scopeRef           String?
+  
+  key                String
+  value              Json
+  
+  embedding          Unsupported("vector(768)")?
+  
+  source             AgentMemorySource
+  sourceRunId        String?
+  
+  confidence         Decimal?           @db.Decimal(5,2)
+  expiresAt          DateTime?
+  
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  agent              Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+}
+
+enum AgentTaskType {
+  RECOMMENDATION
+  ALERT
+  DRAFT
+  PLAN
+  PURCHASE_PROPOSAL
+  RESCHEDULE_PROPOSAL
+}
+
+enum AgentTaskStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  EXECUTED
+}
+
+model AgentTask {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  agentId            String
+  runId              String?
+  
+  type               AgentTaskType
+  title              String
+  summary            String             @db.Text
+  payload            Json
+  impact             Json?
+  
+  status             AgentTaskStatus    @default(PENDING)
+  
+  assignedToId       String?
+  reviewedById       String?
+  reviewedAt         DateTime?
+  rejectionReason    String?            @db.Text
+  
+  executedAt         DateTime?
+  executionResult    Json?
+  expiresAt          DateTime?
+  
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  agent              Agent              @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  run                AgentRun?          @relation(fields: [runId], references: [id], onDelete: SetNull)
+}

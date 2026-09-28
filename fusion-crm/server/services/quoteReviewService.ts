@@ -1,0 +1,60 @@
+import { getAssistRun } from '../routes/tariff';
+import { calculatePressQuote, buildPressQuoteInput } from '../../packages/core/src/pricing/press';
+import { getTariffVersion } from './tariffStore';
+import type { PressQuoteResult } from '../../packages/core/src/pricing/press/types';
+import {
+  recalculateQuoteTotals,
+  reviewQuotePricing,
+  type QuotePricingReview,
+  type QuoteTotals,
+} from '../../packages/core/src/pricing/quoteReview';
+
+/**
+ * Recalcula en el servidor el resultado del motor de cada corrida del asistente usada en la
+ * cotización, a partir de la entrada guardada y de la versión del tarifario con que se hizo (no del resultado que
+ * haya enviado el navegador).
+ */
+async function loadEngineResults(runIds: string[]): Promise<Record<string, PressQuoteResult | null>> {
+  const results: Record<string, PressQuoteResult | null> = {};
+  await Promise.all(
+    runIds.map(async (runId) => {
+      try {
+        const run: any = await getAssistRun(runId);
+        const input = run?.input ? buildPressQuoteInput(run.input, getTariffVersion(run.tariffVersionId).snapshot) : null;
+        results[runId] = input ? calculatePressQuote(input) : null;
+      } catch (err) {
+        console.warn(`[quoteReview] No se pudo recalcular la corrida ${runId}:`, err);
+        results[runId] = null;
+      }
+    })
+  );
+  return results;
+}
+
+export interface QuoteReviewOutcome {
+  totals: QuoteTotals;
+  pricingReview: QuotePricingReview & { checkedAt: string };
+}
+
+export async function reviewQuote(items: unknown): Promise<QuoteReviewOutcome> {
+  const totals = recalculateQuoteTotals(items);
+  const runIds = Array.from(
+    new Set(totals.items.map((it) => it?.assistRunId).filter((id): id is string => typeof id === 'string' && !!id))
+  );
+  const engineResults = await loadEngineResults(runIds);
+  const review = reviewQuotePricing(totals.items, engineResults);
+  return { totals, pricingReview: { ...review, checkedAt: new Date().toISOString() } };
+}
+
+export function isAdminRole(role: unknown): boolean {
+  return role === 'super_admin' || role === 'admin';
+}
+
+/** Mensaje de rechazo si la cotización no puede aprobarla este usuario; null si puede. */
+export function approvalBlockReason(review: QuotePricingReview, role: unknown): string | null {
+  if (!review.belowCost || isAdminRole(role)) return null;
+  const items = review.items
+    .filter((i) => i.status === 'BELOW_COST')
+    .map((i) => `"${i.description}" (precio ${i.unitPrice.toLocaleString('es-CO')} < costo ${i.unitCost?.toLocaleString('es-CO')} por unidad)`);
+  return `La cotización tiene ítems por debajo del costo de producción: ${items.join('; ')}. Solo un administrador puede aprobarla.`;
+}

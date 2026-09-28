@@ -1,0 +1,95 @@
+enum RoutingStrategy {
+  ROUND_ROBIN
+  LEAST_BUSY
+  SKILL_BASED
+  ACCOUNT_OWNER
+  STICKY_LAST_AGENT
+}
+
+enum HolidayCalendar {
+  COLOMBIA
+  NONE
+}
+
+enum EscalationTrigger {
+  SLA_BREACH
+  SLA_AT_RISK
+  NO_RESPONSE
+  NEGATIVE_SENTIMENT
+  VIP_CLIENT
+}
+
+model SlaPolicy {
+  id                   String  @id @default(cuid())
+  organizationId       String
+  name                 String
+  appliesTo            Json // { clientType?: string[], channel?: string[], tags?: string[], pipelineValueGt?: number }
+  firstResponseMinutes Int
+  resolutionMinutes    Int
+  businessHoursOnly    Boolean @default(true)
+  priority             Int     @default(0)
+  isActive             Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BusinessHours {
+  id              String          @id @default(cuid())
+  organizationId  String
+  name            String
+  timezone        String          @default("America/Bogota")
+  schedule        Json // { monday: [{start: "08:00", end: "12:00"}, {start: "13:00", end: "17:00"}], ... }
+  holidayCalendar HolidayCalendar @default(COLOMBIA)
+  exceptions      Json? // [{date: "2026-12-25", schedule: []}]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  AgentShift AgentShift[]
+}
+
+model AgentShift {
+  id                         String    @id @default(cuid())
+  organizationId             String
+  userId                     String
+  businessHoursId            String
+  skills                     String[]
+  maxConcurrentConversations Int       @default(5)
+  channels                   String[]
+  isBackup                   Boolean   @default(false)
+  validFrom                  DateTime
+  validTo                    DateTime?
+
+  businessHours BusinessHours @relation(fields: [businessHoursId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RoutingRule {
+  id             String          @id @default(cuid())
+  organizationId String
+  name           String
+  order          Int
+  conditions     Json // { channel?: string[], keyword?: string[], clientType?: string[], estimatedValueGt?: number }
+  strategy       RoutingStrategy
+  targetUserIds  String[] // Si strategy = ROUND_ROBIN o LEAST_BUSY
+  targetTeamId   String?
+  fallbackUserId String?
+  isActive       Boolean         @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EscalationPolicy {
+  id             String            @id @default(cuid())
+  organizationId String
+  name           String
+  trigger        EscalationTrigger
+  steps          Json // [{ delayMinutes: 10, notifyTo: 'SUPERVISOR', reassignToBackup: false }, ...]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

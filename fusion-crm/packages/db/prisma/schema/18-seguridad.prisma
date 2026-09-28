@@ -1,0 +1,87 @@
+model Role {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  name           String
+  description    String?
+  isSystem       Boolean  @default(false)
+  permissions    String[]
+
+  users User[]
+
+  @@unique([organizationId, key])
+}
+
+model UserInvitation {
+  id             String           @id @default(cuid())
+  organizationId String
+  email          String
+  roleIds        String[]
+  invitedById    String
+  token          String           @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  status         InvitationStatus @default(PENDING)
+
+  @@index([organizationId, email])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+model AccessReview {
+  id             String       @id @default(cuid())
+  organizationId String
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         ReviewStatus @default(OPEN)
+  reviewerId     String?
+  findings       Json?        @db.JsonB
+  completedAt    DateTime?
+}
+
+enum ReviewStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+}
+
+// Add these fields to User via another model or just update 02-auth.prisma
+
+model Secret {
+  id             String    @id @default(cuid())
+  organizationId String
+  key            String
+  encryptedValue String    @db.Text
+  iv             String
+  authTag        String?
+  algorithm      String    @default("aes-256-gcm")
+  version        Int       @default(1)
+  expiresAt      DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
+
+model NumberSequence {
+  id             String   @id @default(cuid())
+  organizationId String
+  series         String   // ej: "EXT", "COT", "FAC"
+  current        Int      @default(100)
+  prefix         String?
+  step           Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, series])
+  @@index([organizationId])
+}

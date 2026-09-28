@@ -1,0 +1,217 @@
+enum PrintOrderStatus {
+  NEW
+  AWAITING_ARTWORK
+  IN_PROCESS
+  IN_PRODUCTION
+  READY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum PrintOrderChannel {
+  KIOSK
+  WEB
+  STORE
+  PHONE
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+  CREDIT
+}
+
+enum ArtworkStatus {
+  PENDING
+  RECEIVED
+  APPROVED
+  REJECTED
+}
+
+model PrintCategory {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  imageKey       String?
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  prices     PrintPrice[]
+  orderItems PrintOrderItem[]
+
+  @@index([organizationId, isActive, order])
+}
+
+model PrintMaterial {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  imageKey       String?
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  prices     PrintPrice[]
+  orderItems PrintOrderItem[]
+
+  @@index([organizationId, isActive, order])
+}
+
+model PrintDimension {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  imageKey       String?
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  prices     PrintPrice[]
+  orderItems PrintOrderItem[]
+
+  @@index([organizationId, isActive, order])
+}
+
+model PrintFinish {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  imageKey       String?
+  order          Int     @default(0)
+  isActive       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  prices     PrintPrice[]
+  orderItems PrintOrderItem[]
+
+  @@index([organizationId, isActive, order])
+}
+
+model PrintPrice {
+  id             String @id @default(cuid())
+  organizationId String
+
+  categoryId  String
+  category    PrintCategory  @relation(fields: [categoryId], references: [id])
+  materialId  String
+  material    PrintMaterial  @relation(fields: [materialId], references: [id])
+  dimensionId String
+  dimension   PrintDimension @relation(fields: [dimensionId], references: [id])
+  finishId    String?
+  finish      PrintFinish?   @relation(fields: [finishId], references: [id])
+
+  minQuantity Int
+  maxQuantity Int?
+
+  unitPrice Decimal @db.Decimal(15, 2)
+  setupFee  Decimal @default(0) @db.Decimal(15, 2)
+
+  validFrom DateTime
+  validTo   DateTime?
+  isActive  Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  @@index([organizationId, categoryId, materialId, dimensionId])
+}
+
+model PrintOrder {
+  id             String @id @default(cuid())
+  organizationId String
+  number         String // IPD-XXXXX
+
+  customerName     String
+  customerEmail    String?
+  customerPhone    String?
+  customerDocument String?
+
+  status  PrintOrderStatus  @default(NEW)
+  channel PrintOrderChannel @default(WEB)
+
+  paymentStatus PaymentStatus  @default(PENDING)
+  paymentMethod PaymentMethod?
+
+  subtotal Decimal @default(0) @db.Decimal(15, 2)
+  vat      Decimal @default(0) @db.Decimal(15, 2)
+  total    Decimal @default(0) @db.Decimal(15, 2)
+
+  notes               String?
+  productionProjectId String?
+  odooOrderId         String?
+
+  uploadToken     String?   @unique
+  uploadExpiresAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  items PrintOrderItem[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+}
+
+model PrintOrderItem {
+  id      String     @id @default(cuid())
+  orderId String
+  order   PrintOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  categoryId  String
+  category    PrintCategory  @relation(fields: [categoryId], references: [id])
+  materialId  String
+  material    PrintMaterial  @relation(fields: [materialId], references: [id])
+  dimensionId String
+  dimension   PrintDimension @relation(fields: [dimensionId], references: [id])
+  finishId    String?
+  finish      PrintFinish?   @relation(fields: [finishId], references: [id])
+
+  quantity  Int
+  unitPrice Decimal @db.Decimal(15, 2)
+  lineTotal Decimal @db.Decimal(15, 2)
+
+  artworkKeys    String[]
+  artworkStatus  ArtworkStatus @default(PENDING)
+  specifications Json?         @db.JsonB
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  @@index([orderId])
+}

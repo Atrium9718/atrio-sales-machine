@@ -1,0 +1,540 @@
+enum PurchaseStatus {
+  DRAFT
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+enum MovementType {
+  PURCHASE_IN
+  PRODUCTION_OUT
+  TRANSFORMATION_IN
+  TRANSFORMATION_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  DAMAGE_OUT
+  RETURN_IN
+  RESERVATION
+  RELEASE
+}
+
+enum ItemType {
+  PAPER
+  SUPPLY
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CONSUMED
+  RELEASED
+  EXPIRED
+}
+
+enum DamageCause {
+  MACHINE
+  MATERIAL
+  HUMAN
+  DESIGN
+  CLIENT_CHANGE
+  OTHER
+}
+
+enum InventoryAlertType {
+  LOW_STOCK
+  OUT_OF_STOCK
+  EXPIRING
+  OVERSTOCK
+  NEGATIVE_BALANCE
+}
+
+enum InventoryCountStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum OvertimeType {
+  DAY
+  NIGHT
+  HOLIDAY
+  NIGHT_HOLIDAY
+}
+
+enum OvertimeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum DeliveryType {
+  MESSENGER
+  FREIGHT
+  COURIER
+  OWN_VEHICLE
+}
+
+enum SupplyCategory {
+  INK
+  PLATE
+  CHEMICAL
+  BLANKET
+  SPARE_PART
+  PACKAGING
+  OFFICE
+  OTHER
+}
+
+model Supplier {
+  id             String  @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  nit            String?
+  contactName    String?
+  email          String?
+  phone          String?
+  address        String?
+  city           String?
+  paymentTerms   String?
+  leadTimeDays   Int     @default(0)
+  rating         Decimal @default(0) @db.Decimal(5, 2)
+  isActive       Boolean @default(true)
+  notes          String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  ratings         SupplierRating[]
+  purchases       Purchase[]
+  paperLots       PaperLot[]
+  outsourcedCosts OutsourcedCost[]
+
+  @@unique([organizationId, code])
+}
+
+model SupplierRating {
+  id         String    @id @default(cuid())
+  supplierId String
+  supplier   Supplier  @relation(fields: [supplierId], references: [id])
+  purchaseId String?
+  purchase   Purchase? @relation(fields: [purchaseId], references: [id])
+
+  qualityScore  Decimal @db.Decimal(5, 2)
+  deliveryScore Decimal @db.Decimal(5, 2)
+  priceScore    Decimal @db.Decimal(5, 2)
+  serviceScore  Decimal @db.Decimal(5, 2)
+  overallScore  Decimal @db.Decimal(5, 2)
+
+  comments  String?
+  ratedById String
+  ratedAt   DateTime @default(now())
+}
+
+model PaperType {
+  id                String  @id @default(cuid())
+  organizationId    String
+  code              String
+  name              String
+  grammage          Int
+  finish            String?
+  color             String?
+  isRecycled        Boolean @default(false)
+  defaultSupplierId String?
+  isActive          Boolean @default(true)
+
+  inventories PaperInventory[]
+}
+
+model PaperSize {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  widthMm        Int
+  heightMm       Int
+  isStandard     Boolean @default(true)
+
+  inventories PaperInventory[]
+}
+
+model PaperInventory {
+  id             String    @id @default(cuid())
+  organizationId String
+  paperTypeId    String
+  paperType      PaperType @relation(fields: [paperTypeId], references: [id])
+  paperSizeId    String
+  paperSize      PaperSize @relation(fields: [paperSizeId], references: [id])
+
+  currentSheets   Int @default(0)
+  reservedSheets  Int @default(0)
+  availableSheets Int @default(0) // Generated/Calculated = current - reserved
+
+  minStockSheets     Int @default(0)
+  maxStockSheets     Int @default(0)
+  reorderPointSheets Int @default(0)
+
+  averageCostPerSheet Decimal @default(0) @db.Decimal(15, 4)
+  lastCostPerSheet    Decimal @default(0) @db.Decimal(15, 4)
+
+  location      String?
+  lastCountedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  lots PaperLot[]
+
+  @@unique([organizationId, paperTypeId, paperSizeId])
+}
+
+model PaperLot {
+  id               String         @id @default(cuid())
+  organizationId   String
+  paperInventoryId String
+  paperInventory   PaperInventory @relation(fields: [paperInventoryId], references: [id])
+  lotNumber        String
+  supplierId       String?
+  supplier         Supplier?      @relation(fields: [supplierId], references: [id])
+  purchaseId       String?
+  purchase         Purchase?      @relation("LotPurchase", fields: [purchaseId], references: [id])
+
+  receivedAt      DateTime @default(now())
+  initialSheets   Int
+  remainingSheets Int
+  costPerSheet    Decimal  @db.Decimal(15, 4)
+
+  expiryDate   DateTime?
+  qualityNotes String?
+  isActive     Boolean   @default(true)
+
+  movements InventoryMovement[]
+}
+
+model PaperTransformation {
+  id                String @id @default(cuid())
+  organizationId    String
+  sourceLotId       String
+  sourcePaperSizeId String
+  targetPaperSizeId String
+
+  sheetsConsumed Int
+  sheetsProduced Int
+  wasteSheets    Int
+  yieldPercent   Decimal @db.Decimal(5, 2)
+
+  performedByEmployeeId String
+  machineId             String?
+
+  performedAt DateTime @default(now())
+  notes       String?
+}
+
+model WasteFormula {
+  id             String  @id @default(cuid())
+  organizationId String
+  productType    String
+  processId      String?
+  machineId      String?
+
+  baseWasteSheets         Int     @default(0)
+  wastePercentPerColor    Decimal @default(0) @db.Decimal(5, 2)
+  wastePercentPerThousand Decimal @default(0) @db.Decimal(5, 2)
+  minWasteSheets          Int     @default(0)
+}
+
+model Supply {
+  id             String         @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  category       SupplyCategory
+  unit           String
+
+  currentStock  Decimal @default(0) @db.Decimal(15, 4)
+  reservedStock Decimal @default(0) @db.Decimal(15, 4)
+  minStock      Decimal @default(0) @db.Decimal(15, 4)
+  reorderPoint  Decimal @default(0) @db.Decimal(15, 4)
+
+  averageCost Decimal @default(0) @db.Decimal(15, 4)
+  lastCost    Decimal @default(0) @db.Decimal(15, 4)
+
+  machineIds        String[]
+  defaultSupplierId String?
+  location          String?
+  isActive          Boolean  @default(true)
+
+  movements InventoryMovement[]
+}
+
+model Purchase {
+  id             String   @id @default(cuid())
+  organizationId String
+  number         String
+  supplierId     String
+  supplier       Supplier @relation(fields: [supplierId], references: [id])
+
+  orderedAt  DateTime       @default(now())
+  receivedAt DateTime?
+  status     PurchaseStatus @default(DRAFT)
+
+  subtotal Decimal @default(0) @db.Decimal(15, 2)
+  vat      Decimal @default(0) @db.Decimal(15, 2)
+  total    Decimal @default(0) @db.Decimal(15, 2)
+
+  invoiceNumber String?
+  notes         String?
+  receivedById  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  items           PurchaseItem[]
+  paperLots       PaperLot[]       @relation("LotPurchase")
+  supplierRatings SupplierRating[]
+}
+
+model PurchaseItem {
+  id         String   @id @default(cuid())
+  purchaseId String
+  purchase   Purchase @relation(fields: [purchaseId], references: [id])
+
+  itemType         ItemType
+  paperInventoryId String?
+  supplyId         String?
+
+  quantity  Decimal @db.Decimal(15, 4)
+  unitCost  Decimal @db.Decimal(15, 4)
+  lineTotal Decimal @db.Decimal(15, 2)
+}
+
+model InventoryMovement {
+  id             String       @id @default(cuid())
+  organizationId String
+  movementType   MovementType
+  itemType       ItemType
+
+  paperLotId String?
+  paperLot   PaperLot? @relation(fields: [paperLotId], references: [id])
+  supplyId   String?
+  supply     Supply?   @relation(fields: [supplyId], references: [id])
+
+  quantity     Decimal @db.Decimal(15, 4) // Negative for OUT
+  unitCost     Decimal @db.Decimal(15, 4)
+  totalCost    Decimal @db.Decimal(15, 4)
+  balanceAfter Decimal @db.Decimal(15, 4) // Stock exactly after this tx
+
+  projectId        String?
+  purchaseId       String?
+  transformationId String?
+  damageId         String?
+
+  performedById String
+  reason        String?
+  performedAt   DateTime @default(now())
+
+  createdAt DateTime @default(now())
+}
+
+model InventoryReservation {
+  id             String @id @default(cuid())
+  organizationId String
+  projectId      String
+
+  paperLotId String?
+  supplyId   String?
+
+  quantity Decimal           @db.Decimal(15, 4)
+  status   ReservationStatus @default(ACTIVE)
+
+  reservedAt DateTime  @default(now())
+  expiresAt  DateTime?
+  consumedAt DateTime?
+  releasedAt DateTime?
+}
+
+model DamageRecord {
+  id             String  @id @default(cuid())
+  organizationId String
+  projectId      String?
+  machineId      String?
+  employeeId     String?
+
+  itemType   ItemType
+  paperLotId String?
+  supplyId   String?
+
+  quantity Decimal @db.Decimal(15, 4)
+  cost     Decimal @db.Decimal(15, 2)
+
+  cause       DamageCause
+  causeDetail String?
+  photoKeys   String[]
+  isReprocess Boolean     @default(false)
+  reportedAt  DateTime    @default(now())
+
+  reprocesses Reprocess[]
+}
+
+model Reprocess {
+  id             String        @id @default(cuid())
+  organizationId String
+  projectId      String
+  damageId       String?
+  damage         DamageRecord? @relation(fields: [damageId], references: [id])
+
+  reason          String
+  additionalCost  Decimal @default(0) @db.Decimal(15, 2)
+  additionalHours Decimal @default(0) @db.Decimal(10, 2)
+
+  responsibleArea  String?
+  preventiveAction String?
+
+  approvedById String?
+  createdAt    DateTime @default(now())
+}
+
+model InventoryAlert {
+  id               String   @id @default(cuid())
+  organizationId   String
+  itemType         ItemType
+  paperInventoryId String?
+  supplyId         String?
+
+  alertType    InventoryAlertType
+  threshold    Decimal            @db.Decimal(15, 4)
+  currentValue Decimal            @db.Decimal(15, 4)
+  severity     String
+
+  status           String    @default("ACTIVE") // ACTIVE, ACKNOWLEDGED, RESOLVED
+  acknowledgedById String?
+  resolvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model InventoryCount {
+  id             String               @id @default(cuid())
+  organizationId String
+  countedAt      DateTime             @default(now())
+  countedById    String
+  status         InventoryCountStatus @default(PENDING)
+
+  items                 Json     @db.JsonB // { id, expected, counted, diff }
+  adjustmentMovementIds String[]
+  notes                 String?
+}
+
+// ==========================================
+// COSTOS ADICIONALES (ADDITIONAL COSTS)
+// ==========================================
+
+model Overtime {
+  id             String @id @default(cuid())
+  organizationId String
+  employeeId     String
+  projectId      String
+
+  date             DateTime
+  hours            Decimal      @db.Decimal(10, 2)
+  type             OvertimeType
+  surchargePercent Decimal      @db.Decimal(5, 2)
+  hourlyRate       Decimal      @db.Decimal(10, 2)
+  totalCost        Decimal      @db.Decimal(15, 2)
+
+  status       OvertimeStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TemporaryWorker {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  documentNumber String
+  agencyId       String?
+  hourlyCost     Decimal @db.Decimal(10, 2)
+  isActive       Boolean @default(true)
+
+  logs TemporaryWorkerLog[]
+}
+
+model TemporaryWorkerLog {
+  id        String          @id @default(cuid())
+  workerId  String
+  worker    TemporaryWorker @relation(fields: [workerId], references: [id])
+  projectId String
+
+  date      DateTime
+  hours     Decimal  @db.Decimal(10, 2)
+  totalCost Decimal  @db.Decimal(15, 2)
+  notes     String?
+}
+
+model Freelancer {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  documentNumber String
+  specialty      String?
+  hourlyRate     Decimal? @db.Decimal(10, 2)
+  projectRate    Decimal? @db.Decimal(15, 2)
+  bankAccount    String?
+  isActive       Boolean  @default(true)
+
+  payments FreelancerPayment[]
+}
+
+model FreelancerPayment {
+  id           String     @id @default(cuid())
+  freelancerId String
+  freelancer   Freelancer @relation(fields: [freelancerId], references: [id])
+  projectId    String
+
+  amount     Decimal  @db.Decimal(15, 2)
+  date       DateTime
+  supportKey String?
+  notes      String?
+}
+
+model DeliveryCost {
+  id             String  @id @default(cuid())
+  organizationId String
+  projectId      String
+  deliveryNoteId String?
+
+  type        DeliveryType
+  provider    String?
+  destination String
+
+  cost       Decimal  @db.Decimal(15, 2)
+  date       DateTime
+  invoiceKey String?
+}
+
+model OutsourcedCost {
+  id             String   @id @default(cuid())
+  organizationId String
+  projectId      String
+  supplierId     String
+  supplier       Supplier @relation(fields: [supplierId], references: [id])
+  processId      String?
+
+  description String
+  quantity    Decimal @db.Decimal(10, 2)
+  unitCost    Decimal @db.Decimal(15, 2)
+  totalCost   Decimal @db.Decimal(15, 2)
+
+  orderedAt     DateTime  @default(now())
+  receivedAt    DateTime?
+  invoiceNumber String?
+  qualityRating Decimal?  @db.Decimal(5, 2)
+}

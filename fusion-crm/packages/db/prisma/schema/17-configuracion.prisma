@@ -1,0 +1,114 @@
+enum SettingDomain {
+  ORGANIZATION
+  COMMERCIAL
+  QUOTING
+  PRODUCTION
+  INVENTORY
+  FINANCE
+  COMMUNICATION
+  AI
+  INTEGRATION
+  SECURITY
+  SYSTEM
+}
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  DECIMAL
+  BOOLEAN
+  ENUM
+  JSON
+  DURATION
+  PERCENTAGE
+  MONEY
+  COLOR
+  EMAIL
+  URL
+  TIME
+  DATE
+}
+
+enum SettingDangerLevel {
+  SAFE
+  CAUTION
+  DANGEROUS
+}
+
+enum FeatureFlagStatus {
+  OFF
+  ON
+  ROLLOUT
+  INTERNAL_ONLY
+}
+
+model SettingDefinition {
+  id                 String             @id @default(cuid())
+  key                String             @unique
+  domain             SettingDomain
+  label              String
+  description        String?
+  helpText           String?
+  valueType          SettingValueType
+  defaultValue       Json               @db.JsonB
+  validationSchema   Json               @db.JsonB
+  enumOptions        Json?              @db.JsonB
+  unit               String?
+  isSensitive        Boolean            @default(false)
+  requiresRestart    Boolean            @default(false)
+  requiredPermission String             @default("settings:update")
+  dangerLevel        SettingDangerLevel @default(SAFE)
+  order              Int                @default(0)
+  group              String?
+  isActive           Boolean            @default(true)
+
+  values SettingValue[]
+}
+
+model SettingValue {
+  id             String    @id @default(cuid())
+  organizationId String
+  definitionId   String
+  key            String
+  value          Json      @db.JsonB
+  isOverridden   Boolean   @default(false)
+  effectiveFrom  DateTime  @default(now())
+  effectiveUntil DateTime?
+
+  definition SettingDefinition @relation(fields: [definitionId], references: [id])
+
+  @@unique([organizationId, key])
+}
+
+model SettingChange {
+  id              String    @id @default(cuid())
+  organizationId  String
+  key             String
+  previousValue   Json?     @db.JsonB
+  newValue        Json?     @db.JsonB
+  changedById     String
+  changedAt       DateTime  @default(now())
+  ip              String?
+  userAgent       String?
+  reason          String?
+  revertedById    String?
+  revertedAt      DateTime?
+  revertsChangeId String?
+}
+
+model FeatureFlag {
+  id                 String            @id @default(cuid())
+  organizationId     String
+  key                String
+  name               String
+  description        String?
+  status             FeatureFlagStatus @default(OFF)
+  rolloutPercentage  Int               @default(0)
+  enabledForUserIds  String[]
+  enabledForRoleKeys String[]
+  killSwitch         Boolean           @default(false)
+  ownerId            String?
+  expiresAt          DateTime?
+
+  @@unique([organizationId, key])
+}

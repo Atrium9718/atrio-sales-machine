@@ -1,0 +1,95 @@
+// 07-comunicacion.prisma
+
+enum ChannelType {
+  EMAIL
+  WHATSAPP
+  WEBCHAT
+  INSTAGRAM
+  MESSENGER
+  SMS
+  VOICE
+}
+
+model PhoneLine {
+  id             String  @id @default(cuid())
+  organizationId String
+  channelId      String
+  providerNumber String
+  displayName    String
+  ivrMenuId      String?
+  ringGroupId    String?
+  recordCalls    Boolean @default(false)
+  isActive       Boolean @default(true)
+
+  channel   Channel    @relation(fields: [channelId], references: [id])
+  ivrMenu   IvrMenu?   @relation(fields: [ivrMenuId], references: [id])
+  ringGroup RingGroup? @relation(fields: [ringGroupId], references: [id])
+  callLogs  CallLog[]
+}
+
+model CallLog {
+  id                  String        @id @default(cuid())
+  organizationId      String
+  conversationId      String?
+  phoneLineId         String
+  direction           CallDirection
+  fromNumber          String
+  toNumber            String
+  status              CallStatus
+  answeredById        String?
+  queuedSeconds       Int           @default(0)
+  durationSeconds     Int           @default(0)
+  recordingKey        String?
+  voicemailKey        String?
+  voicemailTranscript String?       @db.Text
+  clientId            String?
+  contactId           String?
+  startedAt           DateTime      @default(now())
+  answeredAt          DateTime?
+  endedAt             DateTime?
+
+  phoneLine PhoneLine @relation(fields: [phoneLineId], references: [id])
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  RINGING
+  ANSWERED
+  MISSED
+  VOICEMAIL
+  FAILED
+  COMPLETED
+}
+
+model RingGroup {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  name                String
+  memberUserIds       String[]
+  strategy            RingStrategy
+  ringSeconds         Int          @default(30)
+  overflowToVoicemail Boolean      @default(true)
+
+  phoneLines PhoneLine[]
+}
+
+enum RingStrategy {
+  ALL_AT_ONCE
+  ROUND_ROBIN
+  LONGEST_IDLE
+}
+
+model IvrMenu {
+  id               String  @id @default(cuid())
+  organizationId   String
+  name             String
+  greetingAudioKey String?
+  greetingText     String? @db.Text
+  options          Json // DIGIT -> Action (Transfer, Play, Go to IVR, Voicemail)
+
+  phoneLines PhoneLine[]
+}

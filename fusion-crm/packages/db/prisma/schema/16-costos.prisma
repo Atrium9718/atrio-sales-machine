@@ -1,0 +1,33 @@
+model ConversationCost {
+  id             String @id @default(cuid())
+  organizationId String
+  conversationId String
+
+  channelCost Decimal @db.Decimal(18, 2) // costo de plantillas y minutos de voz
+  aiCost      Decimal @db.Decimal(18, 2) // tokens de Gemini y transcripción
+
+  agentMinutes Int
+  agentCost    Decimal @db.Decimal(18, 2)
+
+  totalCost Decimal @db.Decimal(18, 2)
+  currency  String  @default("COP")
+
+  calculatedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChannelTariff {
+  id             String    @id @default(cuid())
+  organizationId String
+  channel        String // WHATSAPP, VOICE, EMAIL, SMS
+  type           String // TEMPLATE_MARKETING, TEMPLATE_UTILITY, MINUTE_INBOUND, MINUTE_OUTBOUND
+  cost           Decimal   @db.Decimal(18, 4)
+  currency       String    @default("USD")
+  validFrom      DateTime
+  validTo        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

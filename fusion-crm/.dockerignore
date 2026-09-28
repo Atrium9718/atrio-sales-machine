@@ -1,0 +1,9 @@
+**/node_modules
+dist
+.git
+.env*
+!.env.example
+local-app-state.json
+*.log
+tests
+e2e

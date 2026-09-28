@@ -1,0 +1,47 @@
+model Organization {
+  id              String           @id @default(cuid())
+  name            String
+  Client          Client[]
+  Contact         Contact[]
+  ClientFile      ClientFile[]
+  ClientMergeLog  ClientMergeLog[]
+  PipelineStage   PipelineStage[]
+  LostReason      LostReason[]
+  Opportunity     Opportunity[]
+  Activity        Activity[]
+  Task            Task[]
+  Appointment     Appointment[]
+  VeaMeeting      VeaMeeting[]
+  webchatConfigs  WebchatConfig[]
+  webchatSessions WebchatSession[]
+}
+
+model User {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  email          String
+  status         String    @default("ACTIVE")
+  lastLoginAt    DateTime?
+  mfaEnabled     Boolean   @default(false)
+
+  assignedTasks Task[] @relation("AssignedTasks")
+  createdTasks  Task[] @relation("CreatedTasks")
+
+  veaEvaluations      VeaEvaluation[]
+  evaluatedBy         VeaEvaluation[]       @relation("EvaluatedBy")
+  Client              Client[]
+  ClientFile          ClientFile[]
+  ClientMergeLog      ClientMergeLog[]
+  Quote               Quote[]
+  QuoteHistory        QuoteHistory[]
+  Opportunity         Opportunity[]
+  StageTransition     StageTransition[]
+  Activity            Activity[]
+  Appointment         Appointment[]
+  AppointmentAttendee AppointmentAttendee[]
+  VeaMeeting          VeaMeeting[]
+  VeaContribution     VeaContribution[]
+  role                Role?                 @relation(fields: [roleId], references: [id])
+  roleId              String?
+}

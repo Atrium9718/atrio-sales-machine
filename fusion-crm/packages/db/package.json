@@ -1,0 +1,13 @@
+{
+  "name": "@fusion/db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "prisma/index.ts",
+  "dependencies": {
+    "@prisma/client": "^6.4.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.4.1"
+  }
+}

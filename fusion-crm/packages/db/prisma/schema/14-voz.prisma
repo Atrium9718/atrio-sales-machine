@@ -1,0 +1,37 @@
+model Call {
+  id             String  @id @default(cuid())
+  organizationId String
+  channelId      String?
+  conversationId String?
+  contactId      String?
+  clientId       String?
+
+  direction      String // INBOUND, OUTBOUND
+  fromNumber     String
+  toNumber       String
+  externalCallId String?
+
+  status String // RINGING, IN_PROGRESS, COMPLETED, NO_ANSWER, BUSY, FAILED, VOICEMAIL
+
+  startedAt       DateTime  @default(now())
+  answeredAt      DateTime?
+  endedAt         DateTime?
+  durationSeconds Int?
+
+  agentId          String?
+  recordingUrl     String?
+  recordingConsent Boolean @default(false)
+
+  transcriptText     String? @db.Text
+  transcriptSegments Json?   @db.JsonB
+
+  aiSummary   String? @db.Text
+  aiSentiment String?
+  aiNextSteps Json?   @db.JsonB
+
+  disposition String? // COTIZACION, SEGUIMIENTO, RECLAMO, SOPORTE, OTRO
+  notes       String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

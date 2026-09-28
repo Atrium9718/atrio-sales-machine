@@ -1,0 +1,13 @@
+// Almacén genérico de documentos JSON por colección (conversaciones omnicanal, configuración de
+// agentes, etc.). Da a cualquier colección un respaldo en Postgres con la misma forma que Firestore.
+model StoredDocument {
+  collection String
+  id         String
+  data       Json     @db.JsonB
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([collection, id])
+  @@index([collection, updatedAt])
+  @@map("app_documents")
+}

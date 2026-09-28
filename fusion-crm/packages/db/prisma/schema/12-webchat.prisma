@@ -1,0 +1,54 @@
+model WebchatConfig {
+  id             String @id @default(cuid())
+  organizationId String @unique
+  publicKey      String @unique @default(cuid())
+
+  primaryColor String  @default("#0f172a")
+  position     String  @default("right")
+  greeting     String  @default("¡Hola! ¿En qué podemos ayudarte?")
+  avatarUrl    String?
+
+  businessHours     Json   @default("{\"timezone\":\"America/Bogota\",\"schedule\":{\"monday\":{\"open\":\"08:00\",\"close\":\"17:00\"},\"tuesday\":{\"open\":\"08:00\",\"close\":\"17:00\"},\"wednesday\":{\"open\":\"08:00\",\"close\":\"17:00\"},\"thursday\":{\"open\":\"08:00\",\"close\":\"17:00\"},\"friday\":{\"open\":\"08:00\",\"close\":\"17:00\"}}}") @db.JsonB
+  outOfHoursMessage String @default("En este momento estamos fuera del horario de atención. Déjanos tu mensaje y te contactaremos pronto.")
+
+  quickReplies Json @default("[\"Cotizar un trabajo\", \"Estado de mi pedido\", \"Hablar con un asesor\"]") @db.JsonB
+
+  allowedOrigins String[] @default(["*"])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model WebchatSession {
+  id             String  @id @default(cuid())
+  organizationId String
+  channelId      String?
+  visitorToken   String  @unique
+  conversationId String?
+
+  pageUrl   String?
+  referrer  String?
+  userAgent String?
+  ipHash    String?
+
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+
+  visitedPages Json? @db.JsonB
+
+  startedAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, visitorToken])
+}

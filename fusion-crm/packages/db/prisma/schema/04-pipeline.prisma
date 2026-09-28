@@ -1,0 +1,406 @@
+enum StageType {
+  OPEN
+  WON
+  LOST
+}
+
+model PipelineStage {
+  id             String    @id @default(cuid())
+  organizationId String
+  key            String
+  name           String
+  order          Int
+  color          String?
+  icon           String?
+  probability    Int       @default(0) // 0-100
+  type           StageType @default(OPEN)
+  maxDaysInStage Int       @default(30)
+  isActive       Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunities   Opportunity[]     @relation("Stage")
+  previousIn      Opportunity[]     @relation("PreviousStage")
+  transitionsTo   StageTransition[] @relation("TransitionTo")
+  transitionsFrom StageTransition[] @relation("TransitionFrom")
+
+  @@unique([organizationId, key])
+  @@map("pipeline_stages")
+}
+
+enum LostReasonCategory {
+  PRICE
+  TIMING
+  COMPETITOR
+  NO_BUDGET
+  NO_RESPONSE
+  QUALITY
+  OTHER
+}
+
+model LostReason {
+  id             String             @id @default(cuid())
+  organizationId String
+  name           String
+  category       LostReasonCategory
+  isActive       Boolean            @default(true)
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  opportunities Opportunity[]
+
+  @@map("lost_reasons")
+}
+
+model Opportunity {
+  id              String   @id @default(cuid())
+  organizationId  String
+  code            String // OPP-XXXXX
+  title           String
+  clientId        String
+  contactId       String?
+  stageId         String
+  stageEnteredAt  DateTime @default(now())
+  previousStageId String?
+
+  estimatedValue Decimal @default(0) @db.Decimal(15, 2)
+  weightedValue  Decimal @default(0) @db.Decimal(15, 2)
+  currency       String  @default("COP")
+
+  expectedCloseDate DateTime?
+  actualCloseDate   DateTime?
+  probability       Int       @default(0)
+
+  temperature      ClientTemperature @default(COLD)
+  temperatureScore Int               @default(0)
+
+  ownerId    String?
+  source     ClientSource @default(MANUAL)
+  campaignId String?
+
+  lostReasonId String?
+  lostNotes    String? @db.Text
+  wonQuoteId   String? // FK a Quote (Etapa 7)
+
+  productTypes    String[] @default([])
+  competitorNotes String?  @db.Text
+
+  nextActionAt   DateTime?
+  nextActionNote String?
+  isStale        Boolean   @default(false)
+  isAnomaly      Boolean   @default(false) // Marcador de error de captura (ej. 29.142 Millones)
+
+  // Convenciones base
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+  updatedById String?
+  deletedAt   DateTime?
+  version     Int       @default(1)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  owner         User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  stage         PipelineStage  @relation("Stage", fields: [stageId], references: [id], onDelete: Restrict)
+  previousStage PipelineStage? @relation("PreviousStage", fields: [previousStageId], references: [id], onDelete: SetNull)
+  lostReason    LostReason?    @relation(fields: [lostReasonId], references: [id], onDelete: SetNull)
+
+  transitions  StageTransition[]
+  activities   Activity[]
+  tasks        Task[]
+  appointments Appointment[]
+  Quote        Quote[]
+
+  @@index([organizationId, stageId])
+  @@index([clientId])
+  @@map("opportunities")
+}
+
+model StageTransition {
+  id                  String   @id @default(cuid())
+  opportunityId       String
+  fromStageId         String?
+  toStageId           String
+  movedById           String?
+  daysInPreviousStage Int      @default(0)
+  notes               String?  @db.Text
+  movedAt             DateTime @default(now())
+
+  opportunity Opportunity    @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  fromStage   PipelineStage? @relation("TransitionFrom", fields: [fromStageId], references: [id], onDelete: SetNull)
+  toStage     PipelineStage  @relation("TransitionTo", fields: [toStageId], references: [id], onDelete: Cascade)
+  movedBy     User?          @relation(fields: [movedById], references: [id], onDelete: SetNull)
+
+  @@map("stage_transitions")
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  WHATSAPP
+  MEETING
+  NOTE
+  TASK
+  QUOTE_SENT
+  VISIT
+}
+
+model Activity {
+  id              String       @id @default(cuid())
+  organizationId  String
+  type            ActivityType
+  subject         String
+  body            String?      @db.Text
+  clientId        String?
+  opportunityId   String?
+  contactId       String?
+  userId          String?
+  durationMinutes Int          @default(0)
+  outcome         String?
+  occurredAt      DateTime     @default(now())
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, occurredAt])
+  @@index([opportunityId, occurredAt])
+  @@map("activities")
+}
+
+enum TaskType {
+  FOLLOW_UP
+  CALL
+  QUOTE
+  VISIT
+  DELIVERY
+  INTERNAL
+  OTHER
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  organizationId String
+  code           String
+  title          String
+  description    String?      @db.Text
+  type           TaskType     @default(FOLLOW_UP)
+  priority       TaskPriority @default(MEDIUM)
+  status         TaskStatus   @default(PENDING)
+
+  assigneeId     String?
+  createdById    String?
+  dueAt          DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  completionNote String?   @db.Text
+  blockedReason  String?   @db.Text
+
+  clientId            String?
+  opportunityId       String?
+  quoteId             String? // FK Etapa 7
+  productionProjectId String? // FK Etapa 8
+
+  parentTaskId     String?
+  automationRuleId String?
+
+  reminderAt   DateTime?
+  snoozedUntil DateTime?
+  snoozeCount  Int       @default(0)
+
+  // Convenciones base
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  assignee     User?        @relation("AssignedTasks", fields: [assigneeId], references: [id], onDelete: SetNull)
+  creator      User?        @relation("CreatedTasks", fields: [createdById], references: [id], onDelete: SetNull)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  parentTask Task?  @relation("SubTasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subTasks   Task[] @relation("SubTasks")
+
+  @@index([assigneeId, status, dueAt])
+  @@map("tasks")
+}
+
+enum AppointmentType {
+  MEETING
+  CALL
+  VISIT
+  FOLLOW_UP
+  INTERNAL
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  HELD
+  NO_SHOW
+  CANCELLED
+}
+
+model Appointment {
+  id             String            @id @default(cuid())
+  organizationId String
+  title          String
+  description    String?           @db.Text
+  type           AppointmentType   @default(MEETING)
+  status         AppointmentStatus @default(SCHEDULED)
+
+  startAt    DateTime
+  endAt      DateTime
+  allDay     Boolean  @default(false)
+  location   String?
+  meetingUrl String?
+
+  clientId      String?
+  opportunityId String?
+  ownerId       String?
+
+  outcome        String?
+  outcomeNotes   String? @db.Text
+  nextStepTaskId String?
+
+  externalCalendarId String?
+  icsUid             String? @unique
+
+  // Convenciones base
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  opportunity  Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  owner        User?        @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  attendees AppointmentAttendee[]
+
+  @@index([ownerId, startAt])
+  @@map("appointments")
+}
+
+enum AttendeeResponseStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  TENTATIVE
+}
+
+model AppointmentAttendee {
+  id             String                 @id @default(cuid())
+  appointmentId  String
+  userId         String?
+  contactId      String?
+  externalEmail  String?
+  responseStatus AttendeeResponseStatus @default(PENDING)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  user        User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact     Contact?    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@map("appointment_attendees")
+}
+
+enum VeaScope {
+  COMMERCIAL
+  PRODUCTION
+}
+
+enum VeaContributionCategory {
+  IDEA
+  ISSUE
+  WIN
+  BLOCKER
+}
+
+model VeaMeeting {
+  id             String    @id @default(cuid())
+  organizationId String
+  scope          VeaScope
+  weekNumber     Int
+  year           Int
+  heldAt         DateTime?
+  facilitatorId  String?
+
+  vision     Json @default("{}") @db.JsonB
+  evaluation Json @default("{}") @db.JsonB
+  agenda     Json @default("{}") @db.JsonB
+
+  attendeeIds String[] @default([])
+  notes       String?  @db.Text
+  aiSummary   String?  @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  version   Int       @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  facilitator  User?        @relation(fields: [facilitatorId], references: [id], onDelete: SetNull)
+
+  contributions VeaContribution[]
+  evaluations   VeaEvaluation[]
+
+  @@unique([organizationId, scope, year, weekNumber])
+  @@map("vea_meetings")
+}
+
+model VeaContribution {
+  id           String                  @id @default(cuid())
+  veaMeetingId String
+  userId       String
+  content      String                  @db.Text
+  category     VeaContributionCategory
+  createdAt    DateTime                @default(now())
+
+  veaMeeting VeaMeeting @relation(fields: [veaMeetingId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("vea_contributions")
+}
+
+model VeaEvaluation {
+  id            String  @id @default(cuid())
+  veaMeetingId  String
+  userId        String // El evaluado
+  score         Int // Ej: 1-5
+  criteria      Json    @db.JsonB
+  feedback      String? @db.Text
+  evaluatedById String?
+
+  veaMeeting  VeaMeeting @relation(fields: [veaMeetingId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  evaluatedBy User?      @relation("EvaluatedBy", fields: [evaluatedById], references: [id], onDelete: SetNull)
+
+  @@map("vea_evaluations")
+}

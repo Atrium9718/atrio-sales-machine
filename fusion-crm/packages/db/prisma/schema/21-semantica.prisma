@@ -1,0 +1,110 @@
+enum GoodDirection {
+  UP
+  DOWN
+}
+
+model SemanticEntity {
+  id              String          @id @default(cuid())
+  organizationId  String
+  entityKey       String
+  businessName    String
+  description     String          @db.Text
+  synonyms        String[]
+  domain          String
+  isQueryable     Boolean         @default(true)
+  exampleQuestions String[]
+  embedding       Unsupported("vector(768)")?
+  isApproved      Boolean         @default(false)
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  fields          SemanticField[]
+}
+
+model SemanticField {
+  id              String          @id @default(cuid())
+  entityId        String
+  fieldKey        String
+  businessName    String
+  description     String          @db.Text
+  unit            String?
+  synonyms        String[]
+  isSensitive     Boolean         @default(false)
+  calculationNote String?         @db.Text
+  commonFilters   Json?
+  
+  entity          SemanticEntity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+}
+
+model SemanticMetric {
+  id                String          @id @default(cuid())
+  organizationId    String
+  key               String          @unique
+  businessName      String
+  description       String          @db.Text
+  formula           String          @db.Text
+  sqlHint           String?         @db.Text
+  unit              String?
+  goodDirection     GoodDirection
+  targetValue       Decimal?        @db.Decimal(18,4)
+  warningThreshold  Decimal?        @db.Decimal(18,4)
+  criticalThreshold Decimal?        @db.Decimal(18,4)
+  ownerRole         String?
+}
+
+model BusinessGlossary {
+  id              String          @id @default(cuid())
+  organizationId  String
+  term            String          @unique
+  definition      String          @db.Text
+  synonyms        String[]
+  domain          String?
+  examples        String[]
+  embedding       Unsupported("vector(768)")?
+}
+
+enum ContextSourceType {
+  KNOWLEDGE_ARTICLE
+  DOCUMENT
+  DRIVE_FOLDER
+  WEBSITE
+  DATABASE_VIEW
+  HISTORICAL_DATA
+  SPREADSHEET
+}
+
+enum SyncMode {
+  MANUAL
+  SCHEDULED
+  ON_EVENT
+}
+
+model ContextSource {
+  id              String            @id @default(cuid())
+  organizationId  String
+  name            String
+  type            ContextSourceType
+  config          Json?
+  syncMode        SyncMode          @default(MANUAL)
+  lastSyncAt      DateTime?
+  documentCount   Int               @default(0)
+  chunkCount      Int               @default(0)
+  status          String            @default("PENDING")
+  isActive        Boolean           @default(true)
+  allowedAgentKeys String[]
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model ContextVacio {
+  id              String            @id @default(cuid())
+  organizationId  String
+  query           String            @db.Text
+  topic           String?
+  agentId         String?
+  runId           String?
+  createdAt       DateTime          @default(now())
+  resolved        Boolean           @default(false)
+}
