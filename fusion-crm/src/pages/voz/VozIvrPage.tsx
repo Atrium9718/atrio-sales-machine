@@ -1,329 +1,164 @@
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  GitFork,
-  Plus,
-  Play,
-  History,
-  CheckCircle2,
-  AlertCircle,
-  FileCode,
-  Calendar,
-  PhoneCall,
-  Clock,
-  ExternalLink,
-  Layers,
-  ArrowRight,
-  Sparkles,
-  ShieldCheck,
-  RefreshCw,
-  Copy,
-  Trash2,
-} from 'lucide-react';
+import { ArrowRight, Network, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { notify } from '../../lib/notify';
+import { formatDateTime, formatPhone, voiceApi } from './callFormat';
 
-interface IvrFlowSummary {
+interface FlowItem {
   id: string;
   name: string;
-  description?: string;
-  numbers: string[];
-  isLive?: boolean;
-  hasPendingChanges?: boolean;
+  description: string | null;
   version: number;
-  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-  publishedAt?: string;
-  publishedById?: string;
+  status: 'DRAFT' | 'PUBLISHED';
+  isLive: boolean;
+  hasPendingChanges: boolean;
+  publishedAt: string | null;
   nodeCount: number;
+  numbers: string[];
   updatedAt: string;
 }
 
+const input = 'h-9 w-full rounded-md border border-input bg-background px-3 text-sm';
+
 export function VozIvrPage() {
   const navigate = useNavigate();
-  const [flows, setFlows] = React.useState<IvrFlowSummary[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [isNewModalOpen, setIsNewModalOpen] = React.useState(false);
-  const [newFlowName, setNewFlowName] = React.useState('');
-  const [newFlowDescription, setNewFlowDescription] = React.useState('');
-  const [toastMessage, setToastMessage] = React.useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [flows, setFlows] = React.useState<FlowItem[] | null>(null);
+  const [error, setError] = React.useState('');
+  const [creating, setCreating] = React.useState(false);
+  const [name, setName] = React.useState('');
+  const [description, setDescription] = React.useState('');
 
-  const showToast = (type: 'success' | 'error', text: string) => {
-    setToastMessage({ type, text });
-    setTimeout(() => setToastMessage(null), 4500);
-  };
-
-  const fetchFlows = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch('/api/voice/ivr-flows');
-      const json = await res.json();
-      if (json.success) {
-        setFlows(json.data);
-      }
-    } catch {
-      showToast('error', 'Error al cargar flujos de IVR.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    fetchFlows();
+  const load = React.useCallback(() => {
+    voiceApi<{ data: FlowItem[] }>('/api/voice/ivr-flows')
+      .then((d) => {
+        setFlows(d.data);
+        setError('');
+      })
+      .catch((err) => setError(err?.message || 'No se pudieron cargar los menús'));
   }, []);
+  React.useEffect(load, [load]);
 
-  const handleCreateFlow = async () => {
-    if (!newFlowName.trim()) {
-      showToast('error', 'El nombre del flujo es requerido.');
-      return;
-    }
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
     try {
-      const res = await fetch('/api/voice/ivr-flows', {
+      const d = await voiceApi<{ data: { id: string } }>('/api/voice/ivr-flows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newFlowName.trim(),
-          description: newFlowDescription.trim(),
-        }),
+        body: JSON.stringify({ name, description }),
       });
-      const json = await res.json();
-      if (json.success) {
-        setIsNewModalOpen(false);
-        setNewFlowName('');
-        setNewFlowDescription('');
-        showToast('success', `Flujo "${json.data.name}" creado con éxito.`);
-        navigate(`/voz/ivr/${json.data.id}`);
-      } else {
-        showToast('error', json.error);
-      }
-    } catch {
-      showToast('error', 'Error al crear flujo.');
+      navigate(`/voz/ivr/${d.data.id}`);
+    } catch (err: any) {
+      notify(err?.message || 'No se pudo crear el menú', 'error');
     }
   };
 
-  const statusBadges = {
-    PUBLISHED: {
-      label: 'Publicado (En Producción)',
-      color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      icon: CheckCircle2,
-    },
-    DRAFT: {
-      label: 'Borrador (En Edición)',
-      color: 'bg-amber-50 text-amber-700 border-amber-200',
-      icon: Clock,
-    },
-    ARCHIVED: {
-      label: 'Archivado',
-      color: 'bg-gray-50 text-gray-600 border-gray-200',
-      icon: History,
-    },
+  const remove = async (f: FlowItem) => {
+    if (!window.confirm(`¿Borrar el menú "${f.name}"?`)) return;
+    try {
+      await voiceApi(`/api/voice/ivr-flows/${f.id}`, { method: 'DELETE' });
+      notify('Menú borrado', 'success');
+      load();
+    } catch (err: any) {
+      notify(err?.message || 'No se pudo borrar', 'error');
+    }
   };
 
-  const publishedCount = flows.filter((f) => f.status === 'PUBLISHED').length;
-  const draftCount = flows.filter((f) => f.status === 'DRAFT').length;
-
   return (
-    <div className="space-y-6 pb-16">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg border text-sm font-medium flex items-center gap-2 ${
-            toastMessage.type === 'success'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-              : 'bg-rose-50 text-rose-900 border-rose-300'
-          }`}
-        >
-          {toastMessage.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-          )}
-          <span>{toastMessage.text}</span>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Network className="w-6 h-6 text-primary" /> Menús de opciones
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Lo que oye quien llama y a dónde va según lo que marque: bienvenida, horario, «marque 1 para ventas», colas, extensiones y buzón.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={load} className="h-9 px-3 rounded-md border border-input text-sm inline-flex items-center gap-1.5">
+            <RefreshCw className="w-4 h-4" /> Actualizar
+          </button>
+          <button onClick={() => setCreating(true)} className="h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium inline-flex items-center gap-1.5">
+            <Plus className="w-4 h-4" /> Nuevo menú
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl p-4 flex items-start gap-3 text-sm">
+        <ShieldCheck className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-medium">Antes de publicar, el sistema revisa el menú</p>
+          <p className="text-muted-foreground">
+            En todo menú el 0 debe llevar a una persona, y antes de conectar con alguien debe sonar el aviso de que la llamada se graba (Ley 1581).
+            Si falta algo, no deja publicar y dice qué corregir. Los cambios se guardan como borrador: las llamadas siguen usando la versión publicada hasta que publiques.
+          </p>
+        </div>
+      </div>
+
+      {error && <div className="bg-card border border-border rounded-xl p-6 text-center text-muted-foreground">{error}</div>}
+      {flows && flows.length === 0 && (
+        <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
+          Aún no hay menús. Crea uno, arma los pasos, publícalo y luego apunta el número de la empresa a él en la configuración de voz.
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Árboles de Decisión IVR</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
-              Respuesta Vocal Interactiva
-            </span>
-          </div>
-          <p className="text-sm text-gray-600 mt-1">
-            Diseñe el recorrido telefónico de sus clientes mediante grafos de nodos, menús DTMF, validación bloqueante y simulador interactivo.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={fetchFlows}
-            className="p-2 border rounded-lg text-gray-600 hover:bg-gray-50 transition"
-            title="Recargar lista"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={() => setIsNewModalOpen(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm rounded-lg shadow-sm flex items-center gap-2 transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Crear Flujo IVR</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Tarjeta Regla de Oro del IVR */}
-      <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-start gap-3 text-indigo-950 text-sm">
-        <ShieldCheck className="w-5 h-5 text-indigo-600 mt-0.5 shrink-0" />
-        <div>
-          <p className="font-bold">Regla de Oro de la Telefonía en Fusion CRM</p>
-          <p className="text-indigo-800 text-xs mt-0.5">
-            <strong>EL CERO SIEMPRE LLEVA A UNA PERSONA.</strong> En todos los menús, en todos los niveles, esté donde esté.
-            El validador impedirá publicar cualquier flujo donde la tecla '0' no esté asignada a una cola de asesores o extensión humana.
-          </p>
-        </div>
-      </div>
-
-      {/* Métricas Rápidas */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-4 rounded-xl border shadow-xs">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Flujos Totales</div>
-          <div className="text-2xl font-bold text-gray-900 mt-1">{flows.length}</div>
-          <div className="text-xs text-gray-500 mt-0.5">Árboles configurados en la organización</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border shadow-xs">
-          <div className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">En Producción (Publicados)</div>
-          <div className="text-2xl font-bold text-emerald-700 mt-1">{publishedCount}</div>
-          <div className="text-xs text-emerald-600/80 mt-0.5">Atendiendo llamadas en tiempo real</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl border shadow-xs">
-          <div className="text-xs font-semibold text-amber-600 uppercase tracking-wider">Borradores en Edición</div>
-          <div className="text-2xl font-bold text-amber-700 mt-1">{draftCount}</div>
-          <div className="text-xs text-amber-600/80 mt-0.5">En diseño sin afectar llamadas activas</div>
-        </div>
-      </div>
-
-      {/* Lista de Flujos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {flows.map((flow) => {
-          const badge = statusBadges[flow.status] || statusBadges.DRAFT;
-          const BadgeIcon = badge.icon;
-
-          return (
-            <div
-              key={flow.id}
-              className="bg-white rounded-xl border shadow-xs hover:shadow-md transition flex flex-col justify-between overflow-hidden"
-            >
-              <div className="p-5 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-gray-900 text-base">{flow.name}</h3>
-                      <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs font-mono font-medium">
-                        v{flow.version}
-                      </span>
-                    </div>
-                    {flow.description && (
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{flow.description}</p>
-                    )}
-                  </div>
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border shrink-0 ${badge.color}`}
-                  >
-                    <BadgeIcon className="w-3.5 h-3.5" />
-                    <span>{badge.label}</span>
-                  </span>
+      <ul className="grid md:grid-cols-2 gap-4">
+        {flows?.map((f) => (
+          <li key={f.id} className="bg-card border border-border rounded-xl flex flex-col">
+            <div className="p-4 space-y-2 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-semibold">{f.name}</div>
+                  {f.description && <div className="text-sm text-muted-foreground">{f.description}</div>}
                 </div>
-
-                {/* Metadatos */}
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 pt-2 border-t">
-                  <div className="flex items-center gap-1.5">
-                    <Layers className="w-4 h-4 text-gray-400" />
-                    <span>{flow.nodeCount} nodos en el grafo</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <PhoneCall className="w-4 h-4 text-gray-400" />
-                    <span>
-                      {flow.numbers?.length ? flow.numbers.join(', ') : 'Ningún número entra a este menú'}
-                      {flow.hasPendingChanges ? ' · cambios sin publicar' : ''}
-                    </span>
-                  </div>
-                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs font-semibold shrink-0 ${
+                    f.isLive ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {f.isLive ? `En uso · versión ${f.version}` : 'Sin publicar'}
+                </span>
               </div>
-
-              {/* Acciones */}
-              <div className="p-4 bg-gray-50 border-t flex items-center justify-between gap-2">
-                <button
-                  onClick={() => navigate(`/voz/ivr/${flow.id}?tab=simulate`)}
-                  className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg text-xs font-medium text-gray-700 flex items-center gap-1.5 transition shadow-xs"
-                >
-                  <Play className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Simulador</span>
-                </button>
-
-                <button
-                  onClick={() => navigate(`/voz/ivr/${flow.id}`)}
-                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition shadow-xs"
-                >
-                  <span>Abrir Editor Visual</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>{f.numbers.length ? `Número: ${f.numbers.map(formatPhone).join(', ')}` : 'Ningún número entra a este menú todavía'}</div>
+                <div>
+                  {f.nodeCount} pasos
+                  {f.publishedAt ? ` · publicado ${formatDateTime(f.publishedAt)}` : ''}
+                </div>
+                {f.hasPendingChanges && <div className="text-amber-700 dark:text-amber-400">Tiene cambios sin publicar</div>}
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Modal: Crear Nuevo Flujo */}
-      {isNewModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border space-y-4">
-            <h2 className="text-lg font-bold text-gray-900">Crear Nuevo Flujo IVR</h2>
-            <p className="text-xs text-gray-500">
-              Se creará un borrador inicial con nodo de inicio listo para editar en el lienzo visual.
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Nombre del Flujo *</label>
-                <input
-                  type="text"
-                  value={newFlowName}
-                  onChange={(e) => setNewFlowName(e.target.value)}
-                  placeholder="ej: Conmutador Principal 2026"
-                  className="w-full text-sm border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Descripción</label>
-                <textarea
-                  rows={2}
-                  value={newFlowDescription}
-                  onChange={(e) => setNewFlowDescription(e.target.value)}
-                  placeholder="Propósito del flujo y horario de aplicación..."
-                  className="w-full text-sm border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <button
-                onClick={() => setIsNewModalOpen(false)}
-                className="px-4 py-2 border rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancelar
+            <div className="px-4 py-3 border-t border-border flex items-center justify-between gap-2">
+              <button onClick={() => remove(f)} className="h-8 px-2 rounded-md border border-input text-rose-600" title="Borrar">
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
-              <button
-                onClick={handleCreateFlow}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium shadow-xs"
-              >
-                Crear y Diseñar
+              <button onClick={() => navigate(`/voz/ivr/${f.id}`)} className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium inline-flex items-center gap-1.5">
+                Abrir editor <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
-          </div>
+          </li>
+        ))}
+      </ul>
+
+      {creating && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setCreating(false)}>
+          <form onSubmit={create} onClick={(e) => e.stopPropagation()} className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Nuevo menú de opciones</h2>
+            <label className="block space-y-1 text-sm">
+              <span className="font-medium">Nombre</span>
+              <input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder="Menú principal" required autoFocus />
+            </label>
+            <label className="block space-y-1 text-sm">
+              <span className="font-medium">Para qué es (opcional)</span>
+              <input className={input} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Lo que oye quien llama al fijo" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setCreating(false)} className="h-9 px-4 rounded-md border border-input text-sm">Cancelar</button>
+              <button className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium">Crear y abrir</button>
+            </div>
+          </form>
         </div>
       )}
     </div>
   );
 }
-
-export default VozIvrPage;

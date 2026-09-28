@@ -119,7 +119,7 @@ const CustomIvrNodeComponent = ({ data, selected }: NodeProps) => {
         {data.isLegalConsent && (
           <div className="flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
             <ShieldCheck className="w-3 h-3 text-amber-600" />
-            <span>Habeas Data Legal</span>
+            <span>Aviso de grabación</span>
           </div>
         )}
 
@@ -143,7 +143,7 @@ const CustomIvrNodeComponent = ({ data, selected }: NodeProps) => {
 
         {currentType === 'HORARIO' && (
           <div className="text-[10px] text-sky-700 font-medium">
-            ⏰ Lun-Vie 7:30 - 17:30
+            ⏰ Según el calendario laboral
           </div>
         )}
 
@@ -392,7 +392,7 @@ export function VozIvrEditorPage() {
       if (json.success) {
         setValidationReport(json.data);
         if (json.data.isValid) {
-          showToast('success', 'El flujo superó todas las validaciones y cumple la Regla de Oro.');
+          showToast('success', 'El menú pasó la revisión: se puede publicar.');
         } else {
           showToast('error', `Se detectaron ${json.data.errors.length} errores bloqueantes.`);
         }
@@ -498,7 +498,7 @@ export function VozIvrEditorPage() {
                     : 'bg-amber-50 text-amber-700 border-amber-200'
                 }`}
               >
-                {flow?.status === 'PUBLISHED' ? 'En Producción' : 'Borrador'}
+                {flow?.status === 'PUBLISHED' ? 'En uso' : (flow as any)?.isLive ? 'Cambios sin publicar' : 'Borrador'}
               </span>
             </div>
             <p className="text-[11px] text-gray-500">
@@ -514,7 +514,7 @@ export function VozIvrEditorPage() {
             className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
           >
             <ShieldCheck className="w-4 h-4 text-indigo-600" />
-            <span>Validar Reglas</span>
+            <span>Revisar</span>
           </button>
 
           <button
@@ -522,7 +522,7 @@ export function VozIvrEditorPage() {
             className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
           >
             <Play className="w-4 h-4 text-indigo-600" />
-            <span>Simulador Telefónico</span>
+            <span>Probar</span>
           </button>
 
           <button
@@ -530,7 +530,7 @@ export function VozIvrEditorPage() {
             className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs transition"
           >
             <Save className="w-4 h-4 text-gray-600" />
-            <span>Guardar Borrador</span>
+            <span>Guardar borrador</span>
           </button>
 
           <button
@@ -538,7 +538,7 @@ export function VozIvrEditorPage() {
             className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Publicar Versión</span>
+            <span>Publicar</span>
           </button>
         </div>
       </div>
@@ -549,115 +549,88 @@ export function VozIvrEditorPage() {
         <div className="w-56 bg-white border-r p-3 overflow-y-auto shrink-0 flex flex-col justify-between space-y-4 shadow-xs">
           <div className="space-y-4">
             <div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Punto de Partida</div>
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Horario</div>
               <div className="space-y-1">
                 <button
                   onClick={() => handleAddNode('HORARIO', 'Evaluación de Horario')}
                   className="w-full text-left p-2 rounded-lg border border-sky-200 bg-sky-50/60 hover:bg-sky-100 text-xs font-medium text-sky-900 flex items-center gap-2 transition"
                 >
                   <Calendar className="w-4 h-4 text-sky-600" />
-                  <span>Horario & Festivo</span>
+                  <span>Horario (abierto, cerrado, festivo)</span>
                 </button>
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Locución y Audio</div>
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Audio</div>
               <div className="space-y-1">
                 <button
                   onClick={() => handleAddNode('LOCUCION', 'Locución / Mensaje')}
                   className="w-full text-left p-2 rounded-lg border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100 text-xs font-medium text-indigo-900 flex items-center gap-2 transition"
                 >
                   <Mic className="w-4 h-4 text-indigo-600" />
-                  <span>Reproducir Audio</span>
+                  <span>Locución</span>
                 </button>
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Menús y Teclas DTMF</div>
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Menú</div>
               <div className="space-y-1">
                 <button
                   onClick={() => handleAddNode('MENU', 'Menú Interactivo')}
                   className="w-full text-left p-2 rounded-lg border border-blue-200 bg-blue-50/60 hover:bg-blue-100 text-xs font-medium text-blue-900 flex items-center gap-2 transition"
                 >
                   <ListOrdered className="w-4 h-4 text-blue-600" />
-                  <span>Menú DTMF (0=Humano)</span>
-                </button>
-                <button
-                  onClick={() => handleAddNode('CAPTURA', 'Captura de Dígitos')}
-                  className="w-full text-left p-2 rounded-lg border border-teal-200 bg-teal-50/60 hover:bg-teal-100 text-xs font-medium text-teal-900 flex items-center gap-2 transition"
-                >
-                  <Hash className="w-4 h-4 text-teal-600" />
-                  <span>Captura de Pedido/Cédula</span>
+                  <span>Menú «marque…» (0 = persona)</span>
                 </button>
               </div>
             </div>
 
             <div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Integración con CRM</div>
-              <div className="space-y-1">
-                <button
-                  onClick={() => handleAddNode('CONSULTA_CRM', 'Consultar Pedido/Saldo')}
-                  className="w-full text-left p-2 rounded-lg border border-amber-200 bg-amber-50/60 hover:bg-amber-100 text-xs font-medium text-amber-900 flex items-center gap-2 transition"
-                >
-                  <Database className="w-4 h-4 text-amber-600" />
-                  <span>Consulta CRM Segura</span>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Destinos Humanos & IA</div>
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">A dónde va la llamada</div>
               <div className="space-y-1">
                 <button
                   onClick={() => handleAddNode('IR_A_COLA', 'Cola de Espera')}
                   className="w-full text-left p-2 rounded-lg border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100 text-xs font-medium text-emerald-900 flex items-center gap-2 transition"
                 >
                   <Users className="w-4 h-4 text-emerald-600" />
-                  <span>Cola de Asesores</span>
+                  <span>Cola</span>
                 </button>
                 <button
                   onClick={() => handleAddNode('IR_A_EXTENSION', 'Extensión Interna')}
                   className="w-full text-left p-2 rounded-lg border border-cyan-200 bg-cyan-50/60 hover:bg-cyan-100 text-xs font-medium text-cyan-900 flex items-center gap-2 transition"
                 >
                   <Phone className="w-4 h-4 text-cyan-600" />
-                  <span>Extensión Directa</span>
-                </button>
-                <button
-                  onClick={() => handleAddNode('IR_A_AGENTE_IA', 'Agente IA Gemini')}
-                  className="w-full text-left p-2 rounded-lg border border-violet-200 bg-violet-50/60 hover:bg-violet-100 text-xs font-medium text-violet-900 flex items-center gap-2 transition"
-                >
-                  <Bot className="w-4 h-4 text-violet-600" />
-                  <span>Voz IA Gemini</span>
+                  <span>Extensión</span>
                 </button>
                 <button
                   onClick={() => handleAddNode('DEVOLVER_LLAMADA', 'Devolución de Llamada')}
                   className="w-full text-left p-2 rounded-lg border border-green-200 bg-green-50/60 hover:bg-green-100 text-xs font-medium text-green-900 flex items-center gap-2 transition"
                 >
                   <RotateCcw className="w-4 h-4 text-green-600" />
-                  <span>Agendar Callback</span>
+                  <span>Dejar para devolver la llamada</span>
                 </button>
                 <button
                   onClick={() => handleAddNode('BUZON', 'Buzón de Mensajes')}
                   className="w-full text-left p-2 rounded-lg border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-xs font-medium text-rose-900 flex items-center gap-2 transition"
                 >
                   <Voicemail className="w-4 h-4 text-rose-600" />
-                  <span>Buzón de Voz</span>
+                  <span>Buzón de voz</span>
                 </button>
                 <button
                   onClick={() => handleAddNode('COLGAR', 'Despedida y Colgar')}
                   className="w-full text-left p-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs font-medium text-gray-800 flex items-center gap-2 transition"
                 >
                   <PhoneOff className="w-4 h-4 text-gray-600" />
-                  <span>Colgar Llamada</span>
+                  <span>Colgar</span>
                 </button>
               </div>
             </div>
           </div>
 
           <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-900 space-y-1">
-            <span className="font-bold">Regla de Oro:</span>
+            <span className="font-bold">Recuerda:</span>
             <p className="text-[10px] text-amber-800">
               En cada menú, el <strong>0</strong> debe conectar con una cola o extensión humana.
             </p>
@@ -937,7 +910,7 @@ export function VozIvrEditorPage() {
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
-                <h3 className="font-bold text-gray-900 text-base">Publicar Flujo en Producción</h3>
+                <h3 className="font-bold text-gray-900 text-base">Publicar el menú</h3>
                 <p className="text-xs text-gray-500">Versión {flow?.version} → Versión {(flow?.version || 1) + 1}</p>
               </div>
               <button
@@ -948,22 +921,28 @@ export function VozIvrEditorPage() {
               </button>
             </div>
 
-            {/* Resumen de cambios (Diff) */}
+            {/* Resultado de la revisión (el servidor vuelve a revisar al publicar) */}
             <div className="space-y-2">
-              <span className="text-xs font-semibold text-gray-700">Resumen de Cambios para Auditoría:</span>
+              <span className="text-xs font-semibold text-gray-700">Revisión del menú</span>
               <div className="p-3 bg-gray-50 rounded-lg border text-xs text-gray-700 space-y-1 max-h-40 overflow-y-auto">
-                <div className="flex items-start gap-1.5">
-                  <span className="text-indigo-600 font-bold">•</span>
-                  <span>Verificación de la Regla de Oro: La tecla 0 en el menú dirige al asesor humano (Recepción 101).</span>
-                </div>
-                <div className="flex items-start gap-1.5">
-                  <span className="text-indigo-600 font-bold">•</span>
-                  <span>Aviso legal de grabación (Habeas Data) obligatorio confirmado al inicio de la llamada.</span>
-                </div>
-                <div className="flex items-start gap-1.5">
-                  <span className="text-indigo-600 font-bold">•</span>
-                  <span>Enrutamiento a Horario Comercial Bogotá (7:30 a 17:30) y calendario de festivos colombianos.</span>
-                </div>
+                {!validationReport ? (
+                  <span>Revisando…</span>
+                ) : validationReport.isValid ? (
+                  <span>Todo en orden: el 0 lleva a una persona y suena el aviso de grabación antes de conectar.</span>
+                ) : (
+                  validationReport.errors.map((e, i) => (
+                    <div key={i} className="flex items-start gap-1.5 text-rose-700">
+                      <span className="font-bold">•</span>
+                      <span>{e.message}</span>
+                    </div>
+                  ))
+                )}
+                {validationReport?.warnings?.map((w: any, i: number) => (
+                  <div key={`w${i}`} className="flex items-start gap-1.5 text-amber-700">
+                    <span className="font-bold">•</span>
+                    <span>{w.message}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1127,7 +1106,7 @@ function IvrSimulatorDrawer({ flowId, onClose }: SimulatorProps) {
         <div className="flex items-center gap-2">
           <Phone className="w-5 h-5 text-indigo-400" />
           <div>
-            <h2 className="font-bold text-sm">Simulador de IVR en Vivo</h2>
+            <h2 className="font-bold text-sm">Probar el menú</h2>
             <p className="text-[10px] text-gray-400">Prueba de recorrido con reloj virtual</p>
           </div>
         </div>
@@ -1240,7 +1219,7 @@ function IvrSimulatorDrawer({ flowId, onClose }: SimulatorProps) {
               className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition"
             >
               <PhoneOff className="w-4 h-4" />
-              <span>Colgar Llamada</span>
+              <span>Colgar</span>
             </button>
           )}
         </div>

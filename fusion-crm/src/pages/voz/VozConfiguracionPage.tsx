@@ -381,7 +381,6 @@ export function VozConfiguracionPage() {
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <Radio className="w-3.5 h-3.5 animate-pulse" /> Asterisk 22.6 LTS (ARI / WebRTC)
               </span>
-              <span className="text-xs font-mono text-slate-500">Etapa 17.2</span>
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 mt-2">
               Configuración de Telefonía y Troncales SIP

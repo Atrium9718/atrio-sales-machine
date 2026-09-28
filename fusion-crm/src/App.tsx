@@ -242,10 +242,10 @@ function Sidebar({ isOpen, setIsOpen }: { isOpen: boolean, setIsOpen: (v: boolea
         // Supervisión, informes, agente de IA y campañas: fases 2 y 3 (sus rutas siguen para administradores)
         { name: 'Panel de Voz', path: '/voz', icon: Phone, permission: 'voice:use' },
         { name: 'Historial de Llamadas', path: '/voz/llamadas', icon: PhoneCall, permission: 'voice:use' },
-        { name: 'Colas y Agentes', path: '/voz/colas', icon: Users, permission: 'voice:use' },
+        { name: 'Colas', path: '/voz/colas', icon: Users, permission: 'voice:use' },
         { name: 'Buzón de Voz', path: '/voz/buzon', icon: MessageSquare, permission: 'voice:use' },
-        { name: 'Flujos de IVR', path: '/voz/ivr', icon: Network, permission: 'voice:use' },
-        { name: 'Biblioteca de Locuciones', path: '/voz/locuciones', icon: FileText, permission: 'voice:use' },
+        { name: 'Menús de opciones', path: '/voz/ivr', icon: Network, permission: 'voice:use' },
+        { name: 'Locuciones', path: '/voz/locuciones', icon: FileText, permission: 'voice:use' },
       ]),
     ] : []),
     group('Equipo', 'equipo', [
