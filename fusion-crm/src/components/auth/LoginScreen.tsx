@@ -8,7 +8,7 @@ import { auth } from '../../lib/firebase';
  * y habeas data.
  */
 const PUBLIC_PATH_PREFIXES = ['/preferencias/', '/portal/', '/kiosko/'];
-const PUBLIC_PATHS = ['/habeas-data'];
+const PUBLIC_PATHS = ['/habeas-data', '/portal'];
 
 export function isPublicPath(pathname: string): boolean {
   const path = pathname.replace(/\/+$/, '') || '/';

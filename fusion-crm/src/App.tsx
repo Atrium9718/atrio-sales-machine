@@ -68,6 +68,7 @@ const ComercialDashboardPage = React.lazy(() => import("../apps/web/src/app/(das
 const PrecotizacionesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/comercial/precotizaciones/page'));
 const KioskPage = React.lazy(() => import('../apps/web/src/app/kiosko/[token]/page'));
 const KioskSettingsPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/kiosko/page'));
+const PortalLoginPage = React.lazy(() => import('../apps/web/src/app/portal/page'));
 const ClientPortalPage = React.lazy(() => import('../apps/web/src/app/portal/[token]/page'));
 const PortalClientesPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/portal-clientes/page'));
 const CostosOmnicanalPage = React.lazy(() => import('../apps/web/src/app/(dashboard)/dashboard/costos-omnicanal/page'));
@@ -518,6 +519,7 @@ export default function App() {
           <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-background text-primary font-bold">Cargando Sistema Fusion...</div>}>
             <Routes>
             {/* Public Routes outside dashboard layout */}
+            <Route path="/portal" element={<PortalLoginPage />} />
             <Route path="/portal/:token" element={<ClientPortalPage />} />
             <Route path="/kiosko/:token" element={<KioskPage />} />
             <Route path="/kiosko" element={<Navigate to="/dashboard/kiosko" replace />} />

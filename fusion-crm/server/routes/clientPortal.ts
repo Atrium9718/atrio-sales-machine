@@ -44,6 +44,9 @@ export interface PortalLink {
   createdByName: string;
   revokedAt: string | null;
   lastAccessAt: string | null;
+  /** Enlaces creados al ingresar con cédula/NIT + código: vencen solos (ver portalLogin). */
+  origin?: 'MANUAL' | 'LOGIN';
+  expiresAt?: string | null;
 }
 
 export interface ClientRequestAttachment {
@@ -85,7 +88,7 @@ export function generateToken(): string {
 
 /** Crea un enlace del portal y devuelve la ruta con el token en claro (única vez que se conoce). */
 export async function createPortalLinkRecord(
-  data: { clientName: string; clientNit: string; createdById: string; createdByName: string }
+  data: { clientName: string; clientNit: string; createdById: string; createdByName: string; origin?: 'MANUAL' | 'LOGIN'; expiresAt?: string | null }
 ): Promise<{ link: PortalLink; path: string }> {
   const token = generateToken();
   const link: PortalLink = {
@@ -97,6 +100,8 @@ export async function createPortalLinkRecord(
     createdByName: data.createdByName,
     revokedAt: null,
     lastAccessAt: null,
+    origin: data.origin ?? 'MANUAL',
+    expiresAt: data.expiresAt ?? null,
   };
   await linksRepo().upsert(link);
   return { link, path: `/portal/${token}` };
@@ -109,6 +114,13 @@ export async function createPortalLinkForAssistant(client: { name: string; nit: 
 }
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32}$/;
+
+/** "Salir" del portal: cierra la sesión creada al ingresar con cédula/NIT (los enlaces del equipo no se tocan). */
+export async function endLoginSession(token: string): Promise<void> {
+  if (!TOKEN_PATTERN.test(token)) return;
+  const link = await linksRepo().get(hashToken(token));
+  if (link?.origin === 'LOGIN' && !link.revokedAt) await linksRepo().patch(link.id, { revokedAt: new Date().toISOString() });
+}
 
 // ── Vista del cliente ───────────────────────────────────────────
 
@@ -188,10 +200,12 @@ async function streamAttachment(res: Response, attachment: ClientRequestAttachme
 async function findActiveLink(token: string): Promise<PortalLink | null> {
   if (!TOKEN_PATTERN.test(token)) return null;
   const link = await linksRepo().get(hashToken(token));
-  return link && !link.revokedAt ? link : null;
+  if (!link || link.revokedAt) return null;
+  if (link.expiresAt && Date.parse(link.expiresAt) < Date.now()) return null;
+  return link;
 }
 
-const NOT_FOUND = { success: false, error: 'Enlace no válido o revocado. Solicita uno nuevo a tu asesor.' };
+const NOT_FOUND = { success: false, error: 'Tu sesión terminó o el enlace ya no es válido. Vuelve a entrar con tu cédula o NIT.' };
 
 portalPublicRouter.get('/:token', async (req: Request, res: Response) => {
   try {
@@ -338,7 +352,9 @@ clientPortalRouter.get('/clients', async (_req, res) => {
 
 clientPortalRouter.get('/links', async (_req, res) => {
   try {
+    // Los ingresos con cédula/NIT son sesiones temporales: no se listan como enlaces
     const links = (await linksRepo().list())
+      .filter((l) => l.origin !== 'LOGIN')
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     res.json({ success: true, links });
   } catch (err: any) {

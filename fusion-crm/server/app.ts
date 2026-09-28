@@ -30,6 +30,7 @@ import { inventoryRouter } from './routes/inventory';
 import { quoteShareRouter, quotePublicRouter } from './routes/quoteShare';
 import { portalPublicRouter, clientPortalRouter } from './routes/clientPortal';
 import { kioskPublicRouter, kioskRouter } from './routes/kiosk';
+import { portalLoginRouter } from './routes/portalLogin';
 import { callsService } from './services/callsService';
 import { loadStateFromFirestore, startStateSync, saveStateToFirestore, persistAfterWrites } from './services/persistenceService';
 import { loadTariffStore } from './services/tariffStore';
@@ -98,6 +99,7 @@ export async function startServer() {
   app.use('/api/files', filesRouter);
   app.use('/api/inventory', inventoryRouter);
   app.use('/api/portal', quotePublicRouter); // público: PDF de cotización por token
+  app.use('/api/portal/acceso', portalLoginRouter); // público: ingreso con cédula/NIT + código
   app.use('/api/portal', portalPublicRouter); // público: acceso por token del cliente
   app.use('/api/client-portal', clientPortalRouter);
   app.use('/api/kiosk-public', kioskPublicRouter); // público: pantalla del kiosco por enlace de equipo

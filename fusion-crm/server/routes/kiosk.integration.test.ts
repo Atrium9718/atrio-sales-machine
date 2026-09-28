@@ -62,20 +62,20 @@ suite('kiosco con Postgres (integración)', () => {
 
     const noConsent = await call('POST', `/api/kiosk-public/${token}/orders`, {
       items: [{ productId: 'kp-1', quantity: 1000 }],
-      customer: { name: 'Ana Kiosco', phone: '3001234567' },
+      customer: { name: 'Ana Kiosco', phone: '3187654321' },
     });
     expect(noConsent.status).toBe(400);
 
     const hidden = await call('POST', `/api/kiosk-public/${token}/orders`, {
       items: [{ productId: 'kp-2', quantity: 1 }],
-      customer: { name: 'Ana Kiosco', phone: '3001234567' },
+      customer: { name: 'Ana Kiosco', phone: '3187654321' },
       consent: true,
     });
     expect(hidden.status).toBe(400);
 
     const sent = await call('POST', `/api/kiosk-public/${token}/orders`, {
       items: [{ productId: 'kp-1', quantity: 1000, notes: 'a color por ambas caras' }, { description: 'Stickers redondos de 5 cm', quantity: 200 }],
-      customer: { name: 'Ana Kiosco', phone: '300 123 45 67', company: 'Kiosco Pruebas SAS', nit: '901777888-1' },
+      customer: { name: 'Ana Kiosco', phone: '318 765 43 21', company: 'Kiosco Pruebas SAS', nit: '901777888-1' },
       consent: true,
     });
     expect(sent.status).toBe(201);
@@ -94,7 +94,7 @@ suite('kiosco con Postgres (integración)', () => {
     // El segundo pedido del mismo celular no duplica al cliente
     const again = await call('POST', `/api/kiosk-public/${token}/orders`, {
       items: [{ productId: 'kp-1', quantity: 100 }],
-      customer: { name: 'Ana Kiosco', phone: '3001234567' },
+      customer: { name: 'Ana Kiosco', phone: '3187654321' },
       consent: true,
     });
     expect(again.status).toBe(201);

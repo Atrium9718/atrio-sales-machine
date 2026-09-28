@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle2, Circle, Clock, PackageCheck, Plus, Send, X, AlertCircle, CalendarDays, Inbox, Paperclip, Download } from 'lucide-react';
+import { CheckCircle2, Circle, Clock, PackageCheck, Plus, Send, X, AlertCircle, CalendarDays, Inbox, Paperclip, Download, LogOut } from 'lucide-react';
 import {
   CLIENT_ATTACHMENT_EXTENSIONS,
   MAX_CLIENT_ATTACHMENTS,
@@ -334,6 +334,9 @@ export default function ClientPortalPage() {
         <div className="max-w-sm text-center space-y-3">
           <AlertCircle className="w-10 h-10 text-muted-foreground mx-auto" />
           <p className="text-foreground font-semibold">{error}</p>
+          <a href="/portal" className="inline-block px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+            Entrar con mi cédula o NIT
+          </a>
         </div>
       </div>
     );
@@ -354,6 +357,16 @@ export default function ClientPortalPage() {
             <p className="text-xs font-semibold text-primary tracking-wide uppercase">Fusión Comunicación Gráfica</p>
             <h1 className="text-xl font-bold text-foreground mt-0.5">Hola, {data.client.name}</h1>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={async () => {
+              await fetch('/api/portal/acceso/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) }).catch(() => {});
+              window.location.href = '/portal';
+            }}
+            className="inline-flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted"
+          >
+            <LogOut className="w-4 h-4" /> Salir
+          </button>
           {!showForm && (
             <button
               onClick={() => {
@@ -365,6 +378,7 @@ export default function ClientPortalPage() {
               <Plus className="w-4 h-4" /> Nueva solicitud
             </button>
           )}
+          </div>
         </div>
       </header>
 

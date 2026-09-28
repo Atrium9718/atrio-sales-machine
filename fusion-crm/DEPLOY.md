@@ -134,7 +134,9 @@ plantilla de empleados (nombres, cargos y correos) para que el equipo pueda entr
    ofrecen, crea un *equipo* por cada tablet y abre su enlace (`/kiosko/…`) en esa tablet, en
    pantalla completa. Esa pantalla no tiene menú ni pide sesión; los pedidos llegan como
    pre-cotizaciones y avisan al equipo. Si una tablet se pierde, desactívala allí mismo.
-8. Haz una cotización de prueba, conviértela en OT y descarga la remisión: revisa que los datos
+8. **Portal con cédula o NIT:** configura el envío del código (sección 8.8) y revisa que tus
+   clientes tengan celular o correo en su ficha. Comparte `https://app.tudominio.com/portal`.
+9. Haz una cotización de prueba, conviértela en OT y descarga la remisión: revisa que los datos
    de la empresa y del asesor salgan bien. Luego anúlala.
 
 Si en el futuro activas la telefonía, las tablas de voz ya existen: las migraciones de Postgres
@@ -287,6 +289,23 @@ Ejemplos que pide Meta al enviarla: `Claudia`, `OT-1203`, `En producción`,
   **REACTIVAR** vuelven). Son mensajes sobre un pedido que el cliente contrató; aun así, revisa
   que tu política de tratamiento de datos (habeas data) mencione los avisos por WhatsApp.
 - El cliente debe tener un **celular** registrado (en su ficha o en la de uno de sus contactos).
+
+### 8.8 Ingreso de clientes al portal con cédula o NIT
+En `https://app.tudominio.com/portal` el cliente escribe su cédula o NIT y recibe un **código de 6
+dígitos** en el celular o el correo que tiene registrado en su ficha de cliente. Con el código entra
+a ver sus pedidos y a hacer nuevas solicitudes (la sesión dura 12 horas y tiene botón **Salir**).
+El NIT solo no basta para entrar: sale en las facturas y cualquiera podría conocerlo.
+
+Para que el código llegue, configura al menos uno de los dos medios:
+
+- **WhatsApp** (usa el mismo número de la Bandeja, paso 8.3). En *WhatsApp Manager → Plantillas de
+  mensajes* crea una plantilla de categoría **Autenticación**, nombre `codigo_acceso`, idioma
+  Español, con el botón **Copiar código**. Si usas otro nombre, ponlo en `PORTAL_CODE_TEMPLATE`.
+- **Correo:** en `.env` pon `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` y `SMTP_FROM` (sirve
+  el correo de la empresa en Google Workspace con una *contraseña de aplicación*, u otro SMTP).
+
+Reinicia la app. Si un cliente no tiene celular ni correo en su ficha, no podrá recibir el código:
+complétalos en **Clientes** o sigue usando el enlace que genera el equipo en *Portal de clientes*.
 
 ### 8.6 Arranque recomendado
 1. **Semana 1 — modo Sugerencia:** la IA escribe cada respuesta y alguien la aprueba o corrige

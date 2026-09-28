@@ -5,7 +5,7 @@ const { isPublicPath } = await import('./LoginScreen');
 
 describe('isPublicPath', () => {
   it('permite las páginas públicas', () => {
-    for (const p of ['/portal/tok', '/kiosko/tok', '/preferencias/tok', '/habeas-data']) {
+    for (const p of ['/portal', '/portal/tok', '/kiosko/tok', '/preferencias/tok', '/habeas-data']) {
       expect(isPublicPath(p)).toBe(true);
     }
   });

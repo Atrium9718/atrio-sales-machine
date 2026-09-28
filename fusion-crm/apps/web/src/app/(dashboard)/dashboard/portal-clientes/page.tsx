@@ -230,6 +230,9 @@ export default function PortalClientesPage() {
           <p className="text-sm text-muted-foreground">
             Cada cliente ve el avance de sus pedidos y envía nuevas solicitudes con un enlace privado.
           </p>
+          <p className="text-sm text-muted-foreground">
+            También pueden entrar solos en <span className="font-mono text-foreground">{window.location.origin}/portal</span> con su cédula o NIT: reciben un código en el celular o correo registrados en su ficha.
+          </p>
         </div>
         <button onClick={load} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <RefreshCw className="w-4 h-4" /> Actualizar
