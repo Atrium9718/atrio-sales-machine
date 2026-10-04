@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException, ConflictException, HttpException } from '@nestjs/common';
+import { Injectable, Logger, Inject, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException, ConflictException, HttpException, OnModuleInit } from '@nestjs/common';
 import { InvoicingService } from '../invoicing/invoicing.service';
 import { PricingEngineService } from '../pricing/pricing.service';
 import { getB2BDiscount } from '../b2b/b2b.service';
@@ -7,8 +7,7 @@ import { db } from '../../db';
 import { orders, orderItems, products, users } from '../../db/schema';
 import { eq, or, sql } from 'drizzle-orm';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
+import { loadSettingWithLegacyFile, saveSetting } from '../../db/settings-store';
 
 export type CartPricingSpec =
   | { kind: 'product'; productId: number; quantity: number; attributes: number[] }
@@ -90,40 +89,40 @@ const DEFAULT_GATEWAYS_CONFIG: GatewaysConfig = {
   }
 };
 
+const GATEWAYS_SETTING_KEY = 'payment_gateways';
+
+// Los valores guardados desde el panel tienen prioridad; los vacíos caen a las variables de entorno
+const preferStored = <T extends Record<string, any>>(defaults: T, stored?: Partial<T>): T => {
+  const result: any = { ...defaults };
+  for (const [k, v] of Object.entries(stored || {})) {
+    if (v !== '' && v !== null && v !== undefined) result[k] = v;
+  }
+  return result;
+};
+
+const mergeGatewaysConfig = (stored: Partial<GatewaysConfig>): GatewaysConfig => ({
+  wompi: preferStored(DEFAULT_GATEWAYS_CONFIG.wompi, stored.wompi),
+  bold: preferStored(DEFAULT_GATEWAYS_CONFIG.bold, stored.bold),
+  bankTransfer: preferStored(DEFAULT_GATEWAYS_CONFIG.bankTransfer, stored.bankTransfer),
+  b2bCredit: preferStored(DEFAULT_GATEWAYS_CONFIG.b2bCredit, stored.b2bCredit),
+});
+
 @Injectable()
-export class CheckoutService {
+export class CheckoutService implements OnModuleInit {
   private readonly logger = new Logger(CheckoutService.name);
-  private readonly configFilePath = path.join(process.cwd(), 'gateways.config.json');
   private configCache: GatewaysConfig = DEFAULT_GATEWAYS_CONFIG;
 
   constructor(
     @Inject(InvoicingService) private readonly invoicingService: InvoicingService,
     @Inject(PricingEngineService) private readonly pricingService: PricingEngineService,
-  ) {
-    this.loadConfig();
+  ) {}
+
+  async onModuleInit() {
+    const stored = await loadSettingWithLegacyFile<Partial<GatewaysConfig>>(GATEWAYS_SETTING_KEY, 'gateways.config.json');
+    if (stored) this.configCache = mergeGatewaysConfig(stored);
   }
 
   private loadConfig(): GatewaysConfig {
-    try {
-      if (fs.existsSync(this.configFilePath)) {
-        const raw = fs.readFileSync(this.configFilePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        this.configCache = {
-          ...DEFAULT_GATEWAYS_CONFIG,
-          ...parsed,
-          wompi: { ...DEFAULT_GATEWAYS_CONFIG.wompi, ...(parsed.wompi || {}) },
-          bold: { ...DEFAULT_GATEWAYS_CONFIG.bold, ...(parsed.bold || {}) },
-          bankTransfer: { ...DEFAULT_GATEWAYS_CONFIG.bankTransfer, ...(parsed.bankTransfer || {}) },
-          b2bCredit: { ...DEFAULT_GATEWAYS_CONFIG.b2bCredit, ...(parsed.b2bCredit || {}) },
-        };
-      } else {
-        this.configCache = DEFAULT_GATEWAYS_CONFIG;
-        fs.writeFileSync(this.configFilePath, JSON.stringify(DEFAULT_GATEWAYS_CONFIG, null, 2), 'utf8');
-      }
-    } catch (err) {
-      this.logger.warn('No se pudo leer gateways.config.json, usando valores predeterminados', err);
-      this.configCache = DEFAULT_GATEWAYS_CONFIG;
-    }
     return this.configCache;
   }
 
@@ -131,7 +130,7 @@ export class CheckoutService {
     return this.loadConfig();
   }
 
-  saveGatewaysConfig(newConfig: Partial<GatewaysConfig>): GatewaysConfig {
+  async saveGatewaysConfig(newConfig: Partial<GatewaysConfig>): Promise<GatewaysConfig> {
     const current = this.loadConfig();
     const merged: GatewaysConfig = {
       wompi: { ...current.wompi, ...(newConfig.wompi || {}) },
@@ -141,16 +140,17 @@ export class CheckoutService {
     };
 
     try {
-      fs.writeFileSync(this.configFilePath, JSON.stringify(merged, null, 2), 'utf8');
+      await saveSetting(GATEWAYS_SETTING_KEY, merged);
       this.configCache = merged;
-      this.logger.log('Configuración de pasarelas de pago guardada y actualizada exitosamente.');
+      this.logger.log('Configuración de pasarelas de pago guardada en la base de datos.');
     } catch (err) {
-      this.logger.error('Error al guardar gateways.config.json', err);
-      throw new BadRequestException('No se pudo guardar la configuración de pasarelas en disco');
+      this.logger.error('Error al guardar la configuración de pasarelas', err);
+      throw new BadRequestException('No se pudo guardar la configuración de pasarelas');
     }
 
     return merged;
   }
+
 
   async testWompiConnection(payload?: Partial<GatewaysConfig['wompi']>) {
     const config = this.loadConfig().wompi;

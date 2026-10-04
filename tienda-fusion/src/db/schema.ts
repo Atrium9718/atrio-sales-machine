@@ -1,4 +1,6 @@
-import { pgTable, text, serial, timestamp, boolean, integer, jsonb, decimal } from 'drizzle-orm/pg-core';
+import { pgTable, text, serial, timestamp, boolean, integer, jsonb, decimal, customType } from 'drizzle-orm/pg-core';
+
+const bytea = customType<{ data: Buffer }>({ dataType: () => 'bytea' });
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -228,3 +230,19 @@ export const siteSettings = pgTable('site_settings', {
   updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+
+// Biblioteca de medios (metadatos de cada recurso)
+export const mediaAssets = pgTable('media_assets', {
+  id: text('id').primaryKey(),
+  data: jsonb('data').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// Archivos subidos o generados con IA (se sirven en /api/media-files/:id)
+export const mediaFiles = pgTable('media_files', {
+  id: text('id').primaryKey(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  content: bytea('content').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});

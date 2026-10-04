@@ -1,6 +1,5 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
+import { loadSettingWithLegacyFile, saveSetting } from '../../db/settings-store';
 import { db } from '../../db';
 import { orders, orderItems, products, users } from '../../db/schema';
 import { eq, or } from 'drizzle-orm';
@@ -126,37 +125,30 @@ const DEFAULT_SHIPPING_CONFIG: ShippingConfig = {
   },
 };
 
+const SHIPPING_SETTING_KEY = 'shipping_config';
+
 @Injectable()
-export class ShippingService {
+export class ShippingService implements OnModuleInit {
   private readonly logger = new Logger(ShippingService.name);
-  private readonly configFilePath = path.join(process.cwd(), 'shipping.config.json');
   private configCache: ShippingConfig = DEFAULT_SHIPPING_CONFIG;
 
-  constructor() {
-    this.loadConfig();
+  async onModuleInit() {
+    const stored = await loadSettingWithLegacyFile<Partial<ShippingConfig>>(SHIPPING_SETTING_KEY, 'shipping.config.json');
+    if (stored) this.configCache = this.mergeConfig(DEFAULT_SHIPPING_CONFIG, stored);
+  }
+
+  private mergeConfig(base: ShippingConfig, patch: Partial<ShippingConfig>): ShippingConfig {
+    return {
+      ...base,
+      ...patch,
+      skydropx: { ...base.skydropx, ...(patch.skydropx || {}) },
+      origin: { ...base.origin, ...(patch.origin || {}) },
+      localShipping: { ...base.localShipping, ...(patch.localShipping || {}) },
+      carriers: { ...base.carriers, ...(patch.carriers || {}) },
+    };
   }
 
   private loadConfig(): ShippingConfig {
-    try {
-      if (fs.existsSync(this.configFilePath)) {
-        const raw = fs.readFileSync(this.configFilePath, 'utf8');
-        const parsed = JSON.parse(raw);
-        this.configCache = {
-          ...DEFAULT_SHIPPING_CONFIG,
-          ...parsed,
-          skydropx: { ...DEFAULT_SHIPPING_CONFIG.skydropx, ...(parsed.skydropx || {}) },
-          origin: { ...DEFAULT_SHIPPING_CONFIG.origin, ...(parsed.origin || {}) },
-          localShipping: { ...DEFAULT_SHIPPING_CONFIG.localShipping, ...(parsed.localShipping || {}) },
-          carriers: { ...DEFAULT_SHIPPING_CONFIG.carriers, ...(parsed.carriers || {}) },
-        };
-      } else {
-        this.configCache = DEFAULT_SHIPPING_CONFIG;
-        fs.writeFileSync(this.configFilePath, JSON.stringify(DEFAULT_SHIPPING_CONFIG, null, 2), 'utf8');
-      }
-    } catch (err) {
-      this.logger.warn('No se pudo leer shipping.config.json, usando valores predeterminados', err);
-      this.configCache = DEFAULT_SHIPPING_CONFIG;
-    }
     return this.configCache;
   }
 
@@ -164,21 +156,15 @@ export class ShippingService {
     return this.configCache;
   }
 
-  public saveConfig(newConfig: Partial<ShippingConfig>): ShippingConfig {
-    this.configCache = {
-      ...this.configCache,
-      ...newConfig,
-      skydropx: { ...this.configCache.skydropx, ...(newConfig.skydropx || {}) },
-      origin: { ...this.configCache.origin, ...(newConfig.origin || {}) },
-      localShipping: { ...this.configCache.localShipping, ...(newConfig.localShipping || {}) },
-      carriers: { ...this.configCache.carriers, ...(newConfig.carriers || {}) },
-    };
-
+  public async saveConfig(newConfig: Partial<ShippingConfig>): Promise<ShippingConfig> {
+    const merged = this.mergeConfig(this.configCache, newConfig);
     try {
-      fs.writeFileSync(this.configFilePath, JSON.stringify(this.configCache, null, 2), 'utf8');
-      this.logger.log('shipping.config.json guardado exitosamente');
+      await saveSetting(SHIPPING_SETTING_KEY, merged);
+      this.configCache = merged;
+      this.logger.log('Configuración de envíos guardada en la base de datos');
     } catch (err) {
-      this.logger.error('Error al persistir shipping.config.json', err);
+      this.logger.error('Error al guardar la configuración de envíos', err);
+      throw new BadRequestException('No se pudo guardar la configuración de envíos');
     }
 
     return this.configCache;

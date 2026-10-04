@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Optional, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Optional, Inject, UseGuards, Res } from '@nestjs/common';
 import { AdminGuard } from '../auth/admin.guard';
 import { MediaService } from './media.service';
 
@@ -35,9 +35,9 @@ export class MediaController {
   }
 
   @Post('upload')
-  upload(@Body() body: any) {
-    // Accepts file payload, URL, or base64
-    const asset = this.mediaService.createAsset(body);
+  async upload(@Body() body: any) {
+    // Acepta una URL pública o un data URI (archivo subido o render de IA)
+    const asset = await this.mediaService.createAsset(body);
     return {
       success: true,
       message: 'Archivo subido y convertido a formato ultraligero WebP/AVIF exitosamente',
@@ -46,8 +46,8 @@ export class MediaController {
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() body: any) {
-    const updated = this.mediaService.updateAsset(id, body);
+  async update(@Param('id') id: string, @Body() body: any) {
+    const updated = await this.mediaService.updateAsset(id, body);
     if (!updated) {
       return { success: false, message: 'Asset no encontrado' };
     }
@@ -58,8 +58,8 @@ export class MediaController {
   }
 
   @Delete(':id')
-  delete(@Param('id') id: string) {
-    const success = this.mediaService.deleteAsset(id);
+  async delete(@Param('id') id: string) {
+    const success = await this.mediaService.deleteAsset(id);
     return {
       success,
       message: success ? 'Archivo eliminado correctamente' : 'No se pudo eliminar el archivo',
@@ -67,8 +67,8 @@ export class MediaController {
   }
 
   @Post(':id/convert')
-  convert(@Param('id') id: string, @Body() body: { targetFormat: 'webp' | 'avif' | 'png' }) {
-    const updated = this.mediaService.convertAssetFormat(id, body.targetFormat || 'webp');
+  async convert(@Param('id') id: string, @Body() body: { targetFormat: 'webp' | 'avif' | 'png' }) {
+    const updated = await this.mediaService.convertAssetFormat(id, body.targetFormat || 'webp');
     if (!updated) {
       return { success: false, message: 'No se pudo convertir el formato' };
     }
@@ -77,5 +77,28 @@ export class MediaController {
       message: `Archivo transformado exitosamente a formato ${body.targetFormat.toUpperCase()}`,
       asset: updated,
     };
+  }
+}
+
+/** Archivos de la biblioteca (públicos: se usan en banners, productos y páginas de la tienda). */
+@Controller('api/media-files')
+export class MediaFilesController {
+  constructor(@Inject(MediaService) private readonly mediaService: MediaService) {}
+
+  @Get(':id')
+  async serve(@Param('id') id: string, @Res() res: any) {
+    const file = await this.mediaService.getFile(id);
+    if (!file) {
+      return res.status(404).send('Archivo no encontrado');
+    }
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Length', file.sizeBytes);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    if (file.mimeType === 'image/svg+xml') {
+      // Un SVG puede contener scripts: se sirve aislado
+      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    }
+    return res.end(file.content);
   }
 }

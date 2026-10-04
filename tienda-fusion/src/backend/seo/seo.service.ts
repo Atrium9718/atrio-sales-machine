@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { SeoMetadataItem, SeoCheckResult, SeoTargetType } from '../../types/media';
+import { loadSetting, saveSettingInBackground } from '../../db/settings-store';
+
+const SEO_SETTING_KEY = 'seo_metadata';
 
 @Injectable()
-export class SeoService {
+export class SeoService implements OnModuleInit {
   private seoItems: SeoMetadataItem[] = [
     {
       id: 'seo-home',
@@ -93,6 +96,15 @@ export class SeoService {
     }
   ];
 
+  async onModuleInit() {
+    try {
+      const stored = await loadSetting<SeoMetadataItem[]>(SEO_SETTING_KEY);
+      if (Array.isArray(stored) && stored.length > 0) this.seoItems = stored;
+    } catch (err: any) {
+      console.warn('No se pudo cargar la configuración SEO guardada:', err?.message || err);
+    }
+  }
+
   constructor() {
     // Initial audits
     this.seoItems.forEach(item => {
@@ -153,6 +165,7 @@ export class SeoService {
     } else {
       this.seoItems.push(merged);
     }
+    saveSettingInBackground(SEO_SETTING_KEY, this.seoItems);
 
     return merged;
   }

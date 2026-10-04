@@ -1,14 +1,14 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, OnModuleInit } from '@nestjs/common';
+import { loadSettingWithLegacyFile, saveSettingInBackground } from '../../db/settings-store';
 import { SystemUser, RoleDefinition, AuditLog, SecuritySettings, UserRoleKey, UserStatus } from './users.types';
 import { PERMISSION_MODULES } from './permissions.data';
 import { INITIAL_DEFAULT_ROLES, INITIAL_DEFAULT_USERS, DEFAULT_SUPER_USER_EMAIL } from './users.defaults';
 
+const USERS_SETTING_KEY = 'users_management';
+
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);
-  private readonly configPath = path.join(process.cwd(), 'users-management.config.json');
 
   private users: SystemUser[] = [];
   private roles: RoleDefinition[] = [];
@@ -27,14 +27,19 @@ export class UsersService {
   };
 
   constructor() {
-    this.loadData();
+    // Valores por defecto en memoria (sin guardar) hasta que onModuleInit cargue la base de datos
+    this.users = [...INITIAL_DEFAULT_USERS];
+    this.roles = [...INITIAL_DEFAULT_ROLES];
   }
 
-  private loadData(): void {
+  async onModuleInit() {
+    const stored = await loadSettingWithLegacyFile<any>(USERS_SETTING_KEY, 'users-management.config.json');
+    this.loadData(stored);
+  }
+
+  private loadData(data: any): void {
     try {
-      if (fs.existsSync(this.configPath)) {
-        const raw = fs.readFileSync(this.configPath, 'utf8');
-        const data = JSON.parse(raw);
+      if (data) {
         if (data.users && Array.isArray(data.users) && data.users.length > 0) {
           this.users = data.users;
         } else {
@@ -126,7 +131,7 @@ export class UsersService {
         auditLogs: this.auditLogs.slice(0, 500), // Keep up to 500 recent logs
         securitySettings: this.securitySettings,
       };
-      fs.writeFileSync(this.configPath, JSON.stringify(data, null, 2), 'utf8');
+      saveSettingInBackground(USERS_SETTING_KEY, data);
     } catch (e: any) {
       this.logger.error(`Error al persistir datos de usuarios: ${e.message}`);
     }

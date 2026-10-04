@@ -109,9 +109,15 @@ hPanel → **Dominios** → apunta el dominio a la app Node.js y activa el **SSL
 
 ---
 
-## Limitaciones conocidas (próxima fase)
+## Cómo funciona en producción
 
-- **Configuración guardada en archivos** (`gateways.config.json`, `shipping.config.json`, `users-management.config.json`): se pierde al redesplegar. Mientras tanto, pon las llaves de pago en variables de entorno, que son la fuente por defecto.
-- **Biblioteca de medios en memoria:** lo que subas ahí se pierde al reiniciar.
-- **Precios calculados en el navegador:** el backend acepta el total que envía el carrito. Hay que revisar los totales de los pedidos antes de producir hasta que se recalculen en el servidor.
-- **Datos bancarios de ejemplo:** cambia la cuenta de transferencia en *Admin → Configuración → Pasarelas* antes de abrir la tienda.
+- **Precios:** el navegador solo envía qué producto, cantidad y acabados eligió el cliente. El servidor recalcula precio, descuento B2B, IVA y envío. Si el total que vio el cliente no coincide (por ejemplo, porque cambiaste un precio en el panel), el pedido no se crea y el carrito se actualiza con el total correcto.
+- **Cuentas B2B:** el cliente envía la solicitud desde `/b2b` (debe iniciar sesión con Google). Tú la apruebas, cambias de nivel o revocas en **Admin → B2B → Solicitudes y cuentas B2B reales**. El descuento y el pago a crédito solo aplican a cuentas aprobadas.
+- **Configuración** (pasarelas, envíos, usuarios/roles y SEO): se guarda en la base de datos (tabla `site_settings`), así que sobrevive a los redespliegues. Si existían archivos `*.config.json` antiguos, se migran solos en el primer arranque. Los campos que dejes vacíos en el panel usan las variables de entorno.
+- **Biblioteca de medios:** las imágenes subidas desde el computador y los renders de IA se guardan en PostgreSQL y se sirven desde `/api/media-files/…`, con caché de un año. El límite es 10 MB por archivo. El plan gratuito de Neon (0,5 GB) da para varios cientos de imágenes optimizadas; para mucho volumen conviene pasar a Cloudflare R2.
+
+## Antes de abrir la tienda
+
+- Cambia los **datos bancarios de ejemplo** en *Admin → Configuración → Pasarelas*.
+- Revisa precios, tamaños de paquete y escalas de cada producto en *Admin → Catálogo*.
+- Pon `WOMPI_MODE=production` y `BOLD_MODE=production` con las llaves reales, y deja `PAYMENT_SIMULATION=false`.

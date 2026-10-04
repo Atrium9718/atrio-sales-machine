@@ -1,9 +1,56 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, BadRequestException } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
 import { MediaAsset, MediaFolder, INITIAL_MEDIA_ASSETS, MediaFolderInfo } from '../../types/media';
+import { db } from '../../db';
+import { mediaAssets, mediaFiles } from '../../db/schema';
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_MIME = /^(image\/(png|jpe?g|webp|avif|gif|svg\+xml)|application\/pdf)$/;
+const LOCAL_FILE_PREFIX = '/api/media-files/';
 
 @Injectable()
-export class MediaService {
+export class MediaService implements OnModuleInit {
+  private readonly logger = new Logger(MediaService.name);
   private assets: MediaAsset[] = [...INITIAL_MEDIA_ASSETS];
+
+  /** Carga la biblioteca desde la base de datos (la primera vez guarda los recursos de ejemplo). */
+  async onModuleInit() {
+    try {
+      const rows = await db.select().from(mediaAssets);
+      if (rows.length > 0) {
+        this.assets = rows.map(r => r.data as MediaAsset);
+      } else {
+        for (const asset of this.assets) {
+          await db.insert(mediaAssets).values({ id: asset.id, data: asset }).onConflictDoNothing();
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`No se pudo cargar la biblioteca de medios desde la base de datos: ${err?.message || err}`);
+    }
+  }
+
+  private async persist(asset: MediaAsset) {
+    await db.insert(mediaAssets)
+      .values({ id: asset.id, data: asset })
+      .onConflictDoUpdate({ target: mediaAssets.id, set: { data: asset } });
+  }
+
+  /** Si la URL es un data URI (subida o render de IA), guarda el binario y devuelve su URL pública. */
+  private async storeDataUri(dataUri: string): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
+    const match = dataUri.match(/^data:([^;,]+);base64,(.+)$/s);
+    if (!match) throw new BadRequestException('Archivo inválido.');
+    const mimeType = match[1].toLowerCase();
+    if (!ALLOWED_MIME.test(mimeType)) throw new BadRequestException('Formato no permitido (usa PNG, JPG, WebP, AVIF, GIF, SVG o PDF).');
+    const content = Buffer.from(match[2], 'base64');
+    if (content.length === 0 || content.length > MAX_FILE_BYTES) throw new BadRequestException('El archivo supera el límite de 10 MB.');
+    const id = 'file-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+    await db.insert(mediaFiles).values({ id, mimeType, sizeBytes: content.length, content });
+    return { url: LOCAL_FILE_PREFIX + id, mimeType, sizeBytes: content.length };
+  }
+
+  async getFile(id: string) {
+    return (await db.select().from(mediaFiles).where(eq(mediaFiles.id, id)).limit(1))[0] || null;
+  }
 
   getAllAssets(folder?: MediaFolder, search?: string, format?: string): MediaAsset[] {
     let list = [...this.assets];
@@ -59,7 +106,7 @@ export class MediaService {
     });
   }
 
-  createAsset(data: {
+  async createAsset(data: {
     name: string;
     folder: MediaFolder;
     url: string;
@@ -76,7 +123,18 @@ export class MediaService {
     tags?: string[];
     isAiGenerated?: boolean;
     aiPrompt?: string;
-  }): MediaAsset {
+  }): Promise<MediaAsset> {
+    if (!data?.url || typeof data.url !== 'string') {
+      throw new BadRequestException('Indica la URL o el archivo a subir.');
+    }
+    let stored: { url: string; mimeType: string; sizeBytes: number } | null = null;
+    if (data.url.startsWith('data:')) {
+      stored = await this.storeDataUri(data.url);
+      data = { ...data, url: stored.url, mimeType: stored.mimeType, originalSizeBytes: stored.sizeBytes };
+    } else if (!/^https?:\/\//i.test(data.url)) {
+      throw new BadRequestException('La URL debe empezar por http(s)://');
+    }
+
     const origSize = data.originalSizeBytes || 1500000;
     // Modern WebP/AVIF compression yields 75-88% savings
     const optSize = Math.round(origSize * 0.18);
@@ -91,8 +149,8 @@ export class MediaService {
       folder: data.folder || 'general',
       url: mainUrl,
       originalUrl: data.originalUrl || mainUrl,
-      webpUrl: data.webpUrl || (mainUrl.includes('?') ? `${mainUrl}&fm=webp` : `${mainUrl}?fm=webp`),
-      avifUrl: data.avifUrl || (mainUrl.includes('?') ? `${mainUrl}&fm=avif` : `${mainUrl}?fm=avif`),
+      webpUrl: data.webpUrl || (stored ? mainUrl : mainUrl.includes('?') ? `${mainUrl}&fm=webp` : `${mainUrl}?fm=webp`),
+      avifUrl: data.avifUrl || (stored ? mainUrl : mainUrl.includes('?') ? `${mainUrl}&fm=avif` : `${mainUrl}?fm=avif`),
       thumbnailUrl: data.thumbnailUrl || mainUrl,
       mimeType: data.mimeType || 'image/webp',
       format: baseFormat,
@@ -109,32 +167,41 @@ export class MediaService {
       updatedAt: new Date().toISOString(),
     };
 
+    await this.persist(newAsset);
     this.assets.unshift(newAsset);
     return newAsset;
   }
 
-  updateAsset(id: string, updates: Partial<MediaAsset>): MediaAsset | null {
+  async updateAsset(id: string, updates: Partial<MediaAsset>): Promise<MediaAsset | null> {
     const index = this.assets.findIndex(a => a.id === id);
     if (index === -1) return null;
 
     const current = this.assets[index];
+    // Los campos de identidad y ubicación del archivo no se pueden reescribir desde el panel
+    const { id: _id, url: _url, originalUrl: _o, createdAt: _c, ...safeUpdates } = updates as any;
     const updated: MediaAsset = {
       ...current,
-      ...updates,
+      ...safeUpdates,
       updatedAt: new Date().toISOString(),
     };
 
+    await this.persist(updated);
     this.assets[index] = updated;
     return updated;
   }
 
-  deleteAsset(id: string): boolean {
-    const initialLen = this.assets.length;
+  async deleteAsset(id: string): Promise<boolean> {
+    const asset = this.assets.find(a => a.id === id);
+    if (!asset) return false;
+    await db.delete(mediaAssets).where(eq(mediaAssets.id, id));
+    if (asset.url.startsWith(LOCAL_FILE_PREFIX)) {
+      await db.delete(mediaFiles).where(eq(mediaFiles.id, asset.url.slice(LOCAL_FILE_PREFIX.length)));
+    }
     this.assets = this.assets.filter(a => a.id !== id);
-    return this.assets.length < initialLen;
+    return true;
   }
 
-  convertAssetFormat(id: string, targetFormat: 'webp' | 'avif' | 'png'): MediaAsset | null {
+  async convertAssetFormat(id: string, targetFormat: 'webp' | 'avif' | 'png'): Promise<MediaAsset | null> {
     const asset = this.getAssetById(id);
     if (!asset) return null;
 

@@ -157,7 +157,7 @@ export default function ProductPage() {
             quantity: quantity,
             unit_price_before_discount: unitPriceBefore,
             discount_applied: {
-              percentage: discount,
+              percentage: discount * 100, // mismo formato que el servidor (porcentaje)
               amount_saved: Math.round(discountAmount),
             },
             applied_modifiers: appliedModifiers,
@@ -618,7 +618,7 @@ export default function ProductPage() {
                        })}
                        {quote.desglose.discount_applied && quote.desglose.discount_applied.percentage > 0 && (
                          <div className="flex justify-between text-teal-600 font-medium pt-1">
-                           <span>Descuento Vol. ({(quote.desglose.discount_applied.percentage * 100).toFixed(0)}%)</span>
+                           <span>Descuento Vol. ({Number(quote.desglose.discount_applied.percentage).toFixed(0)}%)</span>
                            <span>-{formatCOP(quote.desglose.discount_applied.amount_saved)}</span>
                          </div>
                        )}

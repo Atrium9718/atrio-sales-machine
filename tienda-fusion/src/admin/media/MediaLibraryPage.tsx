@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import FileOrUrlInput from './FileOrUrlInput';
 import { 
   MediaAsset, 
   MediaFolder, 
@@ -183,6 +184,9 @@ export default function MediaLibraryPage() {
         setUploadAltText('');
         setUploadTags('');
         fetchMediaData();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        showToast(errorData.message || 'Error al guardar archivo');
       }
     } catch (err) {
       console.error('Error uploading asset:', err);
@@ -1414,14 +1418,11 @@ export default function MediaLibraryPage() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">URL de la Imagen *</label>
-                <input
-                  type="url"
-                  required
+                <label className="block font-bold text-slate-700 mb-1">Imagen o archivo *</label>
+                <FileOrUrlInput
                   value={uploadUrl}
-                  onChange={(e) => setUploadUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs"
+                  onChange={setUploadUrl}
+                  onFileName={(n) => { if (!uploadName.trim()) setUploadName(n); }}
                 />
               </div>
 

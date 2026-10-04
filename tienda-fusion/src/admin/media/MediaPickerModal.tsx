@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import FileOrUrlInput from './FileOrUrlInput';
 import { MediaAsset, MediaFolder } from '../../types/media';
 import { 
   Image as ImageIcon, 
@@ -404,14 +405,12 @@ export default function MediaPickerModal({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">URL de la Imagen o Archivo *</label>
-                    <input
-                      type="url"
-                      required
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Imagen o archivo *</label>
+                    <FileOrUrlInput
                       value={uploadUrl}
-                      onChange={(e) => setUploadUrl(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs"
+                      onChange={setUploadUrl}
+                      onFileName={(n) => { if (!uploadName.trim()) setUploadName(n); }}
+                      className="bg-white"
                     />
                   </div>
 
