@@ -30,9 +30,14 @@
   --color-stone-800: #1f1f1f;
   --color-stone-900: #141414;
   --color-stone-950: #0b0b0b;
+  --color-slate-50: #f2f2f2;
   --color-slate-800: #1f1f1f;
   --color-slate-900: #141414;
   --color-slate-950: #0b0b0b;
+
+  /* Pesos de letra más ligeros (la referencia usa medios/seminegritas, no "black") */
+  --font-weight-black: 700;
+  --font-weight-extrabold: 650;
 
   --color-brand-lime: #c4f142;
   --color-brand-ink: #0b0b0b;
@@ -43,7 +48,7 @@
   body {
     font-family: var(--font-sans);
     color: #0b0b0b;
-    background-color: #ffffff;
+    background-color: #f2f2f2;
     -webkit-font-smoothing: antialiased;
   }
 
@@ -114,4 +119,24 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* ------------------------------------------------------------------
+ * Esquinas cortadas en diagonal (chaflán), como las cajas de la referencia.
+ * Se combinan con rounded-* para redondear las demás esquinas.
+ * Ajustar el tamaño del corte con --cut (por defecto 36px).
+ * ------------------------------------------------------------------ */
+.cut-tl { clip-path: polygon(var(--cut, 36px) 0, 100% 0, 100% 100%, 0 100%, 0 var(--cut, 36px)); }
+.cut-tr { clip-path: polygon(0 0, calc(100% - var(--cut, 36px)) 0, 100% var(--cut, 36px), 100% 100%, 0 100%); }
+.cut-br { clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cut, 36px)), calc(100% - var(--cut, 36px)) 100%, 0 100%); }
+.cut-bl { clip-path: polygon(0 0, 100% 0, 100% 100%, var(--cut, 36px) 100%, 0 calc(100% - var(--cut, 36px))); }
+.cut-tl-br { clip-path: polygon(var(--cut, 36px) 0, 100% 0, 100% calc(100% - var(--cut, 36px)), calc(100% - var(--cut, 36px)) 100%, 0 100%, 0 var(--cut, 36px)); }
+.cut-tr-bl { clip-path: polygon(0 0, calc(100% - var(--cut, 36px)) 0, 100% var(--cut, 36px), 100% 100%, var(--cut, 36px) 100%, 0 calc(100% - var(--cut, 36px))); }
+.cut-sm { --cut: 18px; }
+.cut-md { --cut: 28px; }
+.cut-lg { --cut: 56px; }
+
+/* Degradado gris de los banners de la referencia (foto sobre gris) */
+.banner-gray-bg {
+  background: linear-gradient(100deg, #6f757d 0%, #9aa0a7 38%, #d5d8dc 70%, #eceef0 100%);
 }

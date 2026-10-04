@@ -7,6 +7,7 @@ import {
   LogOut, 
   MapPin, 
   Phone, 
+  Mail, 
   Home, 
   Grid, 
   Printer, 
@@ -94,7 +95,7 @@ export default function StorefrontLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-sans selection:bg-teal-500 selection:text-white overflow-x-hidden">
+    <div className="min-h-screen bg-[#f2f2f2] flex flex-col font-sans selection:bg-teal-400 selection:text-slate-950 overflow-x-hidden">
       {/* Top Promotional Bar (Managed from Banners Admin) */}
       <TopPromoBar />
 
@@ -108,113 +109,124 @@ export default function StorefrontLayout() {
         </div>
       )}
 
-      {/* HEADER PRINCIPAL */}
-      <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 shadow-[0_4px_20px_rgba(0,0,0,0.04)] border-b border-stone-200/80">
+      {/* HEADER PRINCIPAL: barra utilitaria + panel blanco con esquina cortada */}
+      <header className="sticky top-0 z-40 bg-[#f2f2f2]/90 backdrop-blur-md pb-3">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 sm:h-20 items-center gap-2 sm:gap-4">
-            
-            {/* Logo y Botón Menú Móvil */}
-            <div className="flex items-center gap-2.5 shrink-0">
-              <button 
-                type="button"
-                onClick={() => setIsMobileDrawerOpen(true)}
-                className="lg:hidden p-2 text-slate-700 hover:text-teal-600 hover:bg-stone-100 rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-                aria-label="Abrir menú"
-              >
-                <Menu size={22} />
-              </button>
 
-              <Link to="/" className="flex items-center gap-2.5 group shrink-0">
-                {config.branding.logoLightUrl ? (
-                  <img src={config.branding.logoLightUrl} alt={config.branding.siteName} className="h-9 sm:h-11 w-auto object-contain" />
-                ) : (
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-teal-500 via-teal-600 to-slate-900 text-neutral-950 flex items-center justify-center shadow-md transition-transform group-hover:scale-105 border border-teal-400/30">
-                    <Printer size={22} strokeWidth={2.5} />
-                  </div>
-                )}
-                <div className="flex flex-col">
-                  <span className="font-black text-xl sm:text-2xl tracking-tight text-slate-900 leading-none">
-                    {config.branding.siteName || 'FUSIÓN'}
-                  </span>
-                  <span className="text-[9px] sm:text-[10px] font-black text-teal-700 uppercase tracking-widest mt-0.5">
-                    {config.branding.siteTagline || 'COMUNICACIÓN GRÁFICA W2P'}
-                  </span>
-                </div>
-              </Link>
+          {/* Barra utilitaria */}
+          <div className="hidden md:flex items-center justify-between h-10 text-[11px] font-semibold tracking-wide text-slate-600 uppercase">
+            <div className="flex items-center gap-2">
+              <span className="bg-white rounded-md px-2.5 py-1 text-slate-900">COP $</span>
+              <span className="bg-white rounded-md px-2.5 py-1 text-slate-900">Español</span>
+              <span className="normal-case tracking-normal text-slate-500 ml-2 hidden lg:inline">Envíos a toda Colombia · Despachos diarios</span>
             </div>
+            <nav className="flex items-center gap-6">
+              <Link to="/rastreo" className="hover:text-slate-950 transition-colors">Rastrear pedido</Link>
+              <Link to="/b2b" className="hover:text-slate-950 transition-colors">Portal B2B</Link>
+              <Link to="/privacidad" className="hover:text-slate-950 transition-colors">Privacidad</Link>
+              <a href="https://wa.me/573110000000" target="_blank" rel="noreferrer" className="hover:text-slate-950 transition-colors">Contacto</a>
+            </nav>
+          </div>
 
-            {/* Desktop Search Bar with Quick Filter Pills */}
-            <div className="hidden md:flex flex-col flex-1 max-w-sm lg:max-w-md xl:max-w-lg mx-2 lg:mx-4">
-              <form onSubmit={handleSearch} className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Search size={16} className="text-slate-400" />
-                </div>
-                <input 
-                  type="text" 
-                  placeholder="Buscar productos (ej. tarjetas, volantes, libros, cajas...)" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-stone-100/90 border border-stone-200/80 rounded-full focus:bg-white focus:border-teal-500 focus:ring-3 focus:ring-teal-500/15 text-slate-800 placeholder-slate-400 transition-all outline-none font-medium text-xs lg:text-sm shadow-inner"
-                />
-              </form>
-            </div>
+          {/* Panel principal */}
+          <div className="relative mt-2 md:mt-0">
+            {/* Fondo blanco con chaflán (en una capa aparte para no recortar el menú desplegable) */}
+            <div className="absolute inset-0 bg-white rounded-[22px] sm:rounded-[28px] cut-tl cut-md pointer-events-none" aria-hidden="true" />
 
-            {/* Desktop Navigation & Actions */}
-            <div className="hidden lg:flex items-center gap-2.5 shrink-0">
-              <Link
-                to="/cotizador-libros"
-                className="hidden xl:inline-flex text-xs font-black text-teal-900 bg-teal-50 hover:bg-teal-100 border border-teal-200/90 px-3.5 py-2 rounded-full items-center gap-1.5 transition-all shadow-xs"
-              >
-                <BookOpen size={14} className="text-teal-700" />
-                <span>Cotizador Libros</span>
-                <span className="bg-teal-600 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
-                  AUTO
-                </span>
-              </Link>
+            <div className="relative">
+              <div className="flex items-center gap-2 sm:gap-4 h-16 sm:h-[84px] px-3 sm:px-8">
+                {/* Menú móvil */}
+                <button
+                  type="button"
+                  onClick={() => setIsMobileDrawerOpen(true)}
+                  className="lg:hidden p-2 text-slate-800 hover:bg-[#f2f2f2] rounded-xl transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+                  aria-label="Abrir menú"
+                >
+                  <Menu size={22} />
+                </button>
 
-              <Link
-                to="/diseñador/tarjetas-estandar"
-                className="hidden 2xl:inline-flex text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3 py-2 rounded-full items-center gap-1.5 transition-all"
-              >
-                <PenTool size={13} className="text-teal-600" />
-                <span>Editor Online</span>
-              </Link>
-
-              <Link 
-                to="/carrito" 
-                className="text-slate-700 hover:text-teal-600 transition-all relative p-2.5 bg-stone-100 hover:bg-stone-200 rounded-full shrink-0 border border-stone-200/60"
-                title="Ver carrito"
-              >
-                <ShoppingCart size={19} />
-                {cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-gradient-to-r from-orange-500 to-rose-500 text-white text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white animate-scale-in shadow-xs">
-                    {cartCount}
-                  </span>
-                )}
-              </Link>
-
-              {user ? (
-                <div className="relative shrink-0" ref={userDropdownRef}>
-                  <button 
-                    onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-                    className="flex items-center gap-2 pl-2 pr-3 py-1.5 bg-stone-100 hover:bg-stone-200 rounded-full transition-colors cursor-pointer border border-stone-200/80"
-                  >
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt="Perfil" className="w-6 h-6 rounded-full border border-slate-300 object-cover" />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-teal-600 text-white flex items-center justify-center text-[10px] font-bold">
-                        {user.email?.[0].toUpperCase()}
-                      </div>
-                    )}
-                    <span className="text-xs font-bold text-slate-800 max-w-[100px] truncate">
-                      {user.displayName || 'Mi Cuenta'}
+                {/* Logo */}
+                <Link to="/" className="flex items-center gap-2.5 group shrink-0">
+                  {config.branding.logoLightUrl ? (
+                    <img src={config.branding.logoLightUrl} alt={config.branding.siteName} className="h-9 sm:h-11 w-auto object-contain" />
+                  ) : (
+                    <div className="relative w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center">
+                      <span className="absolute left-0 top-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-teal-400" />
+                      <Printer size={24} strokeWidth={2.2} className="relative text-slate-950 translate-x-1 translate-y-1" />
+                    </div>
+                  )}
+                  <div className="flex flex-col leading-[1.05]">
+                    <span className="font-bold text-base sm:text-lg tracking-tight text-slate-950 uppercase">
+                      {(config.branding.siteName || 'Fusión').split(' ')[0]}
                     </span>
-                    <ChevronDown size={14} className={`text-slate-400 transition-transform ${isUserDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
+                    <span className="font-bold text-[11px] sm:text-sm tracking-tight text-slate-950 uppercase">
+                      {config.branding.siteName ? config.branding.siteName.split(' ').slice(1, 3).join(' ') || 'Gráfica' : 'Gráfica'}
+                    </span>
+                  </div>
+                </Link>
+
+                {/* Buscador */}
+                <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-xl mx-2 lg:mx-6 relative items-center">
+                  <span className="absolute left-1.5 w-9 h-9 rounded-full bg-white flex items-center justify-center shadow-[0_1px_4px_rgba(0,0,0,0.06)] pointer-events-none">
+                    <Search size={17} className="text-slate-900" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Buscar productos"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-14 pr-4 py-3 bg-[#f2f2f2] rounded-full text-sm text-slate-900 placeholder-slate-500 outline-none focus:ring-2 focus:ring-teal-400 transition-all"
+                  />
+                </form>
+
+                <div className="flex-1 md:hidden" />
+
+                {/* Acciones */}
+                <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
+                  <Link
+                    to="/cotizador-libros"
+                    className="hidden lg:flex w-11 h-11 rounded-full border border-stone-200 hover:border-slate-900 items-center justify-center text-slate-900 transition-colors"
+                    title="Cotizador de libros"
+                  >
+                    <BookOpen size={19} />
+                  </Link>
+
+                  <Link
+                    to="/carrito"
+                    className="relative w-11 h-11 rounded-full border border-stone-200 hover:border-slate-900 flex items-center justify-center text-slate-900 transition-colors"
+                    title="Ver carrito"
+                    aria-label="Carrito"
+                  >
+                    <ShoppingCart size={19} />
+                    {cartCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-teal-400 text-slate-950 text-[11px] font-bold min-w-[22px] h-[22px] px-1 flex items-center justify-center rounded-full border-2 border-white">
+                        {cartCount}
+                      </span>
+                    )}
+                  </Link>
+
+                  {user ? (
+                    <div className="relative shrink-0" ref={userDropdownRef}>
+                      <button
+                        onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
+                        className="flex items-center gap-2.5 pl-1 lg:pl-3 pr-1 py-1 rounded-full hover:bg-[#f2f2f2] transition-colors"
+                      >
+                        <span className="hidden lg:inline text-sm text-slate-500">
+                          Hola, <span className="text-slate-950 font-semibold">{(user.displayName || 'Cliente').split(' ')[0]}</span>
+                        </span>
+                        {user.photoURL ? (
+                          <img src={user.photoURL} alt="Perfil" className="w-10 h-10 sm:w-11 sm:h-11 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-teal-400 text-slate-950 flex items-center justify-center text-sm font-bold">
+                            {user.email?.[0].toUpperCase()}
+                          </div>
+                        )}
+                        <ChevronDown size={16} className={`hidden lg:block text-slate-700 transition-transform ${isUserDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
 
                   {/* ACCOUNT DROPDOWN MENU */}
                   {isUserDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-stone-200 py-2 z-50 animate-scale-in">
+                    <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-stone-200 py-2 z-50 animate-scale-in">
                       <div className="px-4 py-3 border-b border-stone-100 bg-stone-50/80 rounded-t-2xl">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-black text-slate-900 truncate">{user.displayName || 'Cliente Registrado'}</p>
@@ -293,76 +305,71 @@ export default function StorefrontLayout() {
                       </div>
                     </div>
                   )}
-                </div>
-              ) : (
-                <button 
-                  onClick={login} 
-                  disabled={isLoggingIn}
-                  className="flex items-center gap-2 text-slate-700 hover:text-teal-700 font-bold transition-colors p-1.5 pr-3.5 bg-stone-100 hover:bg-stone-200 border border-stone-200/80 disabled:opacity-60 rounded-full shrink-0"
-                >
-                  <div className="bg-white p-1.5 rounded-full shadow-xs"><User size={15} className="text-teal-600" /></div>
-                  <span className="text-xs">{isLoggingIn ? 'Ingresando...' : 'Ingresar'}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Mobile / Tablet Header Actions */}
-            <div className="flex items-center gap-1.5 lg:hidden shrink-0">
-              <Link 
-                to="/carrito" 
-                className="relative p-2.5 text-slate-700 bg-stone-100 rounded-full min-h-[44px] min-w-[44px] flex items-center justify-center border border-stone-200/60"
-                aria-label="Carrito"
-              >
-                <ShoppingCart size={19} />
-                {cartCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white text-[9px] font-black w-4.5 h-4.5 flex items-center justify-center rounded-full border-2 border-white">
-                    {cartCount}
-                  </span>
-                )}
-              </Link>
-              
-              {user ? (
-                <Link 
-                  to="/mi-cuenta" 
-                  className="p-1 text-slate-700 bg-stone-100 rounded-full min-h-[44px] min-w-[44px] flex items-center justify-center border border-stone-200/60"
-                  aria-label="Mi Cuenta"
-                >
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="Perfil" className="w-8 h-8 rounded-full object-cover" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-teal-600 text-white flex items-center justify-center text-xs font-bold">
-                      {user.email?.[0].toUpperCase()}
                     </div>
+                  ) : (
+                    <button
+                      onClick={() => login()}
+                      disabled={isLoggingIn}
+                      className="flex items-center justify-center sm:justify-start gap-2 h-11 w-11 sm:w-auto sm:pl-1.5 sm:pr-4 rounded-full bg-slate-950 hover:bg-slate-800 text-white disabled:opacity-60 transition-colors"
+                      aria-label="Iniciar sesión"
+                    >
+                      <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"><User size={16} /></span>
+                      <span className="text-sm font-semibold hidden sm:inline">{isLoggingIn ? 'Ingresando…' : 'Ingresar'}</span>
+                    </button>
                   )}
-                </Link>
-              ) : (
-                <button 
-                  onClick={login} 
-                  disabled={isLoggingIn}
-                  className="p-2.5 text-slate-700 bg-stone-100 border border-stone-200/60 disabled:opacity-60 rounded-full min-h-[44px] min-w-[44px] flex items-center justify-center"
-                  aria-label="Iniciar Sesión"
-                >
-                  <User size={19} />
-                </button>
-              )}
-            </div>
-
-          </div>
-          
-          {/* Mobile Search Bar */}
-          <div className="md:hidden pb-3 pt-1">
-            <form onSubmit={handleSearch} className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Search size={17} className="text-slate-400" />
+                </div>
               </div>
-              <input 
-                type="text" 
-                placeholder="Buscar tarjetas, volantes, libros, empaques..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 bg-stone-100/90 border border-stone-200/80 rounded-full focus:bg-white focus:border-teal-500 focus:ring-2 focus:ring-teal-100 text-xs text-slate-800 placeholder-slate-400 transition-all outline-none font-medium"
-              />
-            </form>
+
+              {/* Segunda fila: categorías + contacto (escritorio) */}
+              <div className="hidden lg:flex items-center justify-between border-t border-stone-200 h-14 px-8">
+                <nav className="flex items-center h-full">
+                  {[
+                    { label: 'Papelería', to: '/categoria/papeleria-comercial' },
+                    { label: 'Publicidad', to: '/categoria/publicidad-volantes' },
+                    { label: 'Gran formato', to: '/categoria/gran-formato' },
+                    { label: 'Etiquetas', to: '/categoria/etiquetas-adhesivos' },
+                    { label: 'Empaques', to: '/categoria/empaques-cajas' },
+                    { label: 'Libros', to: '/cotizador-libros' },
+                  ].map(item => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className={`mr-8 text-[15px] font-medium transition-colors ${location.pathname === item.to ? 'text-slate-950 underline decoration-teal-400 decoration-[3px] underline-offset-[10px]' : 'text-slate-800 hover:text-slate-950'}`}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                  <span className="h-full w-px bg-stone-200 mr-8" />
+                  <Link to="/categoria/todas" className="text-[15px] font-semibold text-red-500 hover:text-red-600">Ofertas</Link>
+                </nav>
+                <div className="flex items-center gap-6 text-[15px] font-semibold text-slate-950">
+                  <a href={`mailto:${config.branding.email || 'ventas@fusiongrafica.com.co'}`} className="flex items-center gap-2 hover:text-slate-700">
+                    <span>{config.branding.email || 'ventas@fusiongrafica.com.co'}</span>
+                    <Mail size={18} className="text-slate-500" />
+                  </a>
+                  <a href={`tel:${config.branding.phone || '+573110000000'}`} className="flex items-center gap-2 hover:text-slate-700">
+                    <span>{config.branding.phone || '+57 311 000 0000'}</span>
+                    <Phone size={18} className="text-slate-500" />
+                  </a>
+                </div>
+              </div>
+
+              {/* Buscador móvil */}
+              <div className="md:hidden px-3 pb-3">
+                <form onSubmit={handleSearch} className="relative flex items-center">
+                  <span className="absolute left-1.5 w-8 h-8 rounded-full bg-white flex items-center justify-center pointer-events-none">
+                    <Search size={16} className="text-slate-900" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Buscar productos"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-12 pr-4 py-2.5 bg-[#f2f2f2] rounded-full text-sm text-slate-900 placeholder-slate-500 outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                </form>
+              </div>
+            </div>
           </div>
         </div>
       </header>

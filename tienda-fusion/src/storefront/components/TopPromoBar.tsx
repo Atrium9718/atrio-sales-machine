@@ -83,33 +83,26 @@ export default function TopPromoBar() {
 
   if (!promoData || !promoData.title) return null;
 
-  const bgStyle: React.CSSProperties = promoData.bgType === 'GRADIENT'
-    ? { backgroundImage: `linear-gradient(90deg, ${promoData.gradientFrom || '#042f2e'}, ${promoData.gradientTo || '#0f766e'})` }
-    : promoData.bgType === 'COLOR'
-    ? { backgroundColor: promoData.bgColor || '#0f766e' }
-    : promoData.desktopImageUrl
-    ? { 
+  // La franja usa siempre los colores de marca (negro + lima); solo se respeta una imagen de fondo
+  const bgStyle: React.CSSProperties = promoData.bgType === 'IMAGE' && promoData.desktopImageUrl
+    ? {
         backgroundImage: `url(${promoData.desktopImageUrl})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center'
       }
-    : { backgroundColor: '#0f172a' };
+    : { backgroundColor: '#0b0b0b' };
 
   return (
     <div
       id="top-promo-bar"
-      style={{ ...bgStyle, color: promoData.textColor || '#ffffff' }}
+      style={{ ...bgStyle, color: '#ffffff' }}
       className="text-xs py-2 px-3 sm:px-4 relative z-30 transition-all border-b border-white/10 shadow-xs"
     >
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 overflow-hidden mx-auto">
           {promoData.tag && (
             <span
-              style={{
-                backgroundColor: promoData.tagBgColor || '#2dd4bf',
-                color: promoData.tagTextColor || '#022c22'
-              }}
-              className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 shadow-xs"
+              className="px-2.5 py-0.5 rounded-md bg-teal-400 text-slate-950 text-[10px] font-bold uppercase tracking-wider shrink-0"
             >
               {promoData.tag}
             </span>
@@ -125,7 +118,7 @@ export default function TopPromoBar() {
           {promoData.linkUrl && (
             <Link
               to={promoData.linkUrl}
-              className="inline-flex items-center gap-1 font-black text-teal-300 hover:text-teal-200 underline underline-offset-2 ml-1.5 text-[11px] shrink-0 transition-colors"
+              className="inline-flex items-center gap-1 font-black text-teal-400 hover:text-teal-300 underline underline-offset-2 ml-1.5 text-[11px] shrink-0 transition-colors"
             >
               <span>{promoData.ctaText || 'Ver Más'}</span>
               <ArrowRight size={11} />

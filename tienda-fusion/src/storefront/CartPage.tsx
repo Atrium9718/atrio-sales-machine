@@ -27,7 +27,7 @@ export default function CartPage() {
         </div>
         <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">Tu carrito está vacío</h2>
         <p className="text-slate-500 mb-8 max-w-sm">Parece que aún no has agregado productos. Descubre nuestro catálogo y comienza a diseñar.</p>
-        <Link to="/categoria/todas" className="bg-teal-500 hover:bg-teal-600 text-neutral-950 font-bold py-4 px-8 rounded-full shadow-md shadow-teal-500/30 transition-transform active:scale-95 flex items-center gap-2">
+        <Link to="/categoria/todas" className="bg-teal-500 hover:bg-slate-950 text-neutral-950 hover:text-white font-bold py-4 px-8 rounded-full shadow-md shadow-teal-500/30 transition-transform active:scale-95 flex items-center gap-2">
           <PlusCircle size={20} />
           Explorar Catálogo y Comprar
         </Link>

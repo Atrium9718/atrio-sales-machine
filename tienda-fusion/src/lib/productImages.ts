@@ -27,10 +27,10 @@ export const PRODUCT_FALLBACK_IMAGES: Record<string, string> = {
   'etiquetas-rollo': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
 
   // Empaques & Cajas
-  'cajas-personalizadas': 'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
-  'cajas-plegadizas': 'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
+  'cajas-personalizadas': 'https://images.unsplash.com/photo-1607166452427-7e4477079cb9?auto=format&fit=crop&w=800&q=80',
+  'cajas-plegadizas': 'https://images.unsplash.com/photo-1607166452427-7e4477079cb9?auto=format&fit=crop&w=800&q=80',
   'bolsas-papel': 'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=800&q=80',
-  'empaques-kraft': 'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
+  'empaques-kraft': 'https://images.unsplash.com/photo-1607166452427-7e4477079cb9?auto=format&fit=crop&w=800&q=80',
 
   // Editorial & Separadores & Libros
   'separador': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
@@ -45,7 +45,7 @@ export const CATEGORY_FALLBACK_IMAGES: Record<string, string> = {
   'publicidad-volantes': 'https://images.unsplash.com/photo-1596526131083-e8c638c9c6c5?auto=format&fit=crop&w=800&q=80',
   'gran-formato': 'https://images.unsplash.com/photo-1542744094-3a31f272c490?auto=format&fit=crop&w=800&q=80',
   'etiquetas-adhesivos': 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
-  'empaques-cajas': 'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
+  'empaques-cajas': 'https://images.unsplash.com/photo-1607166452427-7e4477079cb9?auto=format&fit=crop&w=800&q=80',
   'editorial-merchandising': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
 };
 
@@ -86,7 +86,7 @@ export const PRODUCT_GALLERY_SETS: Record<string, string[]> = {
     'https://images.unsplash.com/photo-1572021335469-31706a17aaef?auto=format&fit=crop&w=800&q=80'
   ],
   'cajas-personalizadas': [
-    'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1607166452427-7e4477079cb9?auto=format&fit=crop&w=800&q=80',
     'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=800&q=80',
     'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=800&q=80'
   ],
@@ -119,7 +119,7 @@ export const CATEGORY_GALLERY_SETS: Record<string, string[]> = {
     'https://images.unsplash.com/photo-1572021335469-31706a17aaef?auto=format&fit=crop&w=800&q=80'
   ],
   'empaques-cajas': [
-    'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1607166452427-7e4477079cb9?auto=format&fit=crop&w=800&q=80',
     'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=800&q=80',
     'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?auto=format&fit=crop&w=800&q=80'
   ],

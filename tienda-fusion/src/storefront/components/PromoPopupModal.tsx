@@ -218,7 +218,7 @@ export default function PromoPopupModal() {
               <button
                 type="button"
                 onClick={handleCopyCode}
-                className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-600 text-slate-950 text-xs font-black shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-slate-950 text-slate-950 hover:text-white text-xs font-black shadow-sm transition-transform active:scale-95 flex items-center gap-1.5 shrink-0 cursor-pointer"
               >
                 {copied ? (
                   <>

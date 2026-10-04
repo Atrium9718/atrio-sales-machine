@@ -336,11 +336,13 @@ export default function ProductPage() {
                   />
                 ) : (
                   <div className="space-y-3">
-                    <div className="bg-slate-100 md:rounded-[32px] overflow-hidden aspect-square md:aspect-[4/3] relative shadow-sm border border-slate-100">
+                    <div className="bg-[#e9eaec] rounded-[22px] md:rounded-[28px] cut-tl cut-lg overflow-hidden aspect-square md:aspect-[4/3] relative">
                       <img 
                         src={currentImg} 
                         alt={`${product.name} - Vista ${activePhotoIndex + 1}`}
                         referrerPolicy="no-referrer"
+                        onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+                        onLoad={(e) => { e.currentTarget.style.visibility = 'visible'; }}
                         className="w-full h-full object-cover transition-all duration-300"
                       />
                       <div className="absolute bottom-3 right-3 bg-slate-900/70 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5">
@@ -366,6 +368,7 @@ export default function ProductPage() {
                             <img
                               src={photoUrl}
                               alt={`Miniatura ${idx + 1}`}
+                              onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover"
                             />
@@ -436,7 +439,7 @@ export default function ProductPage() {
               ))}
 
               {/* CONTROLES DE CANTIDAD */}
-              <section className="bg-white rounded-[24px] p-5 shadow-sm border border-slate-100 space-y-4">
+              <section className="bg-white rounded-[20px] cut-br cut-md p-5 sm:p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-bold text-slate-900">Cantidad y Escala de Precios</h3>
@@ -574,7 +577,7 @@ export default function ProductPage() {
 
         {/* LADO DERECHO: STICKY RESUMEN (Visible en Desktop, Oculto en Mobile donde se usa Bottom Bar) */}
         <div className="hidden lg:block w-full lg:w-[400px]">
-          <div className="sticky top-24 bg-white rounded-[32px] shadow-lg border border-slate-100 overflow-hidden p-8">
+          <div className="sticky top-44 bg-white rounded-[28px] cut-tr cut-lg overflow-hidden p-8">
             <h2 className="text-xl font-extrabold text-slate-900 mb-6">Resumen de Orden</h2>
             
             {/* Panel Precios */}
@@ -668,7 +671,7 @@ export default function ProductPage() {
             <div className="space-y-3">
               <Link 
                 to={`/diseñador/${product.slug}`}
-                className="w-full bg-teal-500 hover:bg-teal-600 text-neutral-950 font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-teal-500/20 text-sm"
+                className="w-full bg-teal-500 hover:bg-slate-950 text-neutral-950 hover:text-white font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-teal-500/20 text-sm"
               >
                 <PenTool size={18} />
                 Diseñar Online

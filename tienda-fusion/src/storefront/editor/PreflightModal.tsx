@@ -301,7 +301,7 @@ export default function PreflightModal({
             type="button"
             disabled={isExporting}
             onClick={handleDownloadPdf}
-            className="bg-teal-500 hover:bg-teal-600 text-neutral-950 px-6 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-transform active:scale-95 disabled:opacity-50"
+            className="bg-teal-500 hover:bg-slate-950 text-neutral-950 hover:text-white px-6 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-transform active:scale-95 disabled:opacity-50"
           >
             {isExporting ? <RefreshCw size={15} className="animate-spin" /> : <Download size={15} />}
             <span>Exportar PDF/X Listo para Imprenta</span>
