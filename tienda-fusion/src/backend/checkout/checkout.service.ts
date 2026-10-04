@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, Inject, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { InvoicingService } from '../invoicing/invoicing.service';
 import { db } from '../../db';
 import { orders, orderItems, products, users } from '../../db/schema';
@@ -41,7 +41,7 @@ export interface GatewaysConfig {
 const DEFAULT_GATEWAYS_CONFIG: GatewaysConfig = {
   wompi: {
     enabled: true,
-    mode: 'sandbox',
+    mode: process.env.WOMPI_MODE === 'production' ? 'production' : 'sandbox',
     publicKey: process.env.WOMPI_PUBLIC_KEY || 'pub_test_Q5yDA9xoKdePzhSGeVe9HAUr1jiBmGWY',
     privateKey: process.env.WOMPI_PRIVATE_KEY || 'prv_test_549382910293847583920192',
     integritySecret: process.env.WOMPI_INTEGRITY_SECRET || 'test_integrity_4Q7x52U34FfB9v74qT6h2Yp98s1',
@@ -49,7 +49,7 @@ const DEFAULT_GATEWAYS_CONFIG: GatewaysConfig = {
   },
   bold: {
     enabled: true,
-    mode: 'sandbox',
+    mode: process.env.BOLD_MODE === 'production' ? 'production' : 'sandbox',
     apiKey: process.env.BOLD_API_KEY || 'bold_identity_test_key_online',
     secretKey: process.env.BOLD_SECRET_KEY || 'bold_secret_test_key_online',
     integrityKey: process.env.BOLD_INTEGRITY_KEY || 'bold_integrity_test_key_online',
@@ -313,11 +313,10 @@ export class CheckoutService {
       throw new NotFoundException(`No se encontró ningún pedido con el identificador "${codeOrId}".`);
     }
 
-    // Optional email validation if provided
-    if (email && email.trim()) {
-      if (foundOrder.customerEmail && foundOrder.customerEmail.toLowerCase() !== email.trim().toLowerCase()) {
-        throw new NotFoundException(`El correo no coincide con el registro del pedido.`);
-      }
+    // El correo es obligatorio: sin él cualquiera podría recorrer los números de orden
+    // y ver nombre, teléfono y dirección de otros clientes.
+    if (!email || !email.trim() || (foundOrder.customerEmail || '').toLowerCase() !== email.trim().toLowerCase()) {
+      throw new NotFoundException(`No se encontró ningún pedido con ese número y correo.`);
     }
 
     // Fetch items with product title
@@ -471,28 +470,14 @@ export class CheckoutService {
     try {
       // 1. Validar o registrar usuario asociado al correo
       const cleanEmail = (data.customerEmail || 'cliente@fusiongrafica.co').trim().toLowerCase();
-      let user = (await db.select().from(users).where(sql`LOWER(${users.email}) = ${cleanEmail}`))[0];
-      
+      await db.insert(users).values({
+        uid: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        email: cleanEmail,
+        role: 'customer',
+      }).onConflictDoNothing({ target: users.email });
+      const user = (await db.select().from(users).where(sql`LOWER(${users.email}) = ${cleanEmail}`))[0];
       if (!user) {
-        try {
-          const [newUser] = await db.insert(users).values({
-            uid: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-            email: cleanEmail,
-            role: 'customer',
-          }).returning();
-          user = newUser;
-        } catch (uErr) {
-          const fallbackUsers = await db.select().from(users).limit(1);
-          if (fallbackUsers.length > 0) {
-            user = fallbackUsers[0];
-          } else {
-            const [newUser] = await db.insert(users).values({
-              email: `cliente_${Date.now()}@litografia.co`,
-              role: 'customer',
-            }).returning();
-            user = newUser;
-          }
-        }
+        throw new BadRequestException('No se pudo registrar el cliente del pedido.');
       }
 
       // 2. Obtener lista de productos válidos para prevenir violaciones de llave foránea
@@ -532,8 +517,9 @@ export class CheckoutService {
         customerCity: (data.customerCity || 'Bogotá D.C.').trim(),
         customerNit: (data.customerNit || '').trim(),
         paymentMethod: data.paymentMethod || 'wompi',
-        paymentStatus: isB2bCredit ? 'CREDIT_APPROVED' : 'PENDING',
-        status: isB2bCredit ? 'EN_PRODUCCION' : 'NUEVO',
+        // El crédito B2B lo debe aprobar un administrador antes de pasar a producción
+        paymentStatus: isB2bCredit ? 'CREDIT_PENDING_REVIEW' : 'PENDING',
+        status: 'NUEVO',
         internalNotes: `Pedido registrado vía checkout tienda online (${(data.paymentMethod || 'wompi').toUpperCase()}).`,
       }).returning();
 
@@ -716,7 +702,50 @@ export class CheckoutService {
   }
 
   /**
-   * Confirmación directa de pago (llamada al recibir confirmación del widget en el frontend o simulación)
+   * Marca una orden como pagada (idempotente) y dispara la facturación electrónica.
+   */
+  private async markOrderPaid(order: typeof orders.$inferSelect, paymentMethod: string, note: string) {
+    const orderCode = `ORD-2026-${String(order.id).padStart(4, '0')}`;
+    if (order.paymentStatus === 'PAID') {
+      return { success: true, orderId: order.id, orderCode, status: order.status, paymentStatus: 'PAID' };
+    }
+
+    await db.update(orders).set({
+      paymentStatus: 'PAID',
+      status: 'EN_PRODUCCION',
+      paymentMethod,
+      internalNotes: note,
+    }).where(eq(orders.id, order.id));
+
+    this.logger.log(`Orden #${order.id} pagada vía ${paymentMethod}. Disparando facturación electrónica...`);
+    try {
+      await this.invoicingService.createInvoice({ orderId: orderCode });
+    } catch (invErr) {
+      this.logger.warn(`Error al generar factura electrónica para ${orderCode}:`, invErr);
+    }
+
+    return { success: true, orderId: order.id, orderCode, status: 'EN_PRODUCCION', paymentStatus: 'PAID' };
+  }
+
+  private extractOrderId(reference: string): number | null {
+    const match = String(reference || '').match(/^ORD-\d{4}-(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+  }
+
+  private amountMatches(order: typeof orders.$inferSelect, amountInCents: number): boolean {
+    return Math.round(parseFloat(order.total) * 100) === Math.round(Number(amountInCents));
+  }
+
+  private safeEqualHex(a: string, b: string): boolean {
+    const bufA = Buffer.from(String(a || '').toLowerCase());
+    const bufB = Buffer.from(String(b || '').toLowerCase());
+    return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+  }
+
+  /**
+   * Confirmación de pago llamada por el navegador al cerrar el widget de Wompi.
+   * Nunca se confía en el navegador: la transacción se consulta directamente a Wompi
+   * y se valida estado, referencia y monto antes de marcar la orden como pagada.
    */
   async confirmPaymentDirect(payload: {
     orderId: number;
@@ -724,45 +753,61 @@ export class CheckoutService {
     transactionId?: string;
     status?: string;
   }) {
-    const orderRows = await db.select().from(orders).where(eq(orders.id, payload.orderId));
+    const orderRows = await db.select().from(orders).where(eq(orders.id, Number(payload.orderId)));
     if (orderRows.length === 0) {
       throw new NotFoundException(`Orden #${payload.orderId} no encontrada`);
     }
-
     const order = orderRows[0];
-    const orderCode = `ORD-2026-${String(order.id).padStart(4, '0')}`;
+    const transactionId = String(payload.transactionId || '').trim();
 
-    await db.update(orders).set({
-      paymentStatus: 'PAID',
-      status: 'EN_PRODUCCION',
-      paymentMethod: payload.paymentMethod || order.paymentMethod,
-      internalNotes: `Pago confirmado exitosamente. ID Transacción: ${payload.transactionId || 'SANDBOX-' + Date.now()}`,
-    }).where(eq(orders.id, order.id));
-
-    this.logger.log(`Pago confirmado para orden #${order.id} vía ${payload.paymentMethod}. Disparando facturación electrónica...`);
-
-    // Disparar facturación electrónica automática
-    try {
-      await this.invoicingService.createInvoice({ orderId: orderCode });
-    } catch (invErr) {
-      this.logger.warn(`Error al generar factura electrónica para ${orderCode}:`, invErr);
+    // Simulación de pagos (solo para pruebas, se activa con PAYMENT_SIMULATION=true)
+    if (!transactionId || /^(SANDBOX|TEST)-/.test(transactionId)) {
+      if (process.env.PAYMENT_SIMULATION !== 'true') {
+        throw new BadRequestException('Pago no verificable. La confirmación llegará automáticamente desde la pasarela.');
+      }
+      return this.markOrderPaid(order, payload.paymentMethod || order.paymentMethod || 'Simulación', `Pago SIMULADO (PAYMENT_SIMULATION=true). ID: ${transactionId}`);
     }
 
-    return {
-      success: true,
-      orderId: order.id,
-      orderCode,
-      status: 'EN_PRODUCCION',
-      paymentStatus: 'PAID',
-    };
+    const config = this.loadConfig().wompi;
+    const baseUrl = config.mode === 'production' ? 'https://production.wompi.co/v1' : 'https://sandbox.wompi.co/v1';
+    let tx: any;
+    try {
+      const res = await fetch(`${baseUrl}/transactions/${encodeURIComponent(transactionId)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      tx = (await res.json())?.data;
+    } catch (err: any) {
+      this.logger.warn(`No se pudo verificar la transacción Wompi ${transactionId}: ${err?.message}`);
+      throw new BadRequestException('No se pudo verificar la transacción con Wompi. Si el pago fue aprobado se confirmará automáticamente.');
+    }
+
+    if (!tx || tx.status !== 'APPROVED' || this.extractOrderId(tx.reference) !== order.id || tx.currency !== 'COP' || !this.amountMatches(order, tx.amount_in_cents)) {
+      this.logger.warn(`Transacción Wompi ${transactionId} rechazada para orden #${order.id} (estado=${tx?.status}, ref=${tx?.reference}, monto=${tx?.amount_in_cents})`);
+      throw new BadRequestException('La transacción no corresponde a esta orden o no está aprobada.');
+    }
+
+    return this.markOrderPaid(order, `Wompi (${tx.payment_method_type || 'ONLINE'})`, `Pago APROBADO por Wompi (verificado). Ref: ${tx.reference} | Transacción: ${tx.id}`);
   }
 
   /**
-   * Webhook oficial de Wompi
+   * Webhook oficial de Wompi. Se valida la firma del evento con el "Events Secret":
+   * SHA256(valores de signature.properties + timestamp + eventsSecret) === signature.checksum
    */
   async handleWompiWebhook(payload: any) {
-    this.logger.log(`Webhook oficial de Wompi recibido: Evento=${payload.event}`);
+    const eventsSecret = this.loadConfig().wompi.eventsSecret;
+    const properties: string[] = payload?.signature?.properties || [];
+    const checksum: string = payload?.signature?.checksum || '';
+    if (!eventsSecret || !checksum || properties.length === 0 || payload?.timestamp == null) {
+      this.logger.warn('Webhook Wompi sin firma, ignorado');
+      throw new UnauthorizedException('Firma inválida');
+    }
+    const values = properties.map(prop => prop.split('.').reduce((acc: any, key) => acc?.[key], payload.data)).join('');
+    const expected = crypto.createHash('sha256').update(`${values}${payload.timestamp}${eventsSecret}`).digest('hex');
+    if (!this.safeEqualHex(expected, checksum)) {
+      this.logger.warn('Webhook Wompi con firma inválida, ignorado');
+      throw new UnauthorizedException('Firma inválida');
+    }
 
+    this.logger.log(`Webhook oficial de Wompi recibido: Evento=${payload.event}`);
     const transaction = payload?.data?.transaction;
     if (!transaction) {
       return { status: 'ignored', message: 'No transaction data found in payload' };
@@ -771,92 +816,83 @@ export class CheckoutService {
     const reference = transaction.reference || '';
     const status = transaction.status; // 'APPROVED', 'DECLINED', 'VOIDED', 'ERROR'
     const transactionId = transaction.id;
-    const paymentMethodType = transaction.payment_method_type || 'WOMPI';
+    const numericId = this.extractOrderId(reference);
+    if (!numericId) return { status: 'ignored' };
 
-    this.logger.log(`Wompi Webhook Transacción: Ref=${reference}, Estado=${status}, ID=${transactionId}`);
+    const order = (await db.select().from(orders).where(eq(orders.id, numericId)))[0];
+    if (!order) return { status: 'ignored' };
 
-    // Extraer número de orden
-    let numericId: number | null = null;
-    const match = reference.match(/ORD-2026-(\d+)/) || reference.match(/(\d+)/);
-    if (match) {
-      numericId = parseInt(match[1], 10);
-    }
-
-    if (numericId) {
-      const orderRows = await db.select().from(orders).where(eq(orders.id, numericId));
-      if (orderRows.length > 0) {
-        const order = orderRows[0];
-        
-        if (status === 'APPROVED') {
-          await db.update(orders).set({
-            paymentStatus: 'PAID',
-            status: 'EN_PRODUCCION',
-            paymentMethod: `Wompi (${paymentMethodType})`,
-            internalNotes: `Pago APROBADO por Wompi. Ref: ${reference} | Transacción: ${transactionId}`,
-          }).where(eq(orders.id, order.id));
-
-          this.logger.log(`Orden #${order.id} actualizada a PAID / EN_PRODUCCION`);
-          
-          // Generar factura electrónica
-          await this.invoicingService.createInvoice({ orderId: `ORD-2026-${String(order.id).padStart(4, '0')}` });
-          return { status: 'success', message: 'Transaction approved and order processed' };
-        } else {
-          await db.update(orders).set({
-            paymentStatus: status,
-            internalNotes: `Transacción Wompi ${status}. ID: ${transactionId}`,
-          }).where(eq(orders.id, order.id));
-          return { status: 'recorded', message: `Transaction status ${status} recorded` };
-        }
+    if (status === 'APPROVED') {
+      if (!this.amountMatches(order, transaction.amount_in_cents)) {
+        this.logger.error(`Monto Wompi ${transaction.amount_in_cents} no coincide con la orden #${order.id} (${order.total})`);
+        await db.update(orders).set({
+          paymentStatus: 'AMOUNT_MISMATCH',
+          internalNotes: `ALERTA: Wompi aprobó ${transaction.amount_in_cents / 100} COP pero la orden vale ${order.total}. Transacción: ${transactionId}`,
+        }).where(eq(orders.id, order.id));
+        return { status: 'recorded', message: 'Amount mismatch' };
       }
+      await this.markOrderPaid(order, `Wompi (${transaction.payment_method_type || 'WOMPI'})`, `Pago APROBADO por Wompi. Ref: ${reference} | Transacción: ${transactionId}`);
+      return { status: 'success', message: 'Transaction approved and order processed' };
     }
 
-    return { status: 'ok' };
+    if (order.paymentStatus !== 'PAID') {
+      await db.update(orders).set({
+        paymentStatus: status,
+        internalNotes: `Transacción Wompi ${status}. ID: ${transactionId}`,
+      }).where(eq(orders.id, order.id));
+    }
+    return { status: 'recorded', message: `Transaction status ${status} recorded` };
   }
 
   /**
-   * Webhook oficial de Bold
+   * Webhook oficial de Bold. Firma: HMAC-SHA256(base64(cuerpo crudo), secretKey) === header x-bold-signature
    */
-  async handleBoldWebhook(payload: any) {
-    this.logger.log(`Webhook oficial de Bold recibido: ${JSON.stringify(payload)}`);
-
-    const orderId = payload.data?.order_id || payload.order_id || '';
-    const status = payload.data?.payment_status || payload.status || payload.event;
-
-    let numericId: number | null = null;
-    const match = String(orderId).match(/ORD-2026-(\d+)/) || String(orderId).match(/(\d+)/);
-    if (match) {
-      numericId = parseInt(match[1], 10);
+  async handleBoldWebhook(payload: any, rawBody?: Buffer, signature?: string) {
+    const secretKey = this.loadConfig().bold.secretKey;
+    if (!rawBody || !signature || !secretKey) {
+      this.logger.warn('Webhook Bold sin firma, ignorado');
+      throw new UnauthorizedException('Firma inválida');
+    }
+    const expected = crypto.createHmac('sha256', secretKey).update(rawBody.toString('base64')).digest('hex');
+    if (!this.safeEqualHex(expected, signature)) {
+      this.logger.warn('Webhook Bold con firma inválida, ignorado');
+      throw new UnauthorizedException('Firma inválida');
     }
 
-    if (numericId) {
-      const orderRows = await db.select().from(orders).where(eq(orders.id, numericId));
-      if (orderRows.length > 0) {
-        const order = orderRows[0];
-        if (status === 'APPROVED' || status === 'PAYMENT_APPROVED' || status === 'PAYMENT_ORDER_STATUS_CHANGED') {
-          await db.update(orders).set({
-            paymentStatus: 'PAID',
-            status: 'EN_PRODUCCION',
-            paymentMethod: 'Bold Online (Tarjetas/PSE)',
-            internalNotes: `Pago APROBADO por Bold. Ref: ${orderId}`,
-          }).where(eq(orders.id, order.id));
+    const type = payload?.type || payload?.data?.payment_status || payload?.status;
+    const reference = payload?.data?.metadata?.reference || payload?.data?.order_id || payload?.order_id || '';
+    this.logger.log(`Webhook oficial de Bold recibido: Tipo=${type}, Ref=${reference}`);
 
-          await this.invoicingService.createInvoice({ orderId: `ORD-2026-${String(order.id).padStart(4, '0')}` });
-          return { status: 'success', message: 'Bold payment approved' };
-        }
+    const numericId = this.extractOrderId(reference);
+    if (!numericId) return { status: 'ignored' };
+    const order = (await db.select().from(orders).where(eq(orders.id, numericId)))[0];
+    if (!order) return { status: 'ignored' };
+
+    if (type === 'SALE_APPROVED' || type === 'APPROVED') {
+      const total = Number(payload?.data?.amount?.total ?? payload?.data?.amount);
+      if (!Number.isFinite(total) || !this.amountMatches(order, total * 100)) {
+        this.logger.error(`Monto Bold ${total} no coincide con la orden #${order.id} (${order.total})`);
+        await db.update(orders).set({
+          paymentStatus: 'AMOUNT_MISMATCH',
+          internalNotes: `ALERTA: Bold aprobó ${total} COP pero la orden vale ${order.total}. Ref: ${reference}`,
+        }).where(eq(orders.id, order.id));
+        return { status: 'recorded', message: 'Amount mismatch' };
       }
+      await this.markOrderPaid(order, 'Bold Online (Tarjetas/PSE)', `Pago APROBADO por Bold. Ref: ${reference} | Pago: ${payload?.data?.payment_id || ''}`);
+      return { status: 'success', message: 'Bold payment approved' };
     }
 
     return { status: 'ok' };
   }
 
-  async handlePaymentWebhook(payload: any) {
+  async handlePaymentWebhook(payload: any, rawBody?: Buffer, boldSignature?: string) {
     // Si viene de Wompi
     if (payload?.event?.startsWith('transaction.') || payload?.data?.transaction) {
       return this.handleWompiWebhook(payload);
     }
     // Si viene de Bold
-    if (payload?.event?.includes('PAYMENT') || payload?.data?.order_id) {
-      return this.handleBoldWebhook(payload);
+    if (boldSignature) {
+      return this.handleBoldWebhook(payload, rawBody, boldSignature);
     }
 
     this.logger.log(`Webhook genérico de pago recibido: ${JSON.stringify(payload)}`);

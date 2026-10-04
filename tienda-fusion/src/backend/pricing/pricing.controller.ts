@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Put, Body, Inject, Optional } from '@nestjs/common';
+import { Controller, Post, Get, Put, Body, Inject, Optional, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { PricingEngineService } from './pricing.service';
 
 @Controller('api/pricing')
@@ -21,16 +22,19 @@ export class PricingController {
   }
 
   @Get('parameters')
+  @UseGuards(AdminGuard)
   async getParameters() {
     return await this.pricingService.getAllParameters();
   }
 
   @Put('parameters')
+  @UseGuards(AdminGuard)
   async updateParameters(@Body() body: { parameters: { code: string; costValue: number; active?: boolean }[] }) {
     return await this.pricingService.bulkUpdateParameters(body.parameters);
   }
 
   @Post('parameters/reset')
+  @UseGuards(AdminGuard)
   async resetParameters() {
     return await this.pricingService.resetDefaultParameters();
   }

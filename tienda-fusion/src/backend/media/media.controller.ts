@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Optional, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Optional, Inject, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { MediaService } from './media.service';
 
 @Controller('api/media')
+@UseGuards(AdminGuard)
 export class MediaController {
   private mediaService: MediaService;
 

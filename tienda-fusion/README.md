@@ -25,6 +25,8 @@ Esta solución de software implementa de extremo a extremo las especificaciones 
 
 ---
 
+> 🚀 **Producción en Hostinger:** sigue [`DESPLIEGUE_HOSTINGER.md`](./DESPLIEGUE_HOSTINGER.md).
+
 ## 🚀 Inicio Rápido (Desarrollo Local)
 
 ### 1. Requisitos Previos
@@ -45,21 +47,16 @@ cp .env.example .env
 Configura la cadena de conexión a tu base de datos PostgreSQL:
 ```env
 DATABASE_URL="postgresql://usuario:password@localhost:5432/fusion_w2p_db"
-SQL_HOST="localhost"
-SQL_PORT=5432
-SQL_USER="usuario"
-SQL_PASSWORD="password"
-SQL_DB_NAME="fusion_w2p_db"
 ```
 
 ### 4. Inicializar y Poblar la Base de Datos
 Aplica las migraciones de Drizzle y ejecuta el semillero inicial (categorías, productos, atributos y plantillas):
 ```bash
-# Sincronizar esquemas relacionales
-npx drizzle-kit push --config src/db/drizzle.config.ts
+# Crear las tablas (el servidor también las crea solo al arrancar)
+npm run db:migrate
 
 # Ejecutar el seeder con datos completos de imprenta
-npx tsx src/db/seed.ts
+npm run db:seed
 ```
 
 ### 5. Iniciar Servidor de Desarrollo (NestJS + Vite)
@@ -71,27 +68,9 @@ La aplicación estará disponible de inmediato en:
 
 ---
 
-## 🐳 Despliegue con Docker (1 Solo Paso)
-
-Para ejecutar toda la plataforma (PostgreSQL + Backend NestJS + Frontend React) con Docker Compose:
-
-```bash
-docker compose up -d --build
-```
-- La base de datos PostgreSQL se configurará automáticamente con volúmenes persistentes.
-- La aplicación se compilará en modo producción y se expondrá en el puerto `3000`.
-
-Para detener los servicios:
-```bash
-docker compose down
-```
-
----
-
 ## 📦 Estructura del Proyecto
 
 ```text
-├── assets/                    # Identidad de marca, logos y recursos estáticos
 ├── drizzle/                   # Migraciones SQL generadas por Drizzle ORM
 ├── public/                    # Archivos públicos accesibles desde la raíz web
 ├── src/
@@ -183,7 +162,9 @@ $$\text{Precio Total} = \left[ (\text{Precio Base} + \sum \text{Modificadores de
 | `npm run build` | Compila el cliente Vite y empaqueta el servidor con esbuild |
 | `npm run start` | Arranca la aplicación compilada en producción |
 | `npm run lint` | Ejecuta validación estática de tipos TypeScript |
-| `npx tsx src/db/seed.ts` | Repuebla la base de datos con el catálogo completo |
+| `npm run db:migrate` | Aplica las migraciones de `drizzle/` |
+| `npm run db:seed` | Carga el catálogo de ejemplo (no corre si ya hay productos; `-- --force` para forzar) |
+| `npm run db:generate` | Genera una migración nueva tras cambiar `src/db/schema.ts` |
 
 ---
 

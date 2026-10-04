@@ -1,4 +1,6 @@
-import { Controller, Post, Get, Body, Query, HttpCode, Inject, Optional, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, HttpCode, Inject, Optional, Param, UseGuards, Req, Headers } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
+import { FirebaseAuthGuard } from '../auth/auth.guard';
 import { CheckoutService } from './checkout.service';
 import { InvoicingService } from '../invoicing/invoicing.service';
 
@@ -16,21 +18,25 @@ export class CheckoutController {
   }
 
   @Get('gateways-config')
+  @UseGuards(AdminGuard)
   getGatewaysConfig() {
     return this.checkoutService.getGatewaysConfig();
   }
 
   @Post('gateways-config')
+  @UseGuards(AdminGuard)
   saveGatewaysConfig(@Body() payload: any) {
     return this.checkoutService.saveGatewaysConfig(payload);
   }
 
   @Post('test-wompi')
+  @UseGuards(AdminGuard)
   async testWompi(@Body() payload: any) {
     return this.checkoutService.testWompiConnection(payload);
   }
 
   @Post('test-bold')
+  @UseGuards(AdminGuard)
   async testBold(@Body() payload: any) {
     return this.checkoutService.testBoldConnection(payload);
   }
@@ -41,8 +47,10 @@ export class CheckoutController {
   }
 
   @Get('customer-orders')
-  async getCustomerOrders(@Query('email') email: string) {
-    return this.checkoutService.getCustomerOrders(email);
+  @UseGuards(FirebaseAuthGuard)
+  async getCustomerOrders(@Req() req: any) {
+    // Solo los pedidos del correo autenticado, nunca de un correo arbitrario
+    return this.checkoutService.getCustomerOrders(req.dbUser?.email || '');
   }
 
   @Post('order')
@@ -73,14 +81,14 @@ export class CheckoutController {
 
   @Post('webhook/bold')
   @HttpCode(200)
-  async boldWebhook(@Body() payload: any) {
-    return this.checkoutService.handleBoldWebhook(payload);
+  async boldWebhook(@Body() payload: any, @Req() req: any, @Headers('x-bold-signature') signature?: string) {
+    return this.checkoutService.handleBoldWebhook(payload, req.rawBody, signature);
   }
 
   @Post('webhook/payment')
   @HttpCode(200) // Las pasarelas de pago requieren 200 OK
-  async receivePaymentWebhook(@Body() payload: any) {
-    return this.checkoutService.handlePaymentWebhook(payload);
+  async receivePaymentWebhook(@Body() payload: any, @Req() req: any, @Headers('x-bold-signature') signature?: string) {
+    return this.checkoutService.handlePaymentWebhook(payload, req.rawBody, signature);
   }
 }
 

@@ -15,6 +15,14 @@ async function seed() {
   console.log('🌱 Starting comprehensive database seed for Fusión W2P...');
 
   try {
+    // Protección: el seeder BORRA el catálogo. No se ejecuta sobre una base con productos
+    // salvo que se pida explícitamente con: npm run db:seed -- --force
+    const existing = await db.select({ id: products.id }).from(products).limit(1);
+    if (existing.length > 0 && !process.argv.includes('--force')) {
+      console.log('⚠️  La base de datos ya tiene productos. Usa "npm run db:seed -- --force" para borrarlos y recargar el catálogo de ejemplo.');
+      process.exit(0);
+    }
+
     // 0. Clean old records in reverse relational order
     await db.delete(productAttributeValues);
     await db.delete(productAttributes);

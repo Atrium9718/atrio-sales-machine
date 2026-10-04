@@ -1,4 +1,6 @@
-import { Controller, Post, Body, Optional } from '@nestjs/common';
+import { Controller, Post, Body, Optional, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
+import { FirebaseAuthGuard } from '../auth/auth.guard';
 import { AiService } from './ai.service';
 
 @Controller('api/ai')
@@ -10,6 +12,7 @@ export class AiController {
   }
 
   @Post('generate-campaign')
+  @UseGuards(AdminGuard)
   async generateCampaign(@Body() data: any) {
     try {
       const campaign = await this.service.generateMarketingCampaign(data);
@@ -28,6 +31,7 @@ export class AiController {
   }
 
   @Post('generate-image')
+  @UseGuards(FirebaseAuthGuard)
   async generateImage(@Body() data: { prompt: string; aspectRatio?: any; style?: any; productContext?: string }) {
     try {
       const result = await this.service.generateImage(data);
@@ -44,6 +48,7 @@ export class AiController {
   }
 
   @Post('generate-product-prompt')
+  @UseGuards(AdminGuard)
   async generateProductPrompt(@Body() data: any) {
     try {
       const result = await this.service.generateProductPrompt(data);
@@ -61,6 +66,7 @@ export class AiController {
   }
 
   @Post('creative-copy')
+  @UseGuards(AdminGuard)
   async generateCreativeCopy(@Body() data: any) {
     try {
       const result = await this.service.generateCreativeCopy(data);
@@ -78,6 +84,7 @@ export class AiController {
   }
 
   @Post('seo-suggestions')
+  @UseGuards(AdminGuard)
   async generateSeoSuggestions(@Body() data: any) {
     try {
       const result = await this.service.generateSeoSuggestions(data);

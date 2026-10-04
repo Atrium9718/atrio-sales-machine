@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Put, Body, Param, Query, Optional, Inject } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, Query, Optional, Inject, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { SeoService } from './seo.service';
 
 @Controller('api/seo')
+@UseGuards(AdminGuard)
 export class SeoController {
   private seoService: SeoService;
 

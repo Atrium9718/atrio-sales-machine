@@ -1,16 +1,20 @@
 import { defineConfig } from 'drizzle-kit';
-import * as dotenv from 'dotenv';
-dotenv.config();
+import { getPoolConfig } from './connection';
+
+const pool = getPoolConfig();
 
 export default defineConfig({
   schema: './src/db/schema.ts',
   out: './drizzle',
   dialect: 'postgresql',
-  dbCredentials: {
-    host: process.env.SQL_HOST!,
-    user: process.env.SQL_USER!,
-    password: process.env.SQL_PASSWORD!,
-    database: process.env.SQL_DB_NAME!,
-    ssl: false,
-  },
+  dbCredentials: pool.connectionString
+    ? { url: pool.connectionString }
+    : {
+        host: pool.host!,
+        port: pool.port,
+        user: pool.user,
+        password: pool.password as string,
+        database: pool.database!,
+        ssl: Boolean(pool.ssl),
+      },
 });

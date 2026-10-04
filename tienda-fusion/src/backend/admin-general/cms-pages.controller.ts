@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, NotFoundException, Inject, Optional } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, NotFoundException, Inject, Optional, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { CmsPagesService } from './cms-pages.service';
 import { CmsPage, CmsBlock } from '../../types/cms';
 
@@ -11,6 +12,7 @@ export class CmsPagesController {
   }
 
   @Get()
+  @UseGuards(AdminGuard)
   async getAllPages() {
     return this.service.getAllPages();
   }
@@ -35,6 +37,7 @@ export class CmsPagesController {
   }
 
   @Post()
+  @UseGuards(AdminGuard)
   async createPage(@Body() body: { pageData: Partial<CmsPage>; user?: { name: string; email: string } } | Partial<CmsPage>) {
     const pageData = 'pageData' in body ? body.pageData : body;
     const user = 'user' in body ? body.user : undefined;
@@ -42,6 +45,7 @@ export class CmsPagesController {
   }
 
   @Put(':id')
+  @UseGuards(AdminGuard)
   async updatePage(
     @Param('id') id: string,
     @Body() body: { pageData: Partial<CmsPage>; user?: { name: string; email: string } } | Partial<CmsPage>
@@ -52,6 +56,7 @@ export class CmsPagesController {
   }
 
   @Put(':id/blocks')
+  @UseGuards(AdminGuard)
   async updateBlocks(
     @Param('id') id: string,
     @Body() body: { blocks: CmsBlock[]; user?: { name: string; email: string } }
@@ -60,6 +65,7 @@ export class CmsPagesController {
   }
 
   @Post(':id/publish')
+  @UseGuards(AdminGuard)
   async publishPage(
     @Param('id') id: string,
     @Body() body: { user: { name: string; email: string }; changeNote?: string; versionTag?: string }
@@ -69,6 +75,7 @@ export class CmsPagesController {
   }
 
   @Post(':id/discard-draft')
+  @UseGuards(AdminGuard)
   async discardDraft(
     @Param('id') id: string,
     @Body() body: { user?: { name: string; email: string } }
@@ -77,11 +84,13 @@ export class CmsPagesController {
   }
 
   @Get(':id/versions')
+  @UseGuards(AdminGuard)
   async getVersions(@Param('id') id: string) {
     return this.service.getPageVersions(id);
   }
 
   @Post(':id/versions/snapshot')
+  @UseGuards(AdminGuard)
   async createSnapshot(
     @Param('id') id: string,
     @Body() body: { versionTag: string; changeNote: string; user: { name: string; email: string } }
@@ -91,6 +100,7 @@ export class CmsPagesController {
   }
 
   @Post(':id/versions/:versionId/restore')
+  @UseGuards(AdminGuard)
   async restoreVersion(
     @Param('id') id: string,
     @Param('versionId') versionId: string,
@@ -101,6 +111,7 @@ export class CmsPagesController {
   }
 
   @Post(':id/duplicate')
+  @UseGuards(AdminGuard)
   async duplicatePage(
     @Param('id') id: string,
     @Body() body?: { user?: { name: string; email: string } }
@@ -109,6 +120,7 @@ export class CmsPagesController {
   }
 
   @Delete(':id')
+  @UseGuards(AdminGuard)
   async deletePage(@Param('id') id: string) {
     return this.service.deletePage(id);
   }

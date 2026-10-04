@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Body, UseGuards, Inject, Optional } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { AdminMarketingService } from './admin-marketing.service';
 
 @Controller('api/admin/marketing')
+@UseGuards(AdminGuard)
 export class AdminMarketingController {
   private marketingService: AdminMarketingService;
 

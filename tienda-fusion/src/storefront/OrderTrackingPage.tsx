@@ -69,7 +69,7 @@ export default function OrderTrackingPage() {
   const initialCode = searchParams.get('code') || '';
   
   const [orderCode, setOrderCode] = useState(initialCode);
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerEmail, setCustomerEmail] = useState(searchParams.get('email') || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [orderData, setOrderData] = useState<OrderData | null>(null);
@@ -85,18 +85,19 @@ export default function OrderTrackingPage() {
 
   const handleTrack = async (codeToSearch: string) => {
     if (!codeToSearch.trim()) return;
+    if (!customerEmail.trim()) {
+      setError('Ingresa el correo electrónico con el que hiciste el pedido.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      let url = `/api/checkout/track?code=${encodeURIComponent(codeToSearch.trim())}`;
-      if (customerEmail.trim()) {
-        url += `&email=${encodeURIComponent(customerEmail.trim())}`;
-      }
+      const url = `/api/checkout/track?code=${encodeURIComponent(codeToSearch.trim())}&email=${encodeURIComponent(customerEmail.trim())}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setOrderData(data);
-        setSearchParams({ code: codeToSearch.trim() });
+        setSearchParams({ code: codeToSearch.trim(), email: customerEmail.trim() });
       } else {
         const errData = await res.json().catch(() => null);
         setError(errData?.message || 'No encontramos un pedido con este número. Por favor verifica los datos.');
@@ -111,7 +112,7 @@ export default function OrderTrackingPage() {
   };
 
   useEffect(() => {
-    if (initialCode) {
+    if (initialCode && customerEmail) {
       handleTrack(initialCode);
     }
   }, [initialCode]);
@@ -191,7 +192,7 @@ export default function OrderTrackingPage() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  Correo Electrónico (Opcional)
+                  Correo Electrónico
                 </label>
                 <input
                   type="email"

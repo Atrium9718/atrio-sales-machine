@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Configuración guardada desde el panel en tiempo de ejecución (contiene llaves privadas)
+gateways.config.json
+shipping.config.json

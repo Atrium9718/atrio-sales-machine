@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Inject, Optional } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Inject, Optional, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { UsersService } from './users.service';
 import type { UserRoleKey } from './users.types';
 
 @Controller('api/admin/users')
+@UseGuards(AdminGuard)
 export class UsersController {
   private usersService: UsersService;
 

@@ -1,4 +1,5 @@
-import { Controller, Get, Put, Body, Inject, Optional } from '@nestjs/common';
+import { Controller, Get, Put, Body, Inject, Optional, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { CmsSettingsService } from './cms-settings.service';
 import { CmsGlobalConfig } from '../../types/cms';
 
@@ -16,6 +17,7 @@ export class CmsSettingsController {
   }
 
   @Put('settings')
+  @UseGuards(AdminGuard)
   async updateSettings(@Body() body: Partial<CmsGlobalConfig>) {
     return await this.service.updateGlobalConfig(body);
   }

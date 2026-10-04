@@ -2,40 +2,52 @@ import 'dotenv/config';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './src/backend/app.module';
+import { db } from './src/db';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import express from 'express';
 import path from 'path';
-import fs from 'fs';
+
+// El servidor compilado (dist/server.cjs) siempre corre en modo producción, aunque el
+// hosting no defina NODE_ENV. En desarrollo se usa "npm run dev" (tsx server.ts).
+const isBundled = typeof __filename !== 'undefined' && __filename.endsWith('.cjs');
+if (isBundled && !process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'production';
+}
+
+async function runMigrations() {
+  // Aplica automáticamente las migraciones pendientes de ./drizzle al arrancar.
+  // Ideal en hosting compartido sin terminal. Se desactiva con AUTO_MIGRATE=false.
+  if (process.env.AUTO_MIGRATE === 'false') return;
+  try {
+    await migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
+    console.log('Migraciones de base de datos al día.');
+  } catch (err: any) {
+    console.error('No se pudieron aplicar las migraciones:', err?.message || err);
+  }
+}
 
 async function bootstrap() {
+  await runMigrations();
+
   // Create Nest app with default Express adapter
   const app = await NestFactory.create(AppModule, {
     bodyParser: false, // We configure custom limit express body parsers
   });
   
-  const PORT = 3000;
+  // Hostinger (y la mayoría de hostings Node.js) asignan el puerto por variable de entorno
+  const PORT = Number(process.env.PORT) || 3000;
   const expressApp = app.getHttpAdapter().getInstance();
 
-  expressApp.use(express.json({ limit: '50mb' }));
-  expressApp.use(express.urlencoded({ limit: '50mb', extended: true }));
+  // Detrás del proxy de Hostinger: respeta X-Forwarded-For / X-Forwarded-Proto
+  expressApp.set('trust proxy', 1);
+  expressApp.disable('x-powered-by');
 
-  // Endpoint to download the entire software package as a .zip
-  expressApp.get('/api/download-zip', (req: any, res: any) => {
-    const candidates = [
-      path.join(process.cwd(), 'fusion-grafica-w2p-v2.0.zip'),
-      path.join(process.cwd(), 'public', 'fusion-grafica-w2p-v2.0.zip'),
-      path.join(process.cwd(), 'fusion-w2p-software.zip'),
-    ];
-    const zipPath = candidates.find(p => fs.existsSync(p));
-    if (!zipPath) {
-      return res.status(404).send('Archivo .ZIP no encontrado aún. Generando...');
-    }
-    const stat = fs.statSync(zipPath);
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', 'attachment; filename="fusion-grafica-w2p-v2.0.zip"');
-    res.setHeader('Content-Length', stat.size);
-    const stream = fs.createReadStream(zipPath);
-    stream.pipe(res);
-  });
+  // Se guarda el cuerpo crudo para poder verificar la firma de los webhooks de pago (Bold)
+  expressApp.use(express.json({
+    limit: '50mb',
+    verify: (req: any, _res, buf) => { req.rawBody = buf; },
+  }));
+  expressApp.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Health check endpoint
   expressApp.get('/api/health', (req: any, res: any) => {
@@ -58,6 +70,8 @@ async function bootstrap() {
     });
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    // Los archivos de /assets llevan hash en el nombre: se pueden cachear un año
+    expressApp.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: '1y', immutable: true }));
     expressApp.use(express.static(distPath));
     // Support both Express v4 and Express v5 path-to-regexp by using fallback middleware
     expressApp.use((req: any, res: any, next: any) => {
@@ -74,5 +88,6 @@ async function bootstrap() {
 
 bootstrap().catch(err => {
   console.error('Failed to start server:', err);
+  process.exit(1);
 });
 

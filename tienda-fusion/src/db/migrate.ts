@@ -1,16 +1,9 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
-import * as dotenv from 'dotenv';
-dotenv.config();
+import { getPoolConfig } from './connection';
 
-const pool = new Pool({
-  host: process.env.SQL_HOST,
-  user: process.env.SQL_USER,
-  password: process.env.SQL_PASSWORD,
-  database: process.env.SQL_DB_NAME,
-  ssl: false,
-});
+const pool = new Pool(getPoolConfig());
 
 const db = drizzle(pool);
 

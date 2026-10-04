@@ -174,6 +174,9 @@ export default function CheckoutPage() {
         clearCart();
         setActiveGatewayModal(null);
         setIsSuccess(true);
+      } else {
+        const errorData = await confirmRes.json().catch(() => ({}));
+        setErrorMsg(errorData.message || 'No pudimos confirmar el pago todavía. Si fue aprobado, tu pedido se actualizará automáticamente.');
       }
     } catch (err) {
       console.error('Error al confirmar pago:', err);
@@ -237,7 +240,7 @@ export default function CheckoutPage() {
               signature: {
                 integrity: session.signature,
               },
-              redirectUrl: `${window.location.origin}/rastreo?code=${encodeURIComponent(orderCode)}`,
+              redirectUrl: `${window.location.origin}/rastreo?code=${encodeURIComponent(orderCode)}&email=${encodeURIComponent(customerEmail)}`,
               customerData: {
                 email: customerEmail,
                 fullName: customerName,
@@ -336,7 +339,7 @@ export default function CheckoutPage() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <button 
-            onClick={() => navigate(`/rastreo?code=${encodeURIComponent(createdOrderCode)}`)}
+            onClick={() => navigate(`/rastreo?code=${encodeURIComponent(createdOrderCode)}&email=${encodeURIComponent(customerEmail)}`)}
             className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-white font-bold py-3.5 px-8 rounded-full shadow-md shadow-teal-600/20 transition-transform active:scale-95 flex items-center justify-center gap-2"
           >
             <Clock size={16} />

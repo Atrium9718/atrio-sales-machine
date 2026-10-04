@@ -2,7 +2,14 @@ import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from
 import { adminAuth } from '../../lib/firebase-admin';
 import { db } from '../../db';
 import { users } from '../../db/schema';
-import { eq } from 'drizzle-orm';
+
+// Correos que reciben rol ADMIN automáticamente al iniciar sesión.
+// Se configuran en la variable de entorno ADMIN_EMAILS (separados por coma).
+export const getAdminEmails = (): string[] =>
+  (process.env.ADMIN_EMAILS || 'andresepulveda718@gmail.com')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
 
 @Injectable()
 export class FirebaseAuthGuard implements CanActivate {
@@ -20,22 +27,25 @@ export class FirebaseAuthGuard implements CanActivate {
       const decodedToken = await adminAuth.verifyIdToken(token);
       request.user = decodedToken;
       
-      const email = decodedToken.email || '';
-      // Asignar ADMIN automáticamente al correo solicitado
-      const role = email === 'andresepulveda718@gmail.com' ? 'ADMIN' : 'CLIENTE';
+      const email = (decodedToken.email || '').trim().toLowerCase();
+      if (!email) {
+        throw new UnauthorizedException('La cuenta no tiene correo asociado');
+      }
+      // Solo correos verificados por Google/Firebase pueden ser administradores
+      const isAdminEmail = decodedToken.email_verified === true && getAdminEmails().includes(email);
 
-      // Upsert user en la base de datos (PostgreSQL) usando Drizzle
+      // Upsert por correo: si el cliente compró antes como invitado, se vincula su cuenta
       const result = await db.insert(users)
         .values({
           uid: decodedToken.uid,
-          email: email,
-          role: role,
+          email,
+          role: isAdminEmail ? 'ADMIN' : 'CLIENTE',
         })
         .onConflictDoUpdate({
-          target: users.uid,
+          target: users.email,
           set: { 
-            email: email,
-            ...(role === 'ADMIN' ? { role: 'ADMIN' } : {})
+            uid: decodedToken.uid,
+            ...(isAdminEmail ? { role: 'ADMIN' } : {})
           },
         })
         .returning();
@@ -43,6 +53,7 @@ export class FirebaseAuthGuard implements CanActivate {
       request.dbUser = result[0];
       return true;
     } catch (error: any) {
+      if (error instanceof UnauthorizedException) throw error;
       if (error?.code === 'auth/id-token-expired') {
         console.warn("Token de Firebase expirado, solicitando renovación al cliente");
       } else {
