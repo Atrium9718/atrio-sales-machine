@@ -32,7 +32,7 @@ import TopPromoBar from './components/TopPromoBar';
 import PromoPopupModal from './components/PromoPopupModal';
 
 export default function StorefrontLayout() {
-  const { user, isAdmin, login, logout, isLoggingIn } = useAuth();
+  const { user, isAdmin, login, logout, isLoggingIn, loginError, clearLoginError } = useAuth();
   const { cartCount } = useCart();
   const { config } = useCms();
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
@@ -97,6 +97,16 @@ export default function StorefrontLayout() {
     <div className="min-h-screen bg-[#faf8f5] flex flex-col font-sans selection:bg-teal-500 selection:text-white overflow-x-hidden">
       {/* Top Promotional Bar (Managed from Banners Admin) */}
       <TopPromoBar />
+
+      {/* Aviso cuando el inicio de sesión con Google falla */}
+      {loginError && (
+        <div role="alert" className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-md bg-white border border-red-200 shadow-xl rounded-2xl p-4 flex items-start gap-3">
+          <span className="text-red-600 text-sm font-bold flex-1">{loginError}</span>
+          <button onClick={clearLoginError} className="text-slate-400 hover:text-slate-700 shrink-0" aria-label="Cerrar aviso">
+            <X size={18} />
+          </button>
+        </div>
+      )}
 
       {/* HEADER PRINCIPAL */}
       <header className="bg-white/95 backdrop-blur-md sticky top-0 z-40 shadow-[0_4px_20px_rgba(0,0,0,0.04)] border-b border-stone-200/80">

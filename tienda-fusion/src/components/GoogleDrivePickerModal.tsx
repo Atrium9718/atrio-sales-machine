@@ -77,7 +77,7 @@ export default function GoogleDrivePickerModal({
     setIsAuthenticating(true);
     setError(null);
     try {
-      const token = await login();
+      const token = await login({ withDrive: true });
       if (token) {
         // Files will load via useEffect when driveAccessToken changes
       }

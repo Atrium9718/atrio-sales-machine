@@ -7,7 +7,9 @@ import * as path from 'path';
 const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
 let projectId = 'demo-project';
 
-if (fs.existsSync(configPath)) {
+if (process.env.FIREBASE_PROJECT_ID) {
+  projectId = process.env.FIREBASE_PROJECT_ID;
+} else if (fs.existsSync(configPath)) {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   projectId = config.projectId;
 }
