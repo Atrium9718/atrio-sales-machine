@@ -9,6 +9,7 @@ import { AdminMarketingModule } from './admin-marketing/admin-marketing.module';
 import { UsersModule } from './users/users.module';
 import { MediaModule } from './media/media.module';
 import { SeoModule } from './seo/seo.module';
+import { B2BModule } from './b2b/b2b.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SeoModule } from './seo/seo.module';
     UsersModule,
     MediaModule,
     SeoModule,
+    B2BModule,
   ],
 })
 export class AppModule {}

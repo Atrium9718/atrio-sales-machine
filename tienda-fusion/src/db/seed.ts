@@ -198,6 +198,10 @@ async function seed() {
         description: 'Impresión de alta resolución a 300 DPI en propalcote y papeles especiales con acabados prémium y sangría de corte exacta.',
         configMode: 'CONFIGURABLE',
         basePrice: '35000.00',
+        // Precio base por paquete de 1000 unidades (se prorratea según la cantidad pedida)
+        baseQuantity: 1000,
+        minQuantity: 1000,
+        quantityStep: 500,
         imageUrl: 'https://images.unsplash.com/photo-1589041127535-ee162232fb5b?auto=format&fit=crop&w=800&q=80',
         images: [
           'https://images.unsplash.com/photo-1589041127535-ee162232fb5b?auto=format&fit=crop&w=800&q=80',
@@ -242,6 +246,10 @@ async function seed() {
         description: 'Material publicitario de alto impacto en propalcote 115g o 150g. Ideal para promociones masivas, eventos e inauguraciones.',
         configMode: 'CONFIGURABLE',
         basePrice: '65000.00',
+        // Precio base por paquete de 1000 unidades (se prorratea según la cantidad pedida)
+        baseQuantity: 1000,
+        minQuantity: 1000,
+        quantityStep: 500,
         imageUrl: 'https://images.unsplash.com/photo-1596526131083-e8c638c9c6c5?auto=format&fit=crop&w=800&q=80',
         images: [
           'https://images.unsplash.com/photo-1596526131083-e8c638c9c6c5?auto=format&fit=crop&w=800&q=80',
@@ -279,6 +287,10 @@ async function seed() {
         description: 'Estructura retráctil de aluminio anodizado prémium con lona banner mate de 13 oz anti-reflejo y maletín de transporte.',
         configMode: 'CONFIGURABLE',
         basePrice: '120000.00',
+        // Precio base por paquete de 1 unidades (se prorratea según la cantidad pedida)
+        baseQuantity: 1,
+        minQuantity: 1,
+        quantityStep: 1,
         imageUrl: 'https://images.unsplash.com/photo-1542744094-3a31f272c490?auto=format&fit=crop&w=800&q=80',
         images: [
           'https://images.unsplash.com/photo-1542744094-3a31f272c490?auto=format&fit=crop&w=800&q=80',
@@ -309,6 +321,10 @@ async function seed() {
         description: 'Stickers y adhesivos resistentes en vinilo brillante o transparente con troquel de precisión para frascos, botellas y empaques.',
         configMode: 'CONFIGURABLE',
         basePrice: '48000.00',
+        // Precio base por paquete de 1000 unidades (se prorratea según la cantidad pedida)
+        baseQuantity: 1000,
+        minQuantity: 1000,
+        quantityStep: 500,
         imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
         images: [
           'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80',
@@ -344,6 +360,10 @@ async function seed() {
         description: 'Marcalibros coleccionables en propalcote grueso con plastificado suave y detalles impresos full color por ambas caras.',
         configMode: 'CONFIGURABLE',
         basePrice: '38000.00',
+        // Precio base por paquete de 1000 unidades (se prorratea según la cantidad pedida)
+        baseQuantity: 1000,
+        minQuantity: 1000,
+        quantityStep: 500,
         imageUrl: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
         images: [
           'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=800&q=80',
@@ -382,6 +402,10 @@ async function seed() {
         description: 'Empaques de alta gama para productos, joyería y cosmética en cartulinas prémium con acabados de lujo y foil metalizado.',
         configMode: 'CONFIGURABLE',
         basePrice: '95000.00',
+        // Precio base por paquete de 100 unidades (se prorratea según la cantidad pedida)
+        baseQuantity: 100,
+        minQuantity: 100,
+        quantityStep: 50,
         imageUrl: 'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
         images: [
           'https://images.unsplash.com/photo-1600868779951-872f7c006b0d?auto=format&fit=crop&w=800&q=80',
@@ -414,6 +438,10 @@ async function seed() {
         description: 'Carpetas institucionales tamaño carta y oficio con bolsillo pegado y troquel para tarjeta de presentación.',
         configMode: 'CONFIGURABLE',
         basePrice: '145000.00',
+        // Precio base por paquete de 100 unidades (se prorratea según la cantidad pedida)
+        baseQuantity: 100,
+        minQuantity: 100,
+        quantityStep: 50,
         imageUrl: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?auto=format&fit=crop&w=800&q=80',
         images: [
           'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?auto=format&fit=crop&w=800&q=80',

@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Query, HttpCode, Inject, Optional, Param, UseGuards, Req, Headers } from '@nestjs/common';
 import { AdminGuard } from '../auth/admin.guard';
-import { FirebaseAuthGuard } from '../auth/auth.guard';
+import { FirebaseAuthGuard, getOptionalDbUser } from '../auth/auth.guard';
+import { PricingEngineService } from '../pricing/pricing.service';
 import { CheckoutService } from './checkout.service';
 import { InvoicingService } from '../invoicing/invoicing.service';
 
@@ -9,7 +10,7 @@ export class CheckoutController {
   private checkoutService: CheckoutService;
 
   constructor(@Optional() @Inject(CheckoutService) checkoutService?: CheckoutService) {
-    this.checkoutService = checkoutService || new CheckoutService(new InvoicingService());
+    this.checkoutService = checkoutService || new CheckoutService(new InvoicingService(), new PricingEngineService());
   }
 
   @Get('gateways-status')
@@ -53,9 +54,25 @@ export class CheckoutController {
     return this.checkoutService.getCustomerOrders(req.dbUser?.email || '');
   }
 
+  @Post('quote-cart')
+  async quoteCart(@Body() payload: any, @Req() req: any) {
+    const quote = await this.checkoutService.quoteCart(payload, await getOptionalDbUser(req));
+    return {
+      items: quote.items.map(it => ({ totalPrice: it.totalPrice, quantity: it.quantity })),
+      grossSubtotal: quote.grossSubtotal,
+      b2bDiscountPct: quote.b2bDiscountPct,
+      b2bDiscount: quote.b2bDiscount,
+      subtotal: quote.subtotal,
+      iva: quote.iva,
+      shippingCost: quote.shippingCost,
+      shippingMethod: quote.shippingMethod,
+      total: quote.total,
+    };
+  }
+
   @Post('order')
-  async createOrder(@Body() payload: any) {
-    return this.checkoutService.createOrder(payload);
+  async createOrder(@Body() payload: any, @Req() req: any) {
+    return this.checkoutService.createOrder(payload, await getOptionalDbUser(req));
   }
 
   @Post('wompi/session')

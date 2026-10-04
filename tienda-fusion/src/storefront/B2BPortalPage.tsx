@@ -27,18 +27,25 @@ import {
   clearB2BProfile 
 } from '../lib/b2bEngine';
 import { useCart } from '../contexts/CartContext';
+import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../lib/firebase';
 
 export default function B2BPortalPage() {
   const { b2bProfile, setB2BProfile } = useCart();
 
-  const [companyName, setCompanyName] = useState('Agencia Gráfica Creativa S.A.S.');
-  const [nit, setNit] = useState('900.823.411-9');
-  const [contactPerson, setContactPerson] = useState('Carlos Eduardo Restrepo');
-  const [phone, setPhone] = useState('+57 311 948 2019');
-  const [email, setEmail] = useState('compras@agenciacreativa.co');
-  const [city, setCity] = useState('Manizales');
-  const [tier, setTier] = useState<B2BTierLevel>('GOLD_DISTRIBUTOR');
-  const [whiteLabelPacking, setWhiteLabelPacking] = useState(true);
+  const { user, login } = useAuth();
+
+  const [companyName, setCompanyName] = useState(b2bProfile?.companyName || '');
+  const [nit, setNit] = useState(b2bProfile?.nit || '');
+  const [contactPerson, setContactPerson] = useState(b2bProfile?.contactPerson || '');
+  const [phone, setPhone] = useState(b2bProfile?.phone || '');
+  const [email, setEmail] = useState(b2bProfile?.email || '');
+  const [city, setCity] = useState(b2bProfile?.city || 'Manizales');
+  const [tier, setTier] = useState<B2BTierLevel>(b2bProfile && b2bProfile.tier !== 'RETAIL' ? b2bProfile.tier : 'SILVER_AGENCY');
+  const [whiteLabelPacking, setWhiteLabelPacking] = useState(b2bProfile?.whiteLabelPacking ?? false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isPendingReview = Boolean(b2bProfile && !b2bProfile.isVerifiedB2B);
   const [paymentTermsDays, setPaymentTermsDays] = useState(30);
 
   const [showApplySuccess, setShowApplySuccess] = useState(false);
@@ -55,35 +62,58 @@ export default function B2BPortalPage() {
     }).format(value);
   };
 
-  const handleActivateB2B = (e: React.FormEvent) => {
+  // La solicitud se guarda en el servidor y un administrador la aprueba;
+  // el descuento solo se aplica cuando el nivel B2B queda aprobado.
+  const handleActivateB2B = async (e: React.FormEvent) => {
     e.preventDefault();
-    const config = B2B_TIER_CONFIG[tier];
-    const newProfile: B2BProfile = {
-      id: 'B2B-' + Date.now().toString().slice(-6),
-      companyName,
-      nit,
-      contactPerson,
-      phone,
-      email,
-      city,
-      tier,
-      discountPercentage: config.discount,
-      creditLimit: tier === 'PLATINUM_PRINTER' ? 15000000 : tier === 'GOLD_DISTRIBUTOR' ? 6000000 : tier === 'SILVER_AGENCY' ? 2000000 : 0,
-      creditUsed: tier === 'GOLD_DISTRIBUTOR' ? 1450000 : 0,
-      taxExemptWithholding: true,
-      paymentTermsDays: config.paymentTerms,
-      isVerifiedB2B: true,
-      whiteLabelPacking,
-      dedicatedAdvisor: {
-        name: 'Marcela Giraldo - Ejecutiva Senior de Cuentas B2B',
-        phone: '+57 311 829 3847',
-        email: 'marcela.giraldo@fusiongrafica.com.co'
-      }
-    };
+    setApplyError(null);
 
-    setB2BProfile(newProfile);
-    setShowApplySuccess(true);
-    setTimeout(() => setShowApplySuccess(false), 4000);
+    if (!user) {
+      await login();
+      if (!auth.currentUser) {
+        setApplyError('Inicia sesión con Google para enviar tu solicitud B2B.');
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch('/api/b2b/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier, companyName, nit, contactPerson, phone, city, whiteLabelPacking }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || 'No se pudo enviar la solicitud.');
+      }
+
+      const newProfile: B2BProfile = {
+        id: b2bProfile?.id || 'B2B-' + Date.now().toString().slice(-6),
+        companyName,
+        nit,
+        contactPerson,
+        phone,
+        email: data.email || email,
+        city,
+        tier: data.isVerifiedB2B ? data.tier : tier,
+        discountPercentage: data.isVerifiedB2B ? data.discountPercentage : 0,
+        creditLimit: 0,
+        creditUsed: 0,
+        taxExemptWithholding: false,
+        paymentTermsDays: data.isVerifiedB2B ? data.paymentTermsDays : 0,
+        isVerifiedB2B: Boolean(data.isVerifiedB2B),
+        whiteLabelPacking,
+        dedicatedAdvisor: b2bProfile?.dedicatedAdvisor || { name: '', phone: '', email: '' },
+      };
+      setB2BProfile(newProfile);
+      setShowApplySuccess(true);
+      setTimeout(() => setShowApplySuccess(false), 6000);
+    } catch (err: any) {
+      setApplyError(err.message || 'No se pudo enviar la solicitud.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeactivateB2B = () => {
@@ -117,6 +147,10 @@ export default function B2BPortalPage() {
                 {b2bProfile?.isVerifiedB2B ? (
                   <span className="bg-emerald-500 text-slate-950 text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
                     <ShieldCheck size={13} /> Verificado B2B
+                  </span>
+                ) : isPendingReview ? (
+                  <span className="bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Clock size={13} /> Solicitud en revisión
                   </span>
                 ) : (
                   <span className="bg-slate-700 text-slate-300 text-xs font-bold px-2.5 py-0.5 rounded-full">
@@ -358,7 +392,13 @@ export default function B2BPortalPage() {
           {showApplySuccess && (
             <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 text-emerald-800 text-xs font-bold animate-in fade-in">
               <CheckCircle2 size={20} className="text-emerald-600 shrink-0" />
-              <span>¡Cuenta B2B activada con éxito! Ahora tus cotizaciones y carrito mostrarán tus precios con descuento de fábrica.</span>
+              <span>¡Solicitud enviada! Nuestro equipo validará los datos de tu empresa y, al aprobarla, tu carrito mostrará automáticamente los precios con descuento.</span>
+            </div>
+          )}
+
+          {applyError && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-2xl p-4 text-red-700 text-xs font-bold">
+              {applyError}
             </div>
           )}
 
@@ -477,10 +517,11 @@ export default function B2BPortalPage() {
             <div className="flex justify-end pt-4">
               <button
                 type="submit"
-                className="bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs px-8 py-3.5 rounded-xl shadow-md transition-transform active:scale-95 flex items-center gap-2"
+                disabled={isSubmitting}
+                className="bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white font-bold text-xs px-8 py-3.5 rounded-xl shadow-md transition-transform active:scale-95 flex items-center gap-2"
               >
                 <UserCheck size={16} />
-                <span>Guardar y Aplicar Tarifas Mayoristas</span>
+                <span>{isSubmitting ? 'Enviando…' : user ? 'Enviar Solicitud de Vinculación B2B' : 'Iniciar Sesión y Enviar Solicitud'}</span>
               </button>
             </div>
 

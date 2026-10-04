@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import B2BRequestsPanel from './B2BRequestsPanel';
 import { 
   Building2, 
   Users, 
@@ -166,6 +167,9 @@ export default function B2BAdminPage() {
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto space-y-8">
       
+      {/* SOLICITUDES REALES (base de datos) */}
+      <B2BRequestsPanel />
+
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

@@ -1,11 +1,32 @@
-import { Injectable, Logger, Inject, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, Inject, NotFoundException, BadRequestException, InternalServerErrorException, UnauthorizedException, ConflictException, HttpException } from '@nestjs/common';
 import { InvoicingService } from '../invoicing/invoicing.service';
+import { PricingEngineService } from '../pricing/pricing.service';
+import { getB2BDiscount } from '../b2b/b2b.service';
+import { quoteAllCarriers } from '../../lib/shippingEngine';
 import { db } from '../../db';
 import { orders, orderItems, products, users } from '../../db/schema';
 import { eq, or, sql } from 'drizzle-orm';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+
+export type CartPricingSpec =
+  | { kind: 'product'; productId: number; quantity: number; attributes: number[] }
+  | { kind: 'book'; params: any }
+  | { kind: 'canvas'; productId: number | null; quantity: number; aiDesign: boolean };
+
+const ALLOWED_PAYMENT_METHODS = ['wompi', 'bold', 'bank_transfer', 'b2b_credit'];
+const CANVAS_FALLBACK_PRICE = 85000;
+const CANVAS_AI_DESIGN_FEE = 20000;
+const MAX_QUANTITY = 1_000_000;
+
+const clampQuantity = (value: any): number => {
+  const qty = Math.round(Number(value));
+  if (!Number.isFinite(qty) || qty < 1) {
+    throw new BadRequestException('Cantidad inválida.');
+  }
+  return Math.min(qty, MAX_QUANTITY);
+};
 
 export interface GatewaysConfig {
   wompi: {
@@ -75,7 +96,10 @@ export class CheckoutService {
   private readonly configFilePath = path.join(process.cwd(), 'gateways.config.json');
   private configCache: GatewaysConfig = DEFAULT_GATEWAYS_CONFIG;
 
-  constructor(@Inject(InvoicingService) private readonly invoicingService: InvoicingService) {
+  constructor(
+    @Inject(InvoicingService) private readonly invoicingService: InvoicingService,
+    @Inject(PricingEngineService) private readonly pricingService: PricingEngineService,
+  ) {
     this.loadConfig();
   }
 
@@ -441,6 +465,92 @@ export class CheckoutService {
     return result;
   }
 
+  /**
+   * Recalcula en el servidor el precio de cada ítem del carrito a partir de su
+   * especificación (`pricing`), el descuento B2B aprobado, el IVA y el envío.
+   * Nunca se usan los precios que envía el navegador.
+   */
+  async quoteCart(data: { items?: any[]; customerCity?: string; shippingCarrierCode?: string }, authUser?: typeof users.$inferSelect | null) {
+    const rawItems = Array.isArray(data.items) ? data.items : [];
+    if (rawItems.length === 0) {
+      throw new BadRequestException('El carrito está vacío.');
+    }
+    if (rawItems.length > 50) {
+      throw new BadRequestException('Demasiados productos en un solo pedido.');
+    }
+
+    const pricedItems: Array<{ productId: number | null; quantity: number; totalPrice: number; name: string; pricing: CartPricingSpec; source: any }> = [];
+
+    for (const item of rawItems) {
+      const spec = item?.pricing as CartPricingSpec | undefined;
+      if (!spec || !spec.kind) {
+        throw new BadRequestException('Tu carrito tiene productos de una versión anterior de la tienda. Elimínalos y agrégalos de nuevo.');
+      }
+
+      if (spec.kind === 'product') {
+        const productId = Number(spec.productId);
+        const quantity = clampQuantity(spec.quantity);
+        const attributeIds = (Array.isArray(spec.attributes) ? spec.attributes : []).map(Number).filter(n => Number.isInteger(n) && n > 0);
+        const product = (await db.select().from(products).where(eq(products.id, productId)))[0];
+        if (!product || !product.isActive) {
+          throw new BadRequestException(`El producto "${item.productName || productId}" ya no está disponible.`);
+        }
+        const quote = await this.pricingService.calculateQuote(productId, quantity, attributeIds);
+        pricedItems.push({
+          productId, quantity, totalPrice: quote.subtotal_neto, name: product.name,
+          pricing: { kind: 'product', productId, quantity, attributes: attributeIds }, source: item,
+        });
+      } else if (spec.kind === 'book') {
+        const params = { ...(spec.params || {}), quantity: clampQuantity(spec.params?.quantity) };
+        const quote: any = await this.pricingService.calculateBookQuote(params);
+        pricedItems.push({
+          productId: null, quantity: params.quantity, totalPrice: Number(quote.subtotal_neto), name: String(item.productName || 'Libro'),
+          pricing: { kind: 'book', params }, source: item,
+        });
+      } else if (spec.kind === 'canvas') {
+        const productId = spec.productId ? Number(spec.productId) : null;
+        const quantity = clampQuantity(spec.quantity ?? 1000);
+        const product = productId ? (await db.select().from(products).where(eq(products.id, productId)))[0] : undefined;
+        if (productId && (!product || !product.isActive)) {
+          throw new BadRequestException(`El producto "${item.productName || productId}" ya no está disponible.`);
+        }
+        // Misma regla del editor: precio base del producto por cada 1.000 unidades + $20.000 si usó diseño IA
+        const unitPackPrice = (product ? Number(product.basePrice) || CANVAS_FALLBACK_PRICE : CANVAS_FALLBACK_PRICE) + (spec.aiDesign ? CANVAS_AI_DESIGN_FEE : 0);
+        const totalPrice = Math.round(unitPackPrice * (quantity / 1000) * 100) / 100;
+        pricedItems.push({
+          productId, quantity, totalPrice, name: product?.name || String(item.productName || 'Diseño personalizado'),
+          pricing: { kind: 'canvas', productId, quantity, aiDesign: Boolean(spec.aiDesign) }, source: item,
+        });
+      } else {
+        throw new BadRequestException('Tipo de producto no reconocido en el carrito.');
+      }
+    }
+
+    // Mismas fórmulas que el carrito (CartContext) para que los totales coincidan
+    const grossSubtotal = pricedItems.reduce((acc, it) => acc + it.totalPrice, 0);
+    const b2bDiscountPct = getB2BDiscount(authUser);
+    const b2bDiscount = Math.round((grossSubtotal * b2bDiscountPct) / 100);
+    const subtotal = Math.max(0, grossSubtotal - b2bDiscount);
+    const iva = Math.round(subtotal * 0.19);
+
+    const carrierQuotes = quoteAllCarriers(data.customerCity || '', pricedItems.map(it => ({ quantity: it.quantity, name: it.source?.productName || it.name })));
+    const carrier = carrierQuotes.find(q => q.carrierCode === data.shippingCarrierCode) || carrierQuotes[0];
+    const shippingCost = carrier ? Number(carrier.cost) || 0 : 8000;
+    const shippingMethod = carrier ? `${carrier.carrierName} (${carrier.serviceName})` : 'Mensajería Express (Estándar)';
+
+    return {
+      items: pricedItems,
+      grossSubtotal,
+      b2bDiscountPct,
+      b2bDiscount,
+      subtotal,
+      iva,
+      shippingCost,
+      shippingMethod,
+      total: subtotal + iva + shippingCost,
+    };
+  }
+
   async createOrder(data: {
     customerName: string;
     customerEmail: string;
@@ -448,127 +558,117 @@ export class CheckoutService {
     customerAddress: string;
     customerCity: string;
     customerNit?: string;
-    shippingMethod: string;
-    shippingCost: number;
-    subtotal: number;
-    iva: number;
-    total: number;
+    shippingCarrierCode?: string;
+    total?: number;
     paymentMethod: string;
     items: Array<{
       productId?: number;
       productName?: string;
       quantity?: number;
-      unitPrice?: number;
-      totalPrice?: number;
+      pricing?: CartPricingSpec;
       highResPdfUrl?: string;
       specs?: Record<string, any>;
       fileType?: string;
       previewImageUrl?: string;
       notes?: string;
     }>;
-  }) {
+  }, authUser?: typeof users.$inferSelect | null) {
     try {
-      // 1. Validar o registrar usuario asociado al correo
-      const cleanEmail = (data.customerEmail || 'cliente@fusiongrafica.co').trim().toLowerCase();
-      await db.insert(users).values({
-        uid: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        email: cleanEmail,
-        role: 'customer',
-      }).onConflictDoNothing({ target: users.email });
-      const user = (await db.select().from(users).where(sql`LOWER(${users.email}) = ${cleanEmail}`))[0];
-      if (!user) {
-        throw new BadRequestException('No se pudo registrar el cliente del pedido.');
+      const paymentMethod = ALLOWED_PAYMENT_METHODS.includes(data.paymentMethod) ? data.paymentMethod : 'wompi';
+      const isB2bCredit = paymentMethod === 'b2b_credit';
+      if (isB2bCredit && getB2BDiscount(authUser) === 0) {
+        throw new BadRequestException('El crédito B2B solo está disponible para cuentas B2B aprobadas (inicia sesión con tu cuenta).');
       }
 
-      // 2. Obtener lista de productos válidos para prevenir violaciones de llave foránea
-      const existingProducts = await db.select({ id: products.id }).from(products);
-      let defaultProductId: number | null = existingProducts.length > 0 ? existingProducts[0].id : null;
-      if (!defaultProductId) {
-        const [newProd] = await db.insert(products).values({
-          name: 'Producto General Personalizado',
-          slug: `producto-general-${Date.now()}`,
-          basePrice: '1000',
-          baseQuantity: 1,
-          category: 'General',
-        }).returning();
-        defaultProductId = newProd.id;
-      }
-      const validProductIds = new Set(existingProducts.map(p => p.id));
-      if (defaultProductId) validProductIds.add(defaultProductId);
+      // 1. Precios calculados por el servidor
+      const quote = await this.quoteCart(data, authUser);
 
-      // 3. Cálculos numéricos seguros
-      const isB2bCredit = data.paymentMethod === 'b2b_credit';
-      const numSubtotal = Math.max(0, Number(data.subtotal) || 0);
-      const numIva = Math.max(0, Number(data.iva) || 0);
-      const numShippingCost = Math.max(0, Number(data.shippingCost) || 0);
-      const numTotal = Math.max(0, Number(data.total) || (numSubtotal + numIva + numShippingCost));
-
-      // 4. Insertar la orden principal
-      const [newOrder] = await db.insert(orders).values({
-        userId: user.id,
-        total: numTotal.toFixed(2),
-        subtotal: numSubtotal.toFixed(2),
-        iva: numIva.toFixed(2),
-        shippingCost: numShippingCost.toFixed(2),
-        shippingMethod: data.shippingMethod || 'Mensajería Express',
-        customerName: (data.customerName || 'Cliente').trim(),
-        customerPhone: (data.customerPhone || '').trim(),
-        customerAddress: (data.customerAddress || '').trim(),
-        customerCity: (data.customerCity || 'Bogotá D.C.').trim(),
-        customerNit: (data.customerNit || '').trim(),
-        paymentMethod: data.paymentMethod || 'wompi',
-        // El crédito B2B lo debe aprobar un administrador antes de pasar a producción
-        paymentStatus: isB2bCredit ? 'CREDIT_PENDING_REVIEW' : 'PENDING',
-        status: 'NUEVO',
-        internalNotes: `Pedido registrado vía checkout tienda online (${(data.paymentMethod || 'wompi').toUpperCase()}).`,
-      }).returning();
-
-      // 5. Insertar los ítems de la orden
-      const rawItems = Array.isArray(data.items) && data.items.length > 0 ? data.items : [{
-        productId: defaultProductId,
-        quantity: 1,
-        unitPrice: numTotal,
-        totalPrice: numTotal,
-        notes: 'Pedido Web Personalizado',
-      }];
-
-      for (const item of rawItems) {
-        const candidateId = Number(item.productId);
-        const finalProductId = (candidateId && validProductIds.has(candidateId)) ? candidateId : defaultProductId;
-        const qty = Math.max(1, Math.round(Number(item.quantity) || 1));
-        const totPrice = Number(item.totalPrice) != null && !isNaN(Number(item.totalPrice)) && Number(item.totalPrice) > 0
-          ? Number(item.totalPrice)
-          : (Number(item.unitPrice) ? Number(item.unitPrice) * qty : numTotal);
-        const uPrice = Number(item.unitPrice) != null && !isNaN(Number(item.unitPrice)) && Number(item.unitPrice) > 0
-          ? Number(item.unitPrice)
-          : (totPrice / qty);
-
-        await db.insert(orderItems).values({
-          orderId: newOrder.id,
-          productId: finalProductId!,
-          quantity: qty,
-          unitPrice: uPrice.toFixed(2),
-          totalPrice: totPrice.toFixed(2),
-          highResPdfUrl: item.highResPdfUrl || null,
-          specs: item.specs || {},
-          fileType: item.fileType || 'UPLOADED_PDF',
-          previewImageUrl: item.previewImageUrl || null,
-          notes: item.notes || null,
+      // Si el navegador mostró otro total (precios cambiaron, carrito viejo), se avisa antes de cobrar
+      if (data.total != null && Math.abs(Number(data.total) - quote.total) > 1) {
+        throw new ConflictException({
+          message: `Los precios se actualizaron. El total correcto de tu pedido es $${Math.round(quote.total).toLocaleString('es-CO')} COP. Revisa tu carrito y confirma de nuevo.`,
+          totals: { subtotal: quote.subtotal, iva: quote.iva, shippingCost: quote.shippingCost, total: quote.total },
         });
       }
 
-      this.logger.log(`Orden #${newOrder.id} creada exitosamente con estado ${newOrder.status}.`);
+      // 2. Cliente: el usuario autenticado o, si compra como invitado, el correo del formulario
+      const cleanEmail = (authUser?.email || data.customerEmail || '').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
+        throw new BadRequestException('Ingresa un correo electrónico válido.');
+      }
+
+      const result = await db.transaction(async (tx) => {
+        await tx.insert(users).values({
+          uid: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          email: cleanEmail,
+          role: 'customer',
+        }).onConflictDoNothing({ target: users.email });
+        const user = (await tx.select().from(users).where(eq(users.email, cleanEmail)))[0];
+        if (!user) {
+          throw new BadRequestException('No se pudo registrar el cliente del pedido.');
+        }
+
+        // Productos sin ID propio (libros a medida) se asocian al primer producto del catálogo
+        const fallbackProduct = (await tx.select({ id: products.id }).from(products).orderBy(products.id).limit(1))[0];
+        if (!fallbackProduct) {
+          throw new BadRequestException('El catálogo está vacío.');
+        }
+
+        const [newOrder] = await tx.insert(orders).values({
+          userId: user.id,
+          total: quote.total.toFixed(2),
+          subtotal: quote.subtotal.toFixed(2),
+          iva: quote.iva.toFixed(2),
+          shippingCost: quote.shippingCost.toFixed(2),
+          shippingMethod: quote.shippingMethod,
+          customerName: (data.customerName || 'Cliente').trim().slice(0, 200),
+          customerPhone: (data.customerPhone || '').trim().slice(0, 40),
+          customerAddress: (data.customerAddress || '').trim().slice(0, 300),
+          customerCity: (data.customerCity || '').trim().slice(0, 80),
+          customerNit: (data.customerNit || '').trim().slice(0, 40),
+          paymentMethod,
+          // El crédito B2B lo debe aprobar un administrador antes de pasar a producción
+          paymentStatus: isB2bCredit ? 'CREDIT_PENDING_REVIEW' : 'PENDING',
+          status: 'NUEVO',
+          internalNotes: `Pedido registrado vía checkout tienda online (${paymentMethod.toUpperCase()}).` +
+            (quote.b2bDiscount > 0 ? ` Descuento B2B ${quote.b2bDiscountPct}%: -${quote.b2bDiscount} COP.` : ''),
+        }).returning();
+
+        for (const it of quote.items) {
+          const src = it.source || {};
+          await tx.insert(orderItems).values({
+            orderId: newOrder.id,
+            productId: it.productId ?? fallbackProduct.id,
+            quantity: it.quantity,
+            unitPrice: (it.totalPrice / it.quantity).toFixed(2),
+            totalPrice: it.totalPrice.toFixed(2),
+            highResPdfUrl: src.highResPdfUrl || null,
+            // Se guarda la especificación de precio para poder re-imprimir el pedido
+            specs: { ...(src.specs || {}), pricing: it.pricing, productName: src.productName || it.name },
+            fileType: src.fileType || 'UPLOADED_PDF',
+            previewImageUrl: src.previewImageUrl || null,
+            notes: src.notes || null,
+          });
+        }
+        return newOrder;
+      });
+
+      this.logger.log(`Orden #${result.id} creada exitosamente con estado ${result.status}.`);
 
       return {
-        orderId: newOrder.id,
-        orderCode: `ORD-2026-${String(newOrder.id).padStart(4, '0')}`,
-        total: numTotal,
-        status: newOrder.status,
-        paymentStatus: newOrder.paymentStatus,
+        orderId: result.id,
+        orderCode: `ORD-2026-${String(result.id).padStart(4, '0')}`,
+        subtotal: quote.subtotal,
+        iva: quote.iva,
+        shippingCost: quote.shippingCost,
+        total: quote.total,
+        status: result.status,
+        paymentStatus: result.paymentStatus,
       };
     } catch (err: any) {
+      if (err instanceof HttpException) throw err;
       this.logger.error(`Error crítico al registrar orden en DB: ${err?.message || err}`, err?.stack);
-      throw new InternalServerErrorException(`No se pudo registrar la orden en la base de datos: ${err?.message || 'Error interno'}`);
+      throw new InternalServerErrorException('No se pudo registrar la orden. Intenta de nuevo en unos minutos.');
     }
   }
 

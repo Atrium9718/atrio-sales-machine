@@ -22,7 +22,13 @@ interface GatewayStatus {
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
-  const { items, grossSubtotal, b2bDiscount, subtotal, iva, clearCart, b2bProfile } = useCart();
+  const { items, grossSubtotal, b2bDiscount, subtotal, iva, clearCart, b2bProfile, refreshPrices } = useCart();
+  const [paidTotal, setPaidTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    refreshPrices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [paymentMethod, setPaymentMethod] = useState<'wompi' | 'bold' | 'b2b_credit' | 'bank_transfer'>('wompi');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -102,44 +108,36 @@ export default function CheckoutPage() {
 
   // Crear la orden inicial en base de datos
   const createBaseOrder = async () => {
-    const orderItemsPayload = items.map(it => {
-      const quantity = Math.max(1, it.quantity || 1);
-      const totalPrice = Number(it.price) || 0;
-      const unitPrice = quantity > 0 ? (totalPrice / quantity) : totalPrice;
-      
-      return {
-        productId: Number(it.productId) || 1,
-        productName: it.name || 'Producto Personalizado',
-        quantity: quantity,
-        unitPrice: unitPrice,
-        totalPrice: totalPrice,
-        highResPdfUrl: it.driveFile?.webViewLink || (it.file ? it.file.name : null),
-        specs: {
-          options: it.options || '',
-          design: it.design || '',
-          driveFile: it.driveFile ? { id: it.driveFile.id, name: it.driveFile.name, link: it.driveFile.webViewLink } : null,
-          hasDesignService: Boolean(it.design && !it.file && !it.driveFile),
-        },
-        fileType: it.driveFile ? 'GOOGLE_DRIVE' : (it.file ? 'UPLOADED_PDF' : (it.canvasData ? 'CANVAS_DESIGN' : 'STANDARD')),
-        previewImageUrl: it.image || null,
-        notes: it.design || it.options || null,
-      };
-    });
+    const orderItemsPayload = items.map(it => ({
+      productId: Number(it.productId) || null,
+      productName: it.name || 'Producto Personalizado',
+      quantity: Math.max(1, it.quantity || 1),
+      // El servidor recalcula el precio con esta especificación
+      pricing: it.pricing,
+      highResPdfUrl: it.driveFile?.webViewLink || (it.file ? it.file.name : null),
+      specs: {
+        options: it.options || '',
+        design: it.design || '',
+        driveFile: it.driveFile ? { id: it.driveFile.id, name: it.driveFile.name, link: it.driveFile.webViewLink } : null,
+        hasDesignService: Boolean(it.design && !it.file && !it.driveFile),
+      },
+      fileType: it.driveFile ? 'GOOGLE_DRIVE' : (it.file ? 'UPLOADED_PDF' : (it.canvasData ? 'CANVAS_DESIGN' : 'STANDARD')),
+      previewImageUrl: it.image || null,
+      notes: it.design || it.options || null,
+    }));
 
     const res = await fetch('/api/checkout/order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         customerName: customerName || 'Cliente Web',
-        customerEmail: customerEmail || 'cliente@fusiongrafica.co',
+        customerEmail,
         customerPhone: customerPhone || '',
         customerAddress: customerAddress || '',
-        customerCity: customerCity || 'Bogotá D.C.',
+        customerCity: customerCity || '',
         customerNit: customerNit || '',
-        shippingMethod: `${activeQuote.carrierName} (${activeQuote.serviceName})`,
-        shippingCost,
-        subtotal,
-        iva,
+        shippingCarrierCode: activeQuote.carrierCode,
+        // Total que vio el cliente: si no coincide con el del servidor, se avisa antes de cobrar
         total,
         paymentMethod,
         items: orderItemsPayload,
@@ -148,6 +146,10 @@ export default function CheckoutPage() {
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        // Los precios cambiaron: se actualiza el carrito para que el cliente vea el total correcto
+        await refreshPrices();
+      }
       throw new Error(errorData.message || 'Error al registrar la orden en base de datos.');
     }
 
@@ -199,6 +201,7 @@ export default function CheckoutPage() {
       const orderCode = orderData.orderCode;
       setCreatedOrderId(orderId);
       setCreatedOrderCode(orderCode);
+      setPaidTotal(Number(orderData.total) || null);
 
       // 2. Si es Crédito B2B o Transferencia Manual
       if (paymentMethod === 'b2b_credit') {
@@ -328,7 +331,7 @@ export default function CheckoutPage() {
 
           <div className="flex justify-between items-center pb-3 border-b border-slate-100">
             <span className="text-xs font-bold text-slate-400 uppercase">Total Pagado</span>
-            <span className="font-extrabold text-slate-900 text-lg">{formatCOP(total)}</span>
+            <span className="font-extrabold text-slate-900 text-lg">{formatCOP(paidTotal ?? total)}</span>
           </div>
 
           <div>

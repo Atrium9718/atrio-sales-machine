@@ -6,6 +6,10 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   role: text('role').notNull().default('customer'),
   passwordHash: text('password_hash'),
+  // Nivel B2B aprobado por un administrador (RETAIL = sin descuento)
+  b2bTier: text('b2b_tier').notNull().default('RETAIL'),
+  // Última solicitud B2B enviada desde el portal (datos de empresa + estado)
+  b2bRequest: jsonb('b2b_request'),
 });
 
 export const categories = pgTable('categories', {

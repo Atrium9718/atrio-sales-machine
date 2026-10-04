@@ -103,6 +103,32 @@ export default function BookQuoterPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [addedToast, setAddedToast] = useState(false);
 
+  // Parámetros de la cotización (también viajan al carrito para que el servidor recalcule el precio)
+  const buildBookParams = () => ({
+    quantity,
+    pages,
+    format,
+    customWidthMm: customWidth,
+    customHeightMm: customHeight,
+    innerPaper,
+    innerInks,
+    coverPaper: bindingType === 'tapa_dura' ? 'tapa_dura' : coverPaper,
+    coverInks,
+    coverFinish,
+    specialFinishes,
+    bindingType,
+    flaps: bindingType === 'tapa_dura' ? 'sin_solapa' : flaps,
+    editorialServices: {
+      maquetacion: hasMaquetacion,
+      disenoPortada: hasDisenoPortada,
+      correccionEstilo: hasCorreccionEstilo,
+      transcripcion: hasTranscripcion,
+      transcripcionPages: transcripcionPages,
+      traduccion: hasTraduccion,
+      traduccionLanguage: traduccionLanguage
+    }
+  });
+
   // Calculate live quote
   const fetchQuote = async () => {
     try {
@@ -110,30 +136,7 @@ export default function BookQuoterPage() {
       const res = await fetch('/api/pricing/quote-book', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          quantity,
-          pages,
-          format,
-          customWidthMm: customWidth,
-          customHeightMm: customHeight,
-          innerPaper,
-          innerInks,
-          coverPaper: bindingType === 'tapa_dura' ? 'tapa_dura' : coverPaper,
-          coverInks,
-          coverFinish,
-          specialFinishes,
-          bindingType,
-          flaps: bindingType === 'tapa_dura' ? 'sin_solapa' : flaps,
-          editorialServices: {
-            maquetacion: hasMaquetacion,
-            disenoPortada: hasDisenoPortada,
-            correccionEstilo: hasCorreccionEstilo,
-            transcripcion: hasTranscripcion,
-            transcripcionPages: transcripcionPages,
-            traduccion: hasTraduccion,
-            traduccionLanguage: traduccionLanguage
-          }
-        }),
+        body: JSON.stringify(buildBookParams()),
       });
 
       if (res.ok) {
@@ -261,7 +264,8 @@ export default function BookQuoterPage() {
       design: designLabel,
       file: uploadedFile || undefined,
       driveFile: driveFile || undefined,
-      canvasData: null
+      canvasData: null,
+      pricing: { kind: 'book', params: buildBookParams() },
     });
 
     setAddedToast(true);

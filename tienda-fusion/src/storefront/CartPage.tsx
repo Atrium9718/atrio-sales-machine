@@ -1,10 +1,17 @@
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Trash2, ChevronLeft, ArrowRight, Minus, Plus, ShoppingBag, ShieldCheck, Printer, PlusCircle, ArrowLeft } from 'lucide-react';
 import { useCart } from '../contexts/CartContext';
 
 export default function CartPage() {
   const navigate = useNavigate();
-  const { items, updateQuantity, removeFromCart, grossSubtotal, b2bDiscount, subtotal, iva, total, b2bProfile } = useCart();
+  const { items, updateQuantity, removeFromCart, grossSubtotal, b2bDiscount, subtotal, iva, total, b2bProfile, refreshPrices } = useCart();
+
+  // Al abrir el carrito se sincronizan los precios con el servidor
+  useEffect(() => {
+    refreshPrices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const formatCOP = (value: number) => {
     return new Intl.NumberFormat('es-CO', {

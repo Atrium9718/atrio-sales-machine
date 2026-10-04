@@ -1229,6 +1229,7 @@ export default function CanvasEditor() {
         image: previewDataUrl,
         design: designDescription,
         canvasData: canvasJson,
+        pricing: { kind: 'canvas', productId: product?.id ?? null, quantity: 1000, aiDesign: usedAiImages.length > 0 },
       });
 
       navigate('/carrito');

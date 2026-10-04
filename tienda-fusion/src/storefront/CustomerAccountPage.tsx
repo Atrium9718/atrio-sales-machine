@@ -107,12 +107,18 @@ export default function CustomerAccountPage() {
   };
 
   const handleReorderItem = (item: CustomerOrder['items'][0]) => {
+    const pricing = item.specs?.pricing;
+    if (!pricing || !pricing.kind) {
+      setReorderSuccessMsg(`"${item.productName || 'Este producto'}" es de un pedido antiguo: búscalo en el catálogo para volver a cotizarlo.`);
+      setTimeout(() => setReorderSuccessMsg(null), 5000);
+      return;
+    }
     setReorderingItemId(item.id);
     
     // Format specs nicely for cart display
-    const specsString = item.specs 
-      ? Object.entries(item.specs).map(([k, v]) => `${k}: ${v}`).join(' | ') 
-      : 'Especificación estándar';
+    const specsString = typeof item.specs?.options === 'string' && item.specs.options
+      ? item.specs.options
+      : 'Especificación de la orden anterior';
 
     addToCart({
       productId: item.productId,
@@ -122,7 +128,8 @@ export default function CustomerAccountPage() {
       price: item.totalPrice,
       image: item.previewImageUrl || 'https://images.unsplash.com/photo-1589330694653-0608cb2142e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
       design: 'Re-impresión de orden previa (Arte Aprobado)',
-      canvasData: null
+      canvasData: null,
+      pricing,
     });
 
     setReorderSuccessMsg(`¡"${item.productName || 'Producto'}" se agregó a tu carrito con la misma configuración de arte!`);

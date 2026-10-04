@@ -209,6 +209,7 @@ export default function ProductPage() {
       design: designName,
       file: file,
       driveFile: driveFile,
+      pricing: { kind: 'product', productId: product.id, quantity, attributes: Object.values(selectedOptions).map(Number) },
     });
     
     navigate('/carrito');
