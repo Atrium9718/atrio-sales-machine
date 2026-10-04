@@ -1,0 +1,6 @@
+{
+  "name": "Fusión Comunicación Gráfica W2P",
+  "description": "Plataforma Web-to-Print (W2P) con Editor de Plantillas, Motor B2B, Imposición CTP, Gestor de Medios WebP/AVIF, Asistente Creativo Gemini IA (Copys y Renders 300 DPI), Suite SEO por Página y Marketing Omnicanal",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
