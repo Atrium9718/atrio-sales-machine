@@ -205,7 +205,7 @@ export default function SeoLandingTemplate() {
           </div>
 
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center text-center hover:-translate-y-1 transition-transform">
-            <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mb-6">
+            <div className="w-16 h-16 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center mb-6">
               <Truck size={32} />
             </div>
             <h3 className="text-lg font-black text-slate-900 mb-3">Cobertura en {data.city}</h3>
@@ -358,7 +358,7 @@ export default function SeoLandingTemplate() {
           <h2 className="text-3xl font-black text-slate-900 mb-12">Lo que dicen nuestros clientes en {data.city}</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
             <div className="p-8 bg-slate-50 rounded-3xl border border-slate-100 text-left relative shadow-sm">
-              <div className="flex text-amber-400 mb-4">
+              <div className="flex text-teal-400 mb-4">
                 <Star size={20} fill="currentColor" />
                 <Star size={20} fill="currentColor" />
                 <Star size={20} fill="currentColor" />
@@ -380,7 +380,7 @@ export default function SeoLandingTemplate() {
             </div>
             
             <div className="p-8 bg-slate-50 rounded-3xl border border-slate-100 text-left relative shadow-sm">
-              <div className="flex text-amber-400 mb-4">
+              <div className="flex text-teal-400 mb-4">
                 <Star size={20} fill="currentColor" />
                 <Star size={20} fill="currentColor" />
                 <Star size={20} fill="currentColor" />

@@ -64,7 +64,7 @@ export default function ProductCard({ product }: ProductCardProps) {
   );
 
   return (
-    <div className="group bg-white rounded-3xl overflow-hidden p-3.5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-stone-200/90 hover:border-amber-400/60 hover:shadow-[0_12px_30px_-8px_rgba(245,158,11,0.15)] transition-all duration-300 relative flex flex-col h-full">
+    <div className="group bg-white rounded-3xl overflow-hidden p-3.5 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-stone-200/90 hover:border-teal-400/60 hover:shadow-[0_12px_30px_-8px_rgba(196,241,66,0.15)] transition-all duration-300 relative flex flex-col h-full">
       {/* Image Container with Ambient Background */}
       <Link to={`/producto/${product.slug}`} className="block relative aspect-square rounded-2xl overflow-hidden bg-stone-100 mb-3.5">
         <img
@@ -79,13 +79,13 @@ export default function ProductCard({ product }: ProductCardProps) {
         {/* Top Badges */}
         <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5 z-20">
           {product.isPromo && (
-            <span className="bg-gradient-to-r from-rose-500 to-amber-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1">
+            <span className="bg-gradient-to-r from-rose-500 to-teal-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1">
               <Flame size={11} className="fill-white animate-pulse" />
               <span>{product.promoBadge || (product.discountPercentage ? `${product.discountPercentage}% OFF` : 'OFERTA')}</span>
             </span>
           )}
           {product.isFeatured && (
-            <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-amber-300">
+            <span className="bg-teal-400 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-teal-300">
               <Star size={10} className="fill-slate-950" />
               <span>DESTACADO</span>
             </span>
@@ -119,13 +119,13 @@ export default function ProductCard({ product }: ProductCardProps) {
       {/* Content Container */}
       <div className="px-1.5 flex flex-col flex-1 pb-1">
         <Link to={`/producto/${product.slug}`} className="block flex-1 group/title">
-          <h3 className="text-[15px] font-extrabold text-slate-900 leading-snug mb-1 group-hover/title:text-amber-700 transition-colors line-clamp-2">
+          <h3 className="text-[15px] font-extrabold text-slate-900 leading-snug mb-1 group-hover/title:text-teal-700 transition-colors line-clamp-2">
             {product.name}
           </h3>
           
           <div className="flex items-center gap-1 mb-3">
             {[...Array(5)].map((_, i) => (
-              <Star key={i} size={12} className={i < 4 ? "fill-amber-400 text-amber-400" : "fill-stone-200 text-stone-200"} />
+              <Star key={i} size={12} className={i < 4 ? "fill-orange-400 text-orange-400" : "fill-stone-200 text-stone-200"} />
             ))}
             <span className="text-[10px] text-stone-400 font-bold ml-1">4.9 • 300 DPI</span>
           </div>
@@ -147,7 +147,7 @@ export default function ProductCard({ product }: ProductCardProps) {
               <p className={`text-base sm:text-lg font-black tracking-tight ${product.isPromo ? 'text-rose-600' : 'text-slate-900'}`}>
                 {formatCOP(Number(product.basePrice))}
               </p>
-              <span className="text-[10px] font-extrabold text-amber-700">
+              <span className="text-[10px] font-extrabold text-teal-700">
                 {product.baseQuantity && product.baseQuantity > 1
                   ? `/ ${product.baseQuantity.toLocaleString('es-CO')} u.`
                   : '/ u.'}
@@ -162,7 +162,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           
           <Link 
             to={`/producto/${product.slug}`}
-            className="bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 p-2.5 rounded-2xl shadow-sm transition-all shrink-0 font-black flex items-center justify-center border border-amber-400"
+            className="bg-teal-500 hover:bg-teal-600 active:scale-95 text-slate-950 p-2.5 rounded-2xl shadow-sm transition-all shrink-0 font-black flex items-center justify-center border border-teal-400"
             title="Configurar y Cotizar"
           >
             <ShoppingCart size={16} />

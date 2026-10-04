@@ -1,24 +1,74 @@
 @import "tailwindcss";
 
+/*
+ * Identidad visual: blanco limpio + acento verde lima con texto negro + negro para
+ * contrastes fuertes, formas muy redondeadas y tipografía geométrica (Urbanist).
+ * La escala "teal" se redefine como la escala de marca: 50-500 = lima, 600-950 = negro.
+ */
+@theme {
+  --font-sans: 'Urbanist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-teal-50: #f7fee7;
+  --color-teal-100: #effcd2;
+  --color-teal-200: #e0f9a8;
+  --color-teal-300: #d1f572;
+  --color-teal-400: #c4f142;
+  --color-teal-500: #b9ec2b;
+  --color-teal-600: #111111;
+  --color-teal-700: #0b0b0b;
+  --color-teal-800: #0b0b0b;
+  --color-teal-900: #050505;
+  --color-teal-950: #000000;
+
+  /* Grises neutros (la escala "stone" era crema; la referencia usa grises limpios) */
+  --color-stone-50: #fafafa;
+  --color-stone-100: #f3f4f1;
+  --color-stone-200: #e8e9e5;
+  --color-stone-300: #d6d8d2;
+
+  /* Oscuros neutros (sin el tono azul marino original) */
+  --color-stone-800: #1f1f1f;
+  --color-stone-900: #141414;
+  --color-stone-950: #0b0b0b;
+  --color-slate-800: #1f1f1f;
+  --color-slate-900: #141414;
+  --color-slate-950: #0b0b0b;
+
+  --color-brand-lime: #c4f142;
+  --color-brand-ink: #0b0b0b;
+  --color-brand-mist: #f3f4f1;
+}
+
 @layer base {
   body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    color: #1e293b;
-    background-color: #faf8f5;
+    font-family: var(--font-sans);
+    color: #0b0b0b;
+    background-color: #ffffff;
+    -webkit-font-smoothing: antialiased;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+    font-family: var(--font-sans);
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background: #c4f142;
+    color: #0b0b0b;
   }
 }
 
 /* Warm ambient lighting & tactile shadows */
 .warm-mesh-bg {
-  background-color: #faf8f5;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(245, 158, 11, 0.08) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(20, 184, 166, 0.08) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(244, 63, 94, 0.05) 0px, transparent 50%);
+  background-color: #ffffff;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(178, 236, 222, 0.35) 0px, transparent 55%),
+    radial-gradient(at 100% 0%, rgba(196, 241, 66, 0.22) 0px, transparent 55%);
+}
+
+/* Degradado menta → lima de la referencia (fondos de hero y banners) */
+.brand-mist-bg {
+  background: linear-gradient(135deg, #cdeee6 0%, #d8f3c4 45%, #c9ef7a 100%);
 }
 
 .warm-card-glow {
@@ -30,7 +80,7 @@
 }
 
 .teal-glow {
-  box-shadow: 0 0 25px -5px rgba(20, 184, 166, 0.35);
+  box-shadow: 0 0 25px -5px rgba(196, 241, 66, 0.45);
 }
 
 .coral-glow {

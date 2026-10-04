@@ -120,14 +120,14 @@ export default function DynamicPageRenderer({ presetSlug }: Props) {
     <div className="bg-white min-h-screen relative">
       {/* Interactive Draft Preview Banner */}
       {isPreviewMode && (
-        <aside aria-label="Borrador en desarrollo" className="sticky top-0 z-50 bg-amber-500 text-slate-950 px-4 py-2.5 shadow-md border-b border-amber-600 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <aside aria-label="Borrador en desarrollo" className="sticky top-0 z-50 bg-teal-500 text-slate-950 px-4 py-2.5 shadow-md border-b border-teal-600 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5 font-bold">
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-950 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-900"></span>
             </span>
             <span className="tracking-wide">MODO VISTA PREVIA DE BORRADOR:</span>
-            <span className="font-medium text-slate-900 bg-amber-400 px-2 py-0.5 rounded-md border border-amber-600/30">
+            <span className="font-medium text-slate-900 bg-teal-400 px-2 py-0.5 rounded-md border border-teal-600/30">
               {page.title} (v{page.currentVersion || 1} Borrador)
             </span>
           </div>
@@ -139,7 +139,7 @@ export default function DynamicPageRenderer({ presetSlug }: Props) {
                 nextParams.delete('preview');
                 setSearchParams(nextParams);
               }}
-              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition-colors text-[11px]"
+              className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg transition-colors text-[11px]"
             >
               Ver Versión Pública en Vivo
             </button>

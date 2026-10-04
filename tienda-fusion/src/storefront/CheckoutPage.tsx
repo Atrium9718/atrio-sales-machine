@@ -343,7 +343,7 @@ export default function CheckoutPage() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <button 
             onClick={() => navigate(`/rastreo?code=${encodeURIComponent(createdOrderCode)}&email=${encodeURIComponent(customerEmail)}`)}
-            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-white font-bold py-3.5 px-8 rounded-full shadow-md shadow-teal-600/20 transition-transform active:scale-95 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto bg-teal-600 hover:bg-teal-500 text-white font-bold py-3.5 px-8 rounded-full shadow-md shadow-teal-600/20 transition-transform active:scale-95 flex items-center justify-center gap-2 hover:text-neutral-950"
           >
             <Clock size={16} />
             <span>Rastrear Pedido en Vivo</span>
@@ -617,18 +617,18 @@ export default function CheckoutPage() {
 
               {/* Opción 3: Cupo B2B */}
               {b2bProfile?.isVerifiedB2B && b2bProfile.paymentTermsDays > 0 && (
-                <label className={`relative flex cursor-pointer rounded-2xl border p-5 shadow-sm transition-all duration-200 items-start gap-4 ${paymentMethod === 'b2b_credit' ? 'bg-amber-50/70 border-amber-500 ring-2 ring-amber-500/20' : 'border-amber-200 bg-amber-50/30 hover:bg-amber-50'}`}>
+                <label className={`relative flex cursor-pointer rounded-2xl border p-5 shadow-sm transition-all duration-200 items-start gap-4 ${paymentMethod === 'b2b_credit' ? 'bg-teal-50/70 border-teal-500 ring-2 ring-teal-500/20' : 'border-teal-200 bg-teal-50/30 hover:bg-teal-50'}`}>
                   <input type="radio" name="payment" value="b2b_credit" checked={paymentMethod === 'b2b_credit'} onChange={() => setPaymentMethod('b2b_credit')} className="sr-only" />
-                  <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-amber-500 mt-1">
-                    {paymentMethod === 'b2b_credit' && <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>}
+                  <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 border-teal-500 mt-1">
+                    {paymentMethod === 'b2b_credit' && <div className="w-2.5 h-2.5 rounded-full bg-teal-500"></div>}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="flex items-center gap-2">
                         <p className="font-extrabold text-slate-900 text-base">Cupo de Crédito Corporativo B2B</p>
-                        <span className="text-[10px] font-black uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">Plazo {b2bProfile.paymentTermsDays} Días</span>
+                        <span className="text-[10px] font-black uppercase bg-teal-200 text-teal-900 px-2 py-0.5 rounded-full">Plazo {b2bProfile.paymentTermsDays} Días</span>
                       </div>
-                      <span className="font-black text-amber-800 text-xs">Crédito Activo</span>
+                      <span className="font-black text-teal-800 text-xs">Crédito Activo</span>
                     </div>
                     <p className="text-xs text-slate-600">
                       Cupo disponible: <strong>{formatCOP(b2bProfile.creditLimit - b2bProfile.creditUsed)}</strong> · Facturación electrónica a 30 días.
@@ -742,7 +742,7 @@ export default function CheckoutPage() {
                   <p className="text-xs text-slate-500 font-medium">Ambiente de pruebas e integración de pagos</p>
                 </div>
               </div>
-              <span className="text-[10px] font-black uppercase px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full">
+              <span className="text-[10px] font-black uppercase px-2.5 py-1 bg-teal-100 text-teal-800 rounded-full">
                 Sandbox Test
               </span>
             </div>

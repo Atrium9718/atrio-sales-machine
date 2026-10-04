@@ -137,7 +137,7 @@ export default function HomePage() {
   };
 
   const categoryColors = [
-    'from-amber-500/10 to-amber-500/20 text-amber-800 border-amber-200/80 group-hover:bg-amber-500 group-hover:text-slate-950',
+    'from-teal-500/10 to-teal-500/20 text-teal-800 border-teal-200/80 group-hover:bg-teal-500 group-hover:text-slate-950',
     'from-teal-500/10 to-teal-500/20 text-teal-800 border-teal-200/80 group-hover:bg-teal-500 group-hover:text-white',
     'from-rose-500/10 to-rose-500/20 text-rose-800 border-rose-200/80 group-hover:bg-rose-500 group-hover:text-white',
     'from-indigo-500/10 to-indigo-500/20 text-indigo-800 border-indigo-200/80 group-hover:bg-indigo-500 group-hover:text-white',
@@ -182,8 +182,8 @@ export default function HomePage() {
 
   if (loading) {
     return (
-      <div className="flex-1 min-h-[60vh] flex flex-col items-center justify-center bg-[#faf8f5]">
-        <div className="w-12 h-12 border-4 border-amber-200 border-t-amber-500 rounded-full animate-spin"></div>
+      <div className="flex-1 min-h-[60vh] flex flex-col items-center justify-center bg-white">
+        <div className="w-12 h-12 border-4 border-teal-200 border-t-amber-500 rounded-full animate-spin"></div>
         <p className="text-stone-500 text-xs font-bold mt-4">Cargando catálogo litográfico...</p>
       </div>
     );
@@ -197,19 +197,19 @@ export default function HomePage() {
   const promoProducts = explicitPromos.length > 0 ? explicitPromos.slice(0, 8) : (products.length > 4 ? products.slice(4, 8) : products.slice(0, 4));
 
   return (
-    <div className="bg-[#faf8f5] min-h-screen text-slate-900 selection:bg-amber-400 selection:text-slate-950">
+    <div className="bg-white min-h-screen text-slate-900 selection:bg-teal-400 selection:text-slate-950">
       
       {/* 0. LIVE FACTORY PULSE & QUICK SHORTCUTS BAR */}
-      <div className="bg-stone-900 text-stone-300 border-b border-amber-500/20 text-xs py-2 px-4">
+      <div className="bg-stone-900 text-stone-300 border-b border-teal-500/20 text-xs py-2 px-4">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 font-medium">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             <span className="text-white font-bold">Planta Litográfica en Vivo:</span>
-            <span className="text-amber-300 hidden sm:inline">CTP 300 DPI Activo</span>
+            <span className="text-teal-300 hidden sm:inline">CTP 300 DPI Activo</span>
             <span className="text-stone-400 hidden md:inline">• Despachos diarios a toda Colombia</span>
           </div>
           <div className="flex items-center gap-3 text-[11px] font-bold">
-            <Link to="/cotizador-libros" className="text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1">
+            <Link to="/cotizador-libros" className="text-teal-400 hover:text-teal-300 transition-colors flex items-center gap-1">
               <BookOpen size={12} />
               <span>Cotizador de Libros</span>
             </Link>
@@ -232,7 +232,7 @@ export default function HomePage() {
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           
           {/* Main Hero Slider (8 cols) */}
-          <div className="lg:col-span-8 rounded-3xl sm:rounded-[36px] overflow-hidden bg-slate-950 text-white shadow-2xl relative min-h-[380px] sm:min-h-[460px] flex items-center group border border-amber-500/20">
+          <div className="lg:col-span-8 rounded-3xl sm:rounded-[36px] overflow-hidden bg-slate-950 text-white shadow-2xl relative min-h-[380px] sm:min-h-[460px] flex items-center group border border-teal-500/20">
             {bannerList.map((banner, idx) => {
               const isActive = idx === activeBannerIdx;
               const bgImg = banner.desktopImageUrl || banner.imageUrl;
@@ -288,13 +288,13 @@ export default function HomePage() {
                     {banner.tag && (
                       <span 
                         style={{
-                          backgroundColor: extraCfg.tagBgColor || 'rgba(245, 158, 11, 0.2)',
+                          backgroundColor: extraCfg.tagBgColor || 'rgba(196,241,66,0.2)',
                           color: extraCfg.tagTextColor || '#fcd34d',
-                          borderColor: extraCfg.tagBorderColor || 'rgba(245, 158, 11, 0.4)'
+                          borderColor: extraCfg.tagBorderColor || 'rgba(196,241,66,0.45)'
                         }}
                         className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black mb-4 uppercase tracking-wider border shadow-xs backdrop-blur-md"
                       >
-                        <Sparkles size={13} className="text-amber-400" />
+                        <Sparkles size={13} className="text-teal-400" />
                         {banner.tag}
                       </span>
                     )}
@@ -320,7 +320,7 @@ export default function HomePage() {
                           backgroundColor: extraCfg.ctaBgColor,
                           color: extraCfg.ctaTextColor || '#0f172a'
                         } : undefined}
-                        className="inline-flex items-center justify-center gap-2 px-6 sm:px-7 py-3 text-xs sm:text-sm font-black rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-[0_4px_20px_rgba(245,158,11,0.4)] transition-all active:scale-95"
+                        className="inline-flex items-center justify-center gap-2 px-6 sm:px-7 py-3 text-xs sm:text-sm font-black rounded-2xl bg-teal-400 hover:bg-teal-300 text-slate-950 shadow-[0_4px_20px_rgba(196,241,66,0.45)] transition-all active:scale-95"
                       >
                         <span>{banner.ctaText || 'Explorar Catálogo'}</span>
                         <ArrowRight size={16} />
@@ -331,7 +331,7 @@ export default function HomePage() {
                           to={extraCfg.secondaryBtnUrl || "/diseñador/tarjetas-estandar"}
                           className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs sm:text-sm font-bold rounded-2xl backdrop-blur-md transition-all"
                         >
-                          <PenTool size={15} className="text-amber-300" />
+                          <PenTool size={15} className="text-teal-300" />
                           <span>{extraCfg.secondaryBtnText || 'Diseñar Online'}</span>
                         </Link>
                       )}
@@ -367,7 +367,7 @@ export default function HomePage() {
                       onClick={() => setActiveBannerIdx(i)}
                       aria-label={`Banner ${i + 1}`}
                       className={`h-2 rounded-full transition-all duration-300 ${
-                        i === activeBannerIdx ? 'w-8 bg-amber-400' : 'w-2 bg-white/40 hover:bg-white/80'
+                        i === activeBannerIdx ? 'w-8 bg-teal-400' : 'w-2 bg-white/40 hover:bg-white/80'
                       }`}
                     />
                   ))}
@@ -378,17 +378,17 @@ export default function HomePage() {
 
           {/* Quick Express Calculator Widget (4 cols) */}
           <div className="lg:col-span-4 bg-gradient-to-b from-white to-stone-50 rounded-3xl sm:rounded-[36px] p-6 sm:p-7 border border-stone-200/90 shadow-[0_10px_30px_rgba(0,0,0,0.04)] flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
             
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black">
+                  <div className="w-8 h-8 rounded-xl bg-teal-500 text-slate-950 flex items-center justify-center font-black">
                     <Calculator size={18} />
                   </div>
                   <div>
                     <h3 className="font-extrabold text-base text-slate-950 leading-none">Cotizador Express</h3>
-                    <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Cálculo Instantáneo</span>
+                    <span className="text-[10px] text-teal-700 font-bold uppercase tracking-wider">Cálculo Instantáneo</span>
                   </div>
                 </div>
                 <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200">
@@ -404,7 +404,7 @@ export default function HomePage() {
                 <select
                   value={quickProduct}
                   onChange={(e) => setQuickProduct(e.target.value as any)}
-                  className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  className="w-full bg-white border border-stone-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-teal-500"
                 >
                   <option value="tarjetas">Tarjetas de Presentación (9x5 cm)</option>
                   <option value="volantes">Volantes Publicitarios 1/4 Carta</option>
@@ -428,7 +428,7 @@ export default function HomePage() {
                       onClick={() => setQuickQty(qty)}
                       className={`py-1.5 px-1 rounded-xl text-center text-xs font-black transition-all ${
                         quickQty === qty
-                          ? 'bg-amber-500 text-slate-950 shadow-xs border border-amber-400'
+                          ? 'bg-teal-500 text-slate-950 shadow-xs border border-teal-400'
                           : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
                       }`}
                     >
@@ -456,7 +456,7 @@ export default function HomePage() {
                       onClick={() => setQuickFinish(f.id as any)}
                       className={`p-2 rounded-xl text-left text-xs font-bold transition-all border ${
                         quickFinish === f.id
-                          ? 'bg-amber-50 border-amber-400 text-amber-950'
+                          ? 'bg-teal-50 border-teal-400 text-teal-950'
                           : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-50'
                       }`}
                     >
@@ -488,7 +488,7 @@ export default function HomePage() {
                 className="w-full py-3 px-4 bg-slate-950 hover:bg-slate-900 text-white rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-950/20 active:scale-98"
               >
                 <span>Configurar Producto Completo</span>
-                <ArrowRight size={15} className="text-amber-400" />
+                <ArrowRight size={15} className="text-teal-400" />
               </button>
             </div>
           </div>
@@ -499,7 +499,7 @@ export default function HomePage() {
         <section>
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-6">
             <div>
-              <span className="text-[11px] font-extrabold uppercase tracking-widest text-amber-700 block mb-1">
+              <span className="text-[11px] font-extrabold uppercase tracking-widest text-teal-700 block mb-1">
                 Catálogo W2P Especializado
               </span>
               <h2 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
@@ -508,7 +508,7 @@ export default function HomePage() {
             </div>
             <Link 
               to="/categoria/todas" 
-              className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 px-3.5 py-1.5 rounded-full border border-amber-200/80 transition-all w-fit"
+              className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5 bg-teal-50 hover:bg-teal-100 px-3.5 py-1.5 rounded-full border border-teal-200/80 transition-all w-fit"
             >
               <span>Explorar todas ({categories.length || 6})</span>
               <ChevronRight size={14} />
@@ -524,12 +524,12 @@ export default function HomePage() {
                 <Link 
                   key={cat.id || i} 
                   to={`/categoria/${cat.slug}`} 
-                  className="group bg-white p-4 sm:p-5 rounded-3xl border border-stone-200/90 hover:border-amber-400/80 shadow-[0_4px_16px_rgba(0,0,0,0.02)] hover:shadow-[0_12px_24px_-6px_rgba(245,158,11,0.15)] transition-all flex flex-col items-center text-center"
+                  className="group bg-white p-4 sm:p-5 rounded-3xl border border-stone-200/90 hover:border-teal-400/80 shadow-[0_4px_16px_rgba(0,0,0,0.02)] hover:shadow-[0_12px_24px_-6px_rgba(196,241,66,0.15)] transition-all flex flex-col items-center text-center"
                 >
                   <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110 border bg-gradient-to-br ${colorClass}`}>
                     <Icon size={26} strokeWidth={2.2} />
                   </div>
-                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-amber-700 transition-colors leading-tight">
+                  <span className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-teal-700 transition-colors leading-tight">
                     {cat.name}
                   </span>
                   <span className="text-[10px] text-stone-400 font-bold mt-1">
@@ -542,13 +542,13 @@ export default function HomePage() {
         </section>
 
         {/* 3. MUNDO DE ACABADOS PRÉMIUM, SUSTRATOS & PAPELES (TEXTURAS TÁCTILES) */}
-        <section className="bg-gradient-to-br from-slate-950 via-stone-900 to-slate-950 rounded-[36px] p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-amber-500/30">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <section className="bg-gradient-to-br from-slate-950 via-stone-900 to-slate-950 rounded-[36px] p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-teal-500/30">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="relative z-10 mb-8 max-w-2xl">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-black border border-amber-500/30 uppercase tracking-wider mb-3">
-              <Sparkles size={13} className="text-amber-400" />
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-500/20 text-teal-300 text-xs font-black border border-teal-500/30 uppercase tracking-wider mb-3">
+              <Sparkles size={13} className="text-teal-400" />
               Artesanía Litográfica de Alta Gama
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
@@ -565,8 +565,8 @@ export default function HomePage() {
                 title: 'Estampado Foil Oro & Plata',
                 tag: 'Metalizado Radiante',
                 desc: 'Transferencia térmica de película metalizada que aporta reflejos de lujo inigualables en logos y títulos.',
-                border: 'hover:border-amber-400',
-                badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                border: 'hover:border-teal-400',
+                badgeBg: 'bg-teal-500/20 text-teal-300 border-teal-500/30'
               },
               {
                 title: 'Brillo UV Sectorizado',
@@ -600,8 +600,8 @@ export default function HomePage() {
                 title: 'Encuadernación PUR & Tapa Dura',
                 tag: 'Alta Resistencia Editorial',
                 desc: 'Costura al hilo con adhesivo de poliuretano reactivo indeformable y cartón prensado de 2.5 mm forrado.',
-                border: 'hover:border-amber-300',
-                badgeBg: 'bg-amber-400/20 text-amber-200 border-amber-400/30'
+                border: 'hover:border-teal-300',
+                badgeBg: 'bg-teal-400/20 text-teal-200 border-teal-400/30'
               }
             ].map((finish, i) => (
               <div
@@ -612,9 +612,9 @@ export default function HomePage() {
                   <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${finish.badgeBg}`}>
                     {finish.tag}
                   </span>
-                  <CheckCircle2 size={16} className="text-amber-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                  <CheckCircle2 size={16} className="text-teal-400 opacity-60 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <h3 className="font-extrabold text-white text-base mb-1.5 group-hover:text-amber-300 transition-colors">
+                <h3 className="font-extrabold text-white text-base mb-1.5 group-hover:text-teal-300 transition-colors">
                   {finish.title}
                 </h3>
                 <p className="text-xs text-stone-400 leading-relaxed font-medium">
@@ -632,7 +632,7 @@ export default function HomePage() {
               href="https://wa.me/573110000000?text=Hola,%20quisiera%20solicitar%20un%20muestrario%20de%20papeles%20y%20acabados"
               target="_blank"
               rel="noreferrer"
-              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-md shrink-0"
+              className="px-5 py-2.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs rounded-xl transition-all shadow-md shrink-0"
             >
               Pedir Muestrario de Papeles
             </a>
@@ -644,7 +644,7 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-6">
             <div>
               <div className="flex items-center gap-2">
-                <Star size={20} className="text-amber-500 fill-amber-500" />
+                <Star size={20} className="text-orange-500 fill-orange-500" />
                 <h2 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
                   Productos Más Solicitados
                 </h2>
@@ -655,7 +655,7 @@ export default function HomePage() {
             </div>
             <Link 
               to="/categoria/todas" 
-              className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 px-3.5 py-1.5 rounded-full border border-amber-200/80 transition-all w-fit"
+              className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1.5 bg-teal-50 hover:bg-teal-100 px-3.5 py-1.5 rounded-full border border-teal-200/80 transition-all w-fit"
             >
               <span>Ver todos ({products.length})</span>
               <ChevronRight size={14} />
@@ -670,12 +670,12 @@ export default function HomePage() {
         </section>
 
         {/* 5. EDITORIAL SHOWCASE (LIBROS, REVISTAS & AGENDAS) */}
-        <section className="bg-gradient-to-br from-stone-900 via-slate-900 to-amber-950 rounded-[36px] p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-amber-500/30">
-          <div className="absolute right-0 bottom-0 translate-x-12 translate-y-12 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        <section className="bg-gradient-to-br from-stone-900 via-slate-900 to-teal-950 rounded-[36px] p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-teal-500/30">
+          <div className="absolute right-0 bottom-0 translate-x-12 translate-y-12 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex flex-col lg:flex-row items-center justify-between gap-8 relative z-10">
             <div className="max-w-xl space-y-3">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 text-xs font-black border border-amber-400/30 uppercase tracking-wider">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-400/20 text-teal-300 text-xs font-black border border-teal-400/30 uppercase tracking-wider">
                 <BookOpen size={13} />
                 Calculadora Editorial Especializada
               </span>
@@ -685,7 +685,7 @@ export default function HomePage() {
               <p className="text-stone-300 text-xs sm:text-sm leading-relaxed font-medium">
                 Calcula instantáneamente el calibre y grosor exacto del lomo, encuadernación cosida al hilo o rústica PUR, papel ecológico o propalcote, y acabados especiales como Reserva UV y Foil Oro.
               </p>
-              <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-amber-200 font-medium">
+              <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-teal-200 font-medium">
                 <span className="flex items-center gap-1"><Ruler size={13} /> Cálculo Milimétrico de Lomo</span>
                 <span>•</span>
                 <span>Encuadernación PUR & Tapa Dura</span>
@@ -697,7 +697,7 @@ export default function HomePage() {
             <div className="shrink-0 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
               <Link
                 to="/cotizador-libros"
-                className="w-full sm:w-auto px-7 py-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-98 text-slate-950 font-black text-sm rounded-2xl transition-all shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2.5"
+                className="w-full sm:w-auto px-7 py-4 bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-300 hover:to-teal-400 active:scale-98 text-slate-950 font-black text-sm rounded-2xl transition-all shadow-xl shadow-teal-500/25 flex items-center justify-center gap-2.5"
               >
                 <span>Cotizar Libros & Revistas Ahora</span>
                 <ArrowRight size={16} />
@@ -734,7 +734,7 @@ export default function HomePage() {
         </section>
 
         {/* 7. CANVAS ONLINE DESIGNER SHOWCASE */}
-        <section className="bg-gradient-to-br from-stone-900 via-slate-900 to-stone-900 rounded-[36px] p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-amber-500/20">
+        <section className="bg-gradient-to-br from-stone-900 via-slate-900 to-stone-900 rounded-[36px] p-6 sm:p-10 text-white shadow-2xl relative overflow-hidden border border-teal-500/20">
           <div className="absolute right-0 top-0 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 relative z-10">
@@ -750,7 +750,7 @@ export default function HomePage() {
             </div>
             <Link
               to="/diseñador/tarjetas-estandar"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-2xl transition-all shadow-lg shadow-amber-500/20 shrink-0"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-black rounded-2xl transition-all shadow-lg shadow-teal-500/20 shrink-0"
             >
               <span>Abrir Lienzo en Blanco</span>
               <ArrowRight size={15} />
@@ -764,7 +764,7 @@ export default function HomePage() {
                 type: 'Tarjeta de Presentación (90x50 mm)',
                 tag: 'Minimal',
                 slug: 'tarjetas-estandar',
-                color: 'from-amber-500/20 to-stone-800/80',
+                color: 'from-teal-500/20 to-stone-800/80',
                 preview: 'Fondo marfil cálido, tipografía limpia, elegante división tipográfica.',
               },
               {
@@ -780,7 +780,7 @@ export default function HomePage() {
                 type: 'Tarjeta Prémium (90x50 mm)',
                 tag: 'De Lujo',
                 slug: 'tarjetas-estandar',
-                color: 'from-amber-600/30 to-amber-950/80',
+                color: 'from-teal-600/30 to-teal-950/80',
                 preview: 'Fondo negro profundo con acentos y divisores dorados reflectivos.',
               },
               {
@@ -794,21 +794,21 @@ export default function HomePage() {
             ].map((tmpl, idx) => (
               <div
                 key={idx}
-                className="bg-slate-800/80 border border-slate-700/80 hover:border-amber-400 rounded-3xl p-4.5 flex flex-col justify-between transition-all group hover:-translate-y-1 shadow-lg"
+                className="bg-slate-800/80 border border-slate-700/80 hover:border-teal-400 rounded-3xl p-4.5 flex flex-col justify-between transition-all group hover:-translate-y-1 shadow-lg"
               >
                 <div>
                   <div className={`h-28 rounded-2xl bg-gradient-to-br ${tmpl.color} border border-slate-700/60 p-3.5 flex flex-col justify-between mb-3 shadow-inner`}>
                     <div className="flex justify-between items-start">
-                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-950/80 text-amber-300 border border-amber-500/30">
+                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-slate-950/80 text-teal-300 border border-teal-500/30">
                         {tmpl.tag}
                       </span>
-                      <ShieldCheck size={16} className="text-amber-400" />
+                      <ShieldCheck size={16} className="text-teal-400" />
                     </div>
                     <p className="text-[11px] text-stone-200 line-clamp-2 leading-relaxed font-medium">
                       {tmpl.preview}
                     </p>
                   </div>
-                  <h3 className="font-extrabold text-sm text-white group-hover:text-amber-300 transition-colors">
+                  <h3 className="font-extrabold text-sm text-white group-hover:text-teal-300 transition-colors">
                     {tmpl.title}
                   </h3>
                   <p className="text-[11px] text-stone-400 mt-0.5">{tmpl.type}</p>
@@ -816,7 +816,7 @@ export default function HomePage() {
 
                 <Link
                   to={`/diseñador/${tmpl.slug}`}
-                  className="mt-4 w-full py-2.5 px-3 bg-slate-700 hover:bg-amber-500 hover:text-slate-950 text-stone-200 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                  className="mt-4 w-full py-2.5 px-3 bg-slate-700 hover:bg-teal-500 hover:text-slate-950 text-stone-200 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all"
                 >
                   <PenTool size={13} />
                   <span>Personalizar Diseño</span>
@@ -829,7 +829,7 @@ export default function HomePage() {
         {/* 8. HUMAN SOCIAL PROOF & TESTIMONIALS */}
         <section className="bg-white rounded-[36px] p-6 sm:p-10 border border-stone-200/90 shadow-[0_4px_20px_rgba(0,0,0,0.02)]">
           <div className="text-center max-w-2xl mx-auto mb-10">
-            <span className="text-[11px] font-extrabold uppercase tracking-widest text-amber-700 block mb-1">
+            <span className="text-[11px] font-extrabold uppercase tracking-widest text-teal-700 block mb-1">
               Confianza Litográfica Comprobada
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
@@ -868,7 +868,7 @@ export default function HomePage() {
                 <div>
                   <div className="flex items-center gap-1 mb-3">
                     {[...Array(t.stars)].map((_, i) => (
-                      <Star key={i} size={15} className="fill-amber-400 text-amber-400" />
+                      <Star key={i} size={15} className="fill-orange-400 text-orange-400" />
                     ))}
                   </div>
                   <p className="text-xs sm:text-sm text-stone-700 font-medium leading-relaxed italic mb-4">
@@ -880,7 +880,7 @@ export default function HomePage() {
                     <h3 className="font-extrabold text-xs text-slate-900">{t.author}</h3>
                     <p className="text-[11px] text-stone-400 font-medium">{t.role}</p>
                   </div>
-                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100/60 px-2 py-0.5 rounded-md">
+                  <span className="text-[10px] font-bold text-teal-700 bg-teal-100/60 px-2 py-0.5 rounded-md">
                     {t.city}
                   </span>
                 </div>
@@ -892,7 +892,7 @@ export default function HomePage() {
         {/* 9. BENEFICIOS Y GARANTÍAS W2P */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-3xl border border-stone-200/90 flex items-start gap-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className="p-3 bg-amber-50 text-amber-700 rounded-2xl shrink-0 border border-amber-100">
+            <div className="p-3 bg-teal-50 text-teal-700 rounded-2xl shrink-0 border border-teal-100">
               <ShieldCheck size={22} />
             </div>
             <div>
@@ -952,7 +952,7 @@ export default function HomePage() {
                   className="absolute inset-0 w-full h-full object-cover opacity-20 mix-blend-luminosity"
                 />
               ) : null}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+              <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
               <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
               
               <div className="relative z-10 max-w-2xl text-center md:text-left">
@@ -977,7 +977,7 @@ export default function HomePage() {
                     href={partnerBanner.linkUrl || partnerBanner.link || 'https://www.atrioagencia.com'} 
                     target={partnerBanner.linkUrl?.startsWith('http') ? '_blank' : '_self'} 
                     rel="noreferrer"
-                    className="px-6 py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-sm transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20 active:scale-95"
+                    className="px-6 py-3.5 bg-teal-500 hover:bg-teal-400 text-slate-950 rounded-2xl font-black text-sm transition-all flex items-center gap-2 shadow-lg shadow-teal-500/20 active:scale-95"
                   >
                     <span>{partnerBanner.ctaText || 'Visitar Sitio'}</span>
                     <ArrowRight size={16} />
@@ -1001,7 +1001,7 @@ export default function HomePage() {
                       />
                     ) : (
                       <div className="text-center">
-                        <span className="text-white text-sm font-black uppercase tracking-widest block mb-1 group-hover:text-amber-300 transition-colors">
+                        <span className="text-white text-sm font-black uppercase tracking-widest block mb-1 group-hover:text-teal-300 transition-colors">
                           {partnerBanner.title?.slice(0, 20) || 'ALIADO'}
                         </span>
                         <span className="text-indigo-300/80 text-xs block font-medium">Alianza Estratégica</span>

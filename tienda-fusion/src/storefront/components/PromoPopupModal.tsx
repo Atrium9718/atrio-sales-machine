@@ -176,7 +176,7 @@ export default function PromoPopupModal() {
                 {activePopup.tag || 'Oferta Exclusiva Web-To-Print'}
               </span>
               {pConfig.discountValue && (
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider">
+                <span className="px-2.5 py-0.5 rounded-full bg-teal-400 text-slate-950 text-[10px] font-black uppercase tracking-wider">
                   {pConfig.discountValue}
                 </span>
               )}

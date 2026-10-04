@@ -191,7 +191,7 @@ export default function AiImageGenerator({
       <div className="border-b border-slate-800 pb-3 space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-gradient-to-br from-teal-500 to-indigo-600 text-white shadow-sm">
+            <div className="p-1.5 rounded-lg bg-gradient-to-br from-teal-500 to-indigo-600 text-neutral-950 shadow-sm">
               <Sparkles size={16} />
             </div>
             <div>
@@ -202,13 +202,13 @@ export default function AiImageGenerator({
         </div>
 
         {/* Pricing notice badge: 20.000 COP per design */}
-        <div className="bg-gradient-to-r from-amber-500/15 via-teal-500/15 to-indigo-500/15 border border-amber-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2">
+        <div className="bg-gradient-to-r from-teal-500/15 via-teal-500/15 to-indigo-500/15 border border-teal-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+            <div className="w-6 h-6 rounded-full bg-teal-500/20 text-teal-300 flex items-center justify-center shrink-0">
               <Tag size={13} />
             </div>
             <div>
-              <span className="text-[11px] font-black text-amber-300 block leading-tight">
+              <span className="text-[11px] font-black text-teal-300 block leading-tight">
                 Tarifa de Diseño IA: $20.000 COP
               </span>
               <span className="text-[10px] text-slate-300 leading-tight">
@@ -217,7 +217,7 @@ export default function AiImageGenerator({
             </div>
           </div>
           {aiDesignsUsedCount > 0 && (
-            <span className="bg-teal-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 shadow-sm">
+            <span className="bg-teal-500 text-neutral-950 text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 shadow-sm">
               {aiDesignsUsedCount} en diseño
             </span>
           )}
@@ -267,7 +267,7 @@ export default function AiImageGenerator({
               onClick={() => setSelectedStyle(st.id)}
               className={`p-2 rounded-xl text-left border transition-all ${
                 selectedStyle === st.id
-                  ? 'bg-teal-500/20 border-teal-500 text-white shadow-xs'
+                  ? 'bg-teal-500/20 border-teal-500 text-neutral-950 shadow-xs'
                   : 'bg-slate-800/60 border-slate-700/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
@@ -295,7 +295,7 @@ export default function AiImageGenerator({
               onClick={() => setSelectedAspect(ar.id)}
               className={`py-1.5 px-2 rounded-xl text-center border text-[11px] font-bold transition-all ${
                 selectedAspect === ar.id
-                  ? 'bg-teal-500 text-white border-teal-400 shadow-sm'
+                  ? 'bg-teal-500 text-neutral-950 border-teal-400 shadow-sm'
                   : 'bg-slate-800/60 border-slate-700/80 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
               }`}
             >
@@ -319,7 +319,7 @@ export default function AiImageGenerator({
                 onClick={() => setActiveTabPreset(idx)}
                 className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-colors ${
                   activeTabPreset === idx
-                    ? 'bg-teal-500 text-white shadow-xs'
+                    ? 'bg-teal-500 text-neutral-950 shadow-xs'
                     : 'text-slate-400 hover:text-slate-200 bg-slate-800/80'
                 }`}
               >
@@ -368,7 +368,7 @@ export default function AiImageGenerator({
         type="button"
         onClick={() => handleGenerate()}
         disabled={isGenerating}
-        className="w-full py-3.5 bg-gradient-to-r from-teal-500 via-emerald-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-60 cursor-pointer"
+        className="w-full py-3.5 bg-gradient-to-r from-teal-500 via-emerald-500 to-indigo-600 hover:from-teal-600 hover:to-indigo-700 text-neutral-950 font-extrabold text-xs rounded-xl shadow-lg shadow-teal-500/20 flex items-center justify-center gap-2 transition-all active:scale-98 disabled:opacity-60 cursor-pointer"
       >
         {isGenerating ? (
           <>
@@ -426,7 +426,7 @@ export default function AiImageGenerator({
             <button
               type="button"
               onClick={() => handleInsert(currentImage, false)}
-              className="py-2.5 px-3 bg-teal-500 hover:bg-teal-400 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-teal-500/20 active:scale-95"
+              className="py-2.5 px-3 bg-teal-500 hover:bg-teal-400 text-neutral-950 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-teal-500/20 active:scale-95"
             >
               <Plus size={14} />
               <span>Insertar al Lienzo</span>
@@ -486,7 +486,7 @@ export default function AiImageGenerator({
                       e.stopPropagation();
                       handleInsert(item.url, false);
                     }}
-                    className="p-1 bg-teal-500 text-white rounded-lg text-[9px] font-bold w-full text-center"
+                    className="p-1 bg-teal-500 text-neutral-950 rounded-lg text-[9px] font-bold w-full text-center"
                   >
                     Insertar
                   </button>

@@ -384,7 +384,7 @@ export default function ProductFinishSimulator3D({
       <div className="relative z-10 border-b border-slate-800/80 pb-5 mb-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-teal-500 to-indigo-600 text-white shadow-lg shadow-teal-500/20">
+            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-teal-500 to-indigo-600 text-neutral-950 shadow-lg shadow-teal-500/20">
               <ModelIcon size={22} />
             </div>
             <div>
@@ -439,7 +439,7 @@ export default function ProductFinishSimulator3D({
                     onClick={() => handleModelChange(key)}
                     className={`p-2.5 rounded-2xl text-left border transition-all flex flex-col justify-between ${
                       isSelected
-                        ? 'bg-gradient-to-br from-teal-500/20 to-indigo-500/20 border-teal-400 text-white shadow-lg shadow-teal-500/20 ring-1 ring-teal-400'
+                        ? 'bg-gradient-to-br from-teal-500/20 to-indigo-500/20 border-teal-400 text-neutral-950 shadow-lg shadow-teal-500/20 ring-1 ring-teal-400'
                         : 'bg-slate-800/60 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
                     }`}
                   >
@@ -815,7 +815,7 @@ export default function ProductFinishSimulator3D({
           {/* CASO 5: STICKER / ETIQUETA ADHESIVA CON LINER */}
           {/* ===================================================================== */}
           {activeModel === 'sticker' && (
-            <div className="relative p-3 bg-amber-50/20 border border-amber-200/30 rounded-xl">
+            <div className="relative p-3 bg-teal-50/20 border border-teal-200/30 rounded-xl">
               {/* Papel Liner siliconado de respaldo */}
               <div className="w-[270px] sm:w-[310px] aspect-[8/5] bg-white rounded-lg shadow-2xl p-2 relative overflow-hidden border border-slate-300">
                 <div className="w-full h-full border border-dashed border-teal-500 rounded-md flex items-center justify-center p-3 relative bg-slate-900 text-white">
@@ -823,7 +823,7 @@ export default function ProductFinishSimulator3D({
                   {renderFinishOverlay(activeFinish, rotateAngle, lightIntensity)}
                 </div>
                 {/* Desprendimiento de medio corte (Kiss-cut peel effect) */}
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-amber-100 border-l border-b border-amber-300 transform rotate-45 shadow-xs"></div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-teal-100 border-l border-b border-teal-300 transform rotate-45 shadow-xs"></div>
               </div>
             </div>
           )}
@@ -930,7 +930,7 @@ export default function ProductFinishSimulator3D({
             onClick={() => selectFinish('sin_plastificar')}
             className={`p-3 rounded-2xl text-left border transition-all ${
               activeFinish === 'sin_plastificar'
-                ? 'bg-teal-500/20 border-teal-400 text-white ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
+                ? 'bg-teal-500/20 border-teal-400 text-neutral-950 ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
                 : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
             }`}
           >
@@ -947,7 +947,7 @@ export default function ProductFinishSimulator3D({
             onClick={() => selectFinish('mate')}
             className={`p-3 rounded-2xl text-left border transition-all ${
               activeFinish === 'mate'
-                ? 'bg-teal-500/20 border-teal-400 text-white ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
+                ? 'bg-teal-500/20 border-teal-400 text-neutral-950 ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
                 : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
             }`}
           >
@@ -964,7 +964,7 @@ export default function ProductFinishSimulator3D({
             onClick={() => selectFinish('brillo')}
             className={`p-3 rounded-2xl text-left border transition-all ${
               activeFinish === 'brillo'
-                ? 'bg-teal-500/20 border-teal-400 text-white ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
+                ? 'bg-teal-500/20 border-teal-400 text-neutral-950 ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
                 : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
             }`}
           >
@@ -981,7 +981,7 @@ export default function ProductFinishSimulator3D({
             onClick={() => selectFinish('uv_sectorizado')}
             className={`p-3 rounded-2xl text-left border transition-all ${
               activeFinish === 'uv_sectorizado'
-                ? 'bg-teal-500/20 border-teal-400 text-white ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
+                ? 'bg-teal-500/20 border-teal-400 text-neutral-950 ring-1 ring-teal-400 shadow-md shadow-teal-500/20'
                 : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700'
             }`}
           >
@@ -998,7 +998,7 @@ export default function ProductFinishSimulator3D({
         {/* BARRA DE AJUSTE DE LUZ LUMÍNICA */}
         <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-400">
           <div className="flex items-center gap-2.5">
-            <Sun size={15} className="text-amber-400 shrink-0" />
+            <Sun size={15} className="text-teal-400 shrink-0" />
             <span>Foco Lumínico de Taller:</span>
             <input 
               type="range" 

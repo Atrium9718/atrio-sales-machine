@@ -325,7 +325,7 @@ export default function OrderTrackingPage() {
               {orderData.order.trackingNumber && (
                 <div className="bg-gradient-to-r from-teal-50 to-emerald-50 p-5 rounded-2xl border border-teal-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-teal-500 text-white flex items-center justify-center shadow-xs">
+                    <div className="w-10 h-10 rounded-xl bg-teal-500 text-neutral-950 flex items-center justify-center shadow-xs">
                       <Truck size={20} />
                     </div>
                     <div>

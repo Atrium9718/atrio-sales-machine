@@ -12,9 +12,9 @@ export default function HeroBannerBlock({ block }: Props) {
   const isTealGradient = block.bgStyle === 'gradient-teal';
 
   let bgClasses = 'bg-stone-950 text-white';
-  if (block.bgStyle === 'white') bgClasses = 'bg-[#faf8f5] text-slate-900 border-b border-stone-200';
+  if (block.bgStyle === 'white') bgClasses = 'bg-white text-slate-900 border-b border-stone-200';
   if (block.bgStyle === 'slate-50') bgClasses = 'bg-stone-100 text-slate-900 border-b border-stone-200';
-  if (block.bgStyle === 'gradient-dark') bgClasses = 'bg-gradient-to-br from-stone-950 via-slate-900 to-amber-950 text-white';
+  if (block.bgStyle === 'gradient-dark') bgClasses = 'bg-gradient-to-br from-stone-950 via-slate-900 to-teal-950 text-white';
   if (isTealGradient) bgClasses = 'bg-gradient-to-br from-teal-950 via-slate-900 to-stone-950 text-white';
 
   const heightClasses = {
@@ -44,15 +44,15 @@ export default function HeroBannerBlock({ block }: Props) {
       )}
 
       {/* Decorative ambient gradient */}
-      <div className="absolute -top-24 -right-24 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-24 -right-24 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className={`max-w-3xl flex flex-col ${alignClasses}`}>
           {/* Badge */}
           {block.badgeText && (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-black tracking-wide uppercase mb-5 backdrop-blur-md">
-              <Sparkles size={14} className="text-amber-400" />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300 text-xs font-black tracking-wide uppercase mb-5 backdrop-blur-md">
+              <Sparkles size={14} className="text-teal-400" />
               <span>{block.badgeText}</span>
             </div>
           )}
@@ -79,7 +79,7 @@ export default function HeroBannerBlock({ block }: Props) {
                   href={block.ctaLink}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm transition-all shadow-lg hover:shadow-amber-500/25 flex items-center gap-2 hover:translate-y-[-1px]"
+                  className="px-6 py-3.5 bg-teal-400 hover:bg-teal-300 text-slate-950 font-black rounded-2xl text-sm transition-all shadow-lg hover:shadow-teal-500/25 flex items-center gap-2 hover:translate-y-[-1px]"
                 >
                   <span>{block.ctaText}</span>
                   <ArrowRight size={16} />
@@ -87,7 +87,7 @@ export default function HeroBannerBlock({ block }: Props) {
               ) : (
                 <Link
                   to={block.ctaLink}
-                  className="px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm transition-all shadow-lg hover:shadow-amber-500/25 flex items-center gap-2 hover:translate-y-[-1px]"
+                  className="px-6 py-3.5 bg-teal-400 hover:bg-teal-300 text-slate-950 font-black rounded-2xl text-sm transition-all shadow-lg hover:shadow-teal-500/25 flex items-center gap-2 hover:translate-y-[-1px]"
                 >
                   <span>{block.ctaText}</span>
                   <ArrowRight size={16} />
@@ -120,15 +120,15 @@ export default function HeroBannerBlock({ block }: Props) {
           {block.showTrustBadges && (
             <div className="mt-10 pt-6 border-t border-white/10 flex flex-wrap items-center gap-6 text-xs text-stone-300 font-bold">
               <div className="flex items-center gap-2">
-                <ShieldCheck size={16} className="text-amber-400" />
+                <ShieldCheck size={16} className="text-teal-400" />
                 <span>300 DPI CTP Garantizado</span>
               </div>
               <div className="flex items-center gap-2">
-                <Truck size={16} className="text-amber-400" />
+                <Truck size={16} className="text-teal-400" />
                 <span>Despachos a Toda Colombia</span>
               </div>
               <div className="flex items-center gap-2">
-                <Clock size={16} className="text-amber-400" />
+                <Clock size={16} className="text-teal-400" />
                 <span>Entrega Rápida 24/48 Horas</span>
               </div>
             </div>

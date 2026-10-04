@@ -48,7 +48,7 @@ export default function TestimonialsBlock({ block }: Props) {
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-1">
                     {[...Array(item.rating || 5)].map((_, i) => (
-                      <Star key={i} size={16} className="fill-amber-400 text-amber-400" />
+                      <Star key={i} size={16} className="fill-orange-400 text-orange-400" />
                     ))}
                   </div>
                   <Quote size={20} className="text-teal-500/40" />

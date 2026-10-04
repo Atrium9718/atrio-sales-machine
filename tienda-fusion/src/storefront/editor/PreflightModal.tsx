@@ -144,7 +144,7 @@ export default function PreflightModal({
                 <div className="flex items-center gap-4">
                   <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-extrabold text-xl ${
                     (report?.score || 0) >= 90 ? 'bg-emerald-100 text-emerald-700' :
-                    (report?.score || 0) >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                    (report?.score || 0) >= 70 ? 'bg-teal-100 text-teal-700' : 'bg-red-100 text-red-700'
                   }`}>
                     {report?.score || 0}%
                   </div>
@@ -183,12 +183,12 @@ export default function PreflightModal({
                       key={issue.id}
                       className={`p-4 rounded-2xl border flex items-start gap-3.5 transition-all ${
                         issue.type === 'error' ? 'bg-red-50/60 border-red-200/80 text-red-900' :
-                        issue.type === 'warning' ? 'bg-amber-50/60 border-amber-200/80 text-amber-900' :
+                        issue.type === 'warning' ? 'bg-teal-50/60 border-teal-200/80 text-teal-900' :
                         'bg-blue-50/60 border-blue-200/80 text-blue-900'
                       }`}
                     >
                       {issue.type === 'error' ? <XCircle size={20} className="text-red-500 shrink-0 mt-0.5" /> :
-                       issue.type === 'warning' ? <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" /> :
+                       issue.type === 'warning' ? <AlertTriangle size={20} className="text-teal-500 shrink-0 mt-0.5" /> :
                        <CheckCircle2 size={20} className="text-blue-500 shrink-0 mt-0.5" />}
                       
                       <div className="flex-1 text-xs">
@@ -301,7 +301,7 @@ export default function PreflightModal({
             type="button"
             disabled={isExporting}
             onClick={handleDownloadPdf}
-            className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-transform active:scale-95 disabled:opacity-50"
+            className="bg-teal-500 hover:bg-teal-600 text-neutral-950 px-6 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition-transform active:scale-95 disabled:opacity-50"
           >
             {isExporting ? <RefreshCw size={15} className="animate-spin" /> : <Download size={15} />}
             <span>Exportar PDF/X Listo para Imprenta</span>

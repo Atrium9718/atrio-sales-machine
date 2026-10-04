@@ -264,7 +264,7 @@ export default function CategoryPage() {
             {categoryBanner.linkUrl && (
               <Link
                 to={categoryBanner.linkUrl}
-                className="relative z-10 px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition-transform active:scale-95 shrink-0"
+                className="relative z-10 px-6 py-2.5 bg-teal-400 hover:bg-teal-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition-transform active:scale-95 shrink-0"
               >
                 {categoryBanner.ctaText || 'Ver Oferta'}
               </Link>

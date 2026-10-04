@@ -13,7 +13,7 @@ export default function TechSpecsPrepressBlock({ block }: Props) {
       case 'CRITICO':
         return 'bg-rose-50 text-rose-700 border-rose-200';
       case 'RECOMENDADO':
-        return 'bg-amber-50 text-amber-800 border-amber-200';
+        return 'bg-teal-50 text-teal-800 border-teal-200';
       default:
         return 'bg-teal-50 text-teal-700 border-teal-200';
     }
@@ -24,7 +24,7 @@ export default function TechSpecsPrepressBlock({ block }: Props) {
       case 'CRITICO':
         return <AlertCircle size={14} className="text-rose-600" />;
       case 'RECOMENDADO':
-        return <Info size={14} className="text-amber-600" />;
+        return <Info size={14} className="text-teal-600" />;
       default:
         return <CheckCircle size={14} className="text-teal-600" />;
     }

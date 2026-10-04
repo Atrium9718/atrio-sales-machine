@@ -108,7 +108,7 @@ export default function GoogleDrivePickerModal({
     }
     if (file.mimeType.includes('zip') || file.name.endsWith('.zip') || file.name.endsWith('.rar')) {
       return (
-        <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-600 flex items-center justify-center">
           <FileArchive size={20} />
         </div>
       );
@@ -351,7 +351,7 @@ export default function GoogleDrivePickerModal({
                   type="button"
                   onClick={handleConfirmSelection}
                   disabled={!selectedFile}
-                  className="px-5 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-500 disabled:opacity-40 disabled:hover:bg-teal-600 text-white rounded-xl shadow-xs transition-all active:scale-95"
+                  className="px-5 py-2 text-xs font-bold bg-teal-600 hover:bg-teal-500 disabled:opacity-40 disabled:hover:bg-teal-600 text-white rounded-xl shadow-xs transition-all active:scale-95 hover:text-neutral-950"
                 >
                   Adjuntar Archivo
                 </button>

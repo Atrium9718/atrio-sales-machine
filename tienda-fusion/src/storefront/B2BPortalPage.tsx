@@ -149,7 +149,7 @@ export default function B2BPortalPage() {
                     <ShieldCheck size={13} /> Verificado B2B
                   </span>
                 ) : isPendingReview ? (
-                  <span className="bg-amber-400 text-slate-950 text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="bg-teal-400 text-slate-950 text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1">
                     <Clock size={13} /> Solicitud en revisión
                   </span>
                 ) : (
@@ -229,7 +229,7 @@ export default function B2BPortalPage() {
           </div>
 
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-md flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
               <CreditCard size={24} />
             </div>
             <div>
@@ -297,37 +297,37 @@ export default function B2BPortalPage() {
           </div>
 
           {/* GOLD */}
-          <div className="bg-white rounded-3xl p-6 border-2 border-amber-400 shadow-md flex flex-col justify-between relative overflow-hidden ring-4 ring-amber-400/20">
-            <div className="absolute top-0 right-0 bg-amber-500 text-white text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-bl-xl">
+          <div className="bg-white rounded-3xl p-6 border-2 border-teal-400 shadow-md flex flex-col justify-between relative overflow-hidden ring-4 ring-teal-400/20">
+            <div className="absolute top-0 right-0 bg-teal-500 text-neutral-950 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-bl-xl">
               MÁS POPULAR
             </div>
             <div>
-              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold mb-4">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold mb-4">
                 <Award size={20} />
               </div>
               <h3 className="text-lg font-black text-slate-900">Nivel Gold</h3>
               <p className="text-xs text-slate-500 mt-1">Para empresas de artes gráficas, litografías intermedias y distribuidores.</p>
               
               <div className="my-6">
-                <span className="text-3xl font-black text-amber-600">18% OFF</span>
+                <span className="text-3xl font-black text-teal-600">18% OFF</span>
                 <span className="text-xs text-slate-500 block mt-1">En tirajes offset y gran formato</span>
               </div>
 
               <ul className="space-y-3 text-xs text-slate-600">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-amber-500 shrink-0" />
+                  <CheckCircle2 size={15} className="text-teal-500 shrink-0" />
                   <span>Volumen mínimo: <strong>$4.000.000 / mes</strong></span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-amber-500 shrink-0" />
+                  <CheckCircle2 size={15} className="text-teal-500 shrink-0" />
                   <span>Plazo de pago: <strong>30 días</strong></span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-amber-500 shrink-0" />
+                  <CheckCircle2 size={15} className="text-teal-500 shrink-0" />
                   <span><strong>Empaque Marca Blanca</strong> para tu cliente</span>
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-amber-500 shrink-0" />
+                  <CheckCircle2 size={15} className="text-teal-500 shrink-0" />
                   <span>Cupo de crédito asignado hasta $6.000.000</span>
                 </li>
               </ul>
@@ -518,7 +518,7 @@ export default function B2BPortalPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white font-bold text-xs px-8 py-3.5 rounded-xl shadow-md transition-transform active:scale-95 flex items-center gap-2"
+                className="bg-teal-600 hover:bg-teal-500 disabled:opacity-60 text-white font-bold text-xs px-8 py-3.5 rounded-xl shadow-md transition-transform active:scale-95 flex items-center gap-2 hover:text-neutral-950"
               >
                 <UserCheck size={16} />
                 <span>{isSubmitting ? 'Enviando…' : user ? 'Enviar Solicitud de Vinculación B2B' : 'Iniciar Sesión y Enviar Solicitud'}</span>

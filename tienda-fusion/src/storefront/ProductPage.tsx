@@ -634,10 +634,10 @@ export default function ProductPage() {
                    <span>{quote ? formatCOP(quote.iva_cop) : '$0'}</span>
                  </div>
                  {b2bProfile?.isVerifiedB2B && (
-                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 my-2">
-                     <div className="flex justify-between text-xs font-bold text-amber-900">
+                   <div className="bg-teal-50 border border-teal-200 rounded-xl p-2.5 my-2">
+                     <div className="flex justify-between text-xs font-bold text-teal-900">
                        <span className="flex items-center gap-1">
-                         <Award size={13} className="text-amber-600" />
+                         <Award size={13} className="text-teal-600" />
                          <span>Beneficio {B2B_TIER_CONFIG[b2bProfile.tier]?.badge}:</span>
                        </span>
                        <span className="text-emerald-700 font-black">-{b2bProfile.discountPercentage}% OFF</span>
@@ -668,7 +668,7 @@ export default function ProductPage() {
             <div className="space-y-3">
               <Link 
                 to={`/diseñador/${product.slug}`}
-                className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-teal-500/20 text-sm"
+                className="w-full bg-teal-500 hover:bg-teal-600 text-neutral-950 font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-teal-500/20 text-sm"
               >
                 <PenTool size={18} />
                 Diseñar Online
@@ -763,7 +763,7 @@ export default function ProductPage() {
           <div className="grid grid-cols-4 gap-1.5">
             <Link 
               to={`/diseñador/${product.slug}`}
-              className="bg-teal-500 text-white p-2.5 rounded-xl font-bold shadow-xs flex flex-col items-center justify-center gap-1 hover:bg-teal-600 active:scale-95 transition-all"
+              className="bg-teal-500 text-neutral-950 p-2.5 rounded-xl font-bold shadow-xs flex flex-col items-center justify-center gap-1 hover:bg-teal-600 active:scale-95 transition-all"
             >
               <PenTool size={16} />
               <span className="text-[9px] whitespace-nowrap">Diseñar</span>

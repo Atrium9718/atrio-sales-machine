@@ -1325,12 +1325,12 @@ export default function CanvasEditor() {
           <button
             onClick={handleSaveAndAddToCart}
             disabled={isSaving}
-            className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white font-bold py-2 px-4 sm:px-6 rounded-full flex items-center gap-2 text-xs sm:text-sm shadow-md shadow-teal-500/20 transition-transform active:scale-95 disabled:opacity-75"
+            className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-neutral-950 font-bold py-2 px-4 sm:px-6 rounded-full flex items-center gap-2 text-xs sm:text-sm shadow-md shadow-teal-500/20 transition-transform active:scale-95 disabled:opacity-75"
           >
             <ShoppingBag size={16} />
             <span>Guardar y Comprar</span>
             {usedAiImages.length > 0 && (
-              <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+              <span className="bg-teal-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
                 +$20.000 IA
               </span>
             )}
@@ -1346,7 +1346,7 @@ export default function CanvasEditor() {
             onClick={() => setActiveTab('templates')}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all ${
               activeTab === 'templates'
-                ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-teal-500 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
@@ -1358,7 +1358,7 @@ export default function CanvasEditor() {
             onClick={() => setActiveTab('ai_images')}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all relative ${
               activeTab === 'ai_images'
-                ? 'bg-gradient-to-br from-teal-500 via-emerald-500 to-indigo-600 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-gradient-to-br from-teal-500 via-emerald-500 to-indigo-600 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-teal-400 hover:text-white hover:bg-slate-800/60'
             }`}
             title="Generar imágenes e ilustraciones con IA"
@@ -1375,7 +1375,7 @@ export default function CanvasEditor() {
             }}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all relative ${
               activeTab === 'ai_assistant'
-                ? 'bg-gradient-to-br from-teal-500 to-indigo-600 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-gradient-to-br from-teal-500 to-indigo-600 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-teal-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -1387,7 +1387,7 @@ export default function CanvasEditor() {
             onClick={() => setActiveTab('text')}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all ${
               activeTab === 'text'
-                ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-teal-500 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
@@ -1399,7 +1399,7 @@ export default function CanvasEditor() {
             onClick={() => setActiveTab('shapes')}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all ${
               activeTab === 'shapes'
-                ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-teal-500 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
@@ -1411,7 +1411,7 @@ export default function CanvasEditor() {
             onClick={() => setActiveTab('images')}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all ${
               activeTab === 'images'
-                ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-teal-500 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
@@ -1423,7 +1423,7 @@ export default function CanvasEditor() {
             onClick={() => setActiveTab('background')}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all ${
               activeTab === 'background'
-                ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-teal-500 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
@@ -1435,7 +1435,7 @@ export default function CanvasEditor() {
             onClick={() => setActiveTab('layers')}
             className={`flex flex-col items-center gap-1 p-2.5 rounded-2xl w-14 sm:w-16 transition-all mt-auto ${
               activeTab === 'layers'
-                ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/30'
+                ? 'bg-teal-500 text-neutral-950 shadow-lg shadow-teal-500/30'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
             }`}
           >
@@ -1493,15 +1493,15 @@ export default function CanvasEditor() {
                 >
                   <div className="h-20 bg-slate-950 rounded-xl p-3 flex border border-slate-800 justify-between items-center">
                     <div className="space-y-1.5">
-                      <div className="w-16 h-1 bg-amber-400 rounded"></div>
+                      <div className="w-16 h-1 bg-teal-400 rounded"></div>
                       <div className="w-24 h-2.5 bg-white rounded"></div>
                       <div className="w-20 h-1 bg-slate-500 rounded"></div>
                     </div>
-                    <div className="w-1.5 h-12 bg-amber-500 rounded"></div>
+                    <div className="w-1.5 h-12 bg-teal-500 rounded"></div>
                   </div>
                   <div className="mt-3 flex items-center justify-between">
                     <span className="text-xs font-bold text-white group-hover:text-teal-400">Dark Luxury Gold</span>
-                    <span className="text-[10px] text-amber-400 font-semibold">Premium</span>
+                    <span className="text-[10px] text-teal-400 font-semibold">Premium</span>
                   </div>
                 </button>
 
@@ -1583,7 +1583,7 @@ export default function CanvasEditor() {
                 <button
                   onClick={generateAICopy}
                   disabled={aiIsGenerating}
-                  className="w-full py-2.5 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-md shadow-teal-500/20"
+                  className="w-full py-2.5 bg-gradient-to-r from-teal-500 to-indigo-600 hover:from-teal-400 hover:to-indigo-500 text-neutral-950 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-md shadow-teal-500/20"
                 >
                   <Sparkles size={14} />
                   <span>{aiIsGenerating ? 'Generando copys con IA...' : 'Generar Sugerencias con IA'}</span>
@@ -1655,7 +1655,7 @@ export default function CanvasEditor() {
               {/* SECCIÓN 3: RE-ESCRITURA DE TEXTO SELECCIONADO */}
               {activeObject && (activeObject.type === 'i-text' || activeObject.type === 'text') && (
                 <div className="border-t border-slate-800 pt-4 space-y-2.5">
-                  <span className="text-xs font-black text-amber-400 block uppercase tracking-wider">
+                  <span className="text-xs font-black text-teal-400 block uppercase tracking-wider">
                     ⚡ Mejorar Texto Seleccionado con IA:
                   </span>
                   <div className="grid grid-cols-3 gap-1.5">
@@ -1848,7 +1848,7 @@ export default function CanvasEditor() {
                 className="w-full p-4 rounded-2xl bg-gradient-to-br from-teal-500/20 via-indigo-500/10 to-teal-500/10 border-2 border-teal-500/40 hover:border-teal-400 flex items-center justify-between text-left transition-all group cursor-pointer shadow-md shadow-teal-500/10"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-500 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                  <div className="w-10 h-10 rounded-xl bg-teal-500 text-neutral-950 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
                     <Sparkles size={20} className="animate-pulse" />
                   </div>
                   <div>
@@ -2125,7 +2125,7 @@ export default function CanvasEditor() {
 
           {/* Safety Boundary Warning */}
           {outOfBoundsWarning && (
-            <div className="absolute top-16 bg-amber-500/90 text-slate-950 font-bold text-xs px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-20 animate-bounce">
+            <div className="absolute top-16 bg-teal-500/90 text-slate-950 font-bold text-xs px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-20 animate-bounce">
               <AlertTriangle size={16} />
               <span>Aviso: Hay texto cerca o fuera del área de seguridad de corte</span>
             </div>

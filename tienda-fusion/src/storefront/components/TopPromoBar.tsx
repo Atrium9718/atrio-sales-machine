@@ -125,7 +125,7 @@ export default function TopPromoBar() {
           {promoData.linkUrl && (
             <Link
               to={promoData.linkUrl}
-              className="inline-flex items-center gap-1 font-black text-amber-300 hover:text-amber-200 underline underline-offset-2 ml-1.5 text-[11px] shrink-0 transition-colors"
+              className="inline-flex items-center gap-1 font-black text-teal-300 hover:text-teal-200 underline underline-offset-2 ml-1.5 text-[11px] shrink-0 transition-colors"
             >
               <span>{promoData.ctaText || 'Ver Más'}</span>
               <ArrowRight size={11} />

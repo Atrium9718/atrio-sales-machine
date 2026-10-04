@@ -152,7 +152,7 @@ export default function CustomerAccountPage() {
     const config: Record<string, { bg: string; text: string; border: string; label: string }> = {
       'NUEVO': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', label: 'Nuevo / Pago Validado' },
       'EN_DISEÑO': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', label: 'En Pre-Prensa' },
-      'EN_PRODUCCION': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', label: 'En Prensa Litográfica' },
+      'EN_PRODUCCION': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', label: 'En Prensa Litográfica' },
       'LISTO_DESPACHO': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', label: 'Empaque y Control' },
       'ENVIADO': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', label: 'En Camino / Despachado' },
       'ENTREGADO': { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Entregado con Éxito' },

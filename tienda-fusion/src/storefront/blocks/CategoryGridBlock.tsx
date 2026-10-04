@@ -97,22 +97,22 @@ export default function CategoryGridBlock({ block }: Props) {
 
   const getIcon = (iconName?: string) => {
     switch (iconName) {
-      case 'BookOpen': return <BookOpen size={24} className="text-amber-600 group-hover:text-white" />;
-      case 'Box': return <Box size={24} className="text-amber-600 group-hover:text-white" />;
-      case 'Layers': return <Layers size={24} className="text-amber-600 group-hover:text-white" />;
-      case 'Sparkles': return <Sparkles size={24} className="text-amber-600 group-hover:text-white" />;
-      case 'Package': return <Package size={24} className="text-amber-600 group-hover:text-white" />;
-      default: return <FileText size={24} className="text-amber-600 group-hover:text-white" />;
+      case 'BookOpen': return <BookOpen size={24} className="text-teal-600 group-hover:text-white" />;
+      case 'Box': return <Box size={24} className="text-teal-600 group-hover:text-white" />;
+      case 'Layers': return <Layers size={24} className="text-teal-600 group-hover:text-white" />;
+      case 'Sparkles': return <Sparkles size={24} className="text-teal-600 group-hover:text-white" />;
+      case 'Package': return <Package size={24} className="text-teal-600 group-hover:text-white" />;
+      default: return <FileText size={24} className="text-teal-600 group-hover:text-white" />;
     }
   };
 
   return (
-    <section className="py-16 md:py-20 bg-[#faf8f5] border-b border-stone-200">
+    <section className="py-16 md:py-20 bg-white border-b border-stone-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {(block.title || block.subtitle) && (
           <div className="text-center max-w-3xl mx-auto mb-12">
             {block.badge && (
-              <span className="text-xs font-black text-amber-700 uppercase tracking-widest bg-amber-50 px-3.5 py-1 rounded-full border border-amber-200 mb-3 inline-block">
+              <span className="text-xs font-black text-teal-700 uppercase tracking-widest bg-teal-50 px-3.5 py-1 rounded-full border border-teal-200 mb-3 inline-block">
                 {block.badge}
               </span>
             )}
@@ -139,21 +139,21 @@ export default function CategoryGridBlock({ block }: Props) {
               <Link
                 key={cat.id || cat.slug}
                 to={destination}
-                className="group relative bg-white hover:bg-[#fcfbf9] p-6 sm:p-7 rounded-3xl border border-stone-200/80 hover:border-amber-400 hover:shadow-xl hover:shadow-amber-500/10 transition-all duration-300 flex flex-col justify-between"
+                className="group relative bg-white hover:bg-[#fcfbf9] p-6 sm:p-7 rounded-3xl border border-stone-200/80 hover:border-teal-400 hover:shadow-xl hover:shadow-teal-500/10 transition-all duration-300 flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between gap-3 mb-5">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-50 group-hover:bg-gradient-to-br group-hover:from-amber-500 group-hover:to-amber-600 text-amber-600 group-hover:text-white flex items-center justify-center transition-all duration-300 shadow-xs">
+                    <div className="w-12 h-12 rounded-2xl bg-teal-50 group-hover:bg-gradient-to-br group-hover:from-teal-500 group-hover:to-teal-600 text-teal-600 group-hover:text-white flex items-center justify-center transition-all duration-300 shadow-xs">
                       {getIcon(cat.icon)}
                     </div>
                     {cat.badge && block.showBadge !== false && (
-                      <span className="text-[10px] font-black tracking-wider uppercase px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 group-hover:bg-amber-100 group-hover:text-amber-900 transition-colors">
+                      <span className="text-[10px] font-black tracking-wider uppercase px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 group-hover:bg-teal-100 group-hover:text-teal-900 transition-colors">
                         {cat.badge}
                       </span>
                     )}
                   </div>
 
-                  <h3 className="text-lg font-black text-stone-900 group-hover:text-amber-700 transition-colors mb-2">
+                  <h3 className="text-lg font-black text-stone-900 group-hover:text-teal-700 transition-colors mb-2">
                     {cat.name}
                   </h3>
 
@@ -162,9 +162,9 @@ export default function CategoryGridBlock({ block }: Props) {
                   </p>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-stone-100 flex items-center justify-between text-xs font-bold text-amber-600 group-hover:text-amber-700">
+                <div className="mt-6 pt-4 border-t border-stone-100 flex items-center justify-between text-xs font-bold text-teal-600 group-hover:text-teal-700">
                   <span>{cat.productCount ? `${cat.productCount} productos` : 'Cotizar en línea'}</span>
-                  <div className="w-7 h-7 rounded-full bg-amber-50 group-hover:bg-amber-500 text-amber-600 group-hover:text-white flex items-center justify-center transition-all group-hover:translate-x-1">
+                  <div className="w-7 h-7 rounded-full bg-teal-50 group-hover:bg-teal-500 text-teal-600 group-hover:text-white flex items-center justify-center transition-all group-hover:translate-x-1">
                     <ArrowRight size={14} />
                   </div>
                 </div>

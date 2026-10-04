@@ -94,7 +94,7 @@ export default function StorefrontLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-[#faf8f5] flex flex-col font-sans selection:bg-teal-500 selection:text-white overflow-x-hidden">
+    <div className="min-h-screen bg-white flex flex-col font-sans selection:bg-teal-500 selection:text-white overflow-x-hidden">
       {/* Top Promotional Bar (Managed from Banners Admin) */}
       <TopPromoBar />
 
@@ -128,7 +128,7 @@ export default function StorefrontLayout() {
                 {config.branding.logoLightUrl ? (
                   <img src={config.branding.logoLightUrl} alt={config.branding.siteName} className="h-9 sm:h-11 w-auto object-contain" />
                 ) : (
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-teal-500 via-teal-600 to-slate-900 text-white flex items-center justify-center shadow-md transition-transform group-hover:scale-105 border border-teal-400/30">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-teal-500 via-teal-600 to-slate-900 text-neutral-950 flex items-center justify-center shadow-md transition-transform group-hover:scale-105 border border-teal-400/30">
                     <Printer size={22} strokeWidth={2.5} />
                   </div>
                 )}
@@ -136,7 +136,7 @@ export default function StorefrontLayout() {
                   <span className="font-black text-xl sm:text-2xl tracking-tight text-slate-900 leading-none">
                     {config.branding.siteName || 'FUSIÓN'}
                   </span>
-                  <span className="text-[9px] sm:text-[10px] font-black text-amber-700 uppercase tracking-widest mt-0.5">
+                  <span className="text-[9px] sm:text-[10px] font-black text-teal-700 uppercase tracking-widest mt-0.5">
                     {config.branding.siteTagline || 'COMUNICACIÓN GRÁFICA W2P'}
                   </span>
                 </div>
@@ -163,11 +163,11 @@ export default function StorefrontLayout() {
             <div className="hidden lg:flex items-center gap-2.5 shrink-0">
               <Link
                 to="/cotizador-libros"
-                className="hidden xl:inline-flex text-xs font-black text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-3.5 py-2 rounded-full items-center gap-1.5 transition-all shadow-xs"
+                className="hidden xl:inline-flex text-xs font-black text-teal-900 bg-teal-50 hover:bg-teal-100 border border-teal-200/90 px-3.5 py-2 rounded-full items-center gap-1.5 transition-all shadow-xs"
               >
-                <BookOpen size={14} className="text-amber-700" />
+                <BookOpen size={14} className="text-teal-700" />
                 <span>Cotizador Libros</span>
-                <span className="bg-amber-600 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
+                <span className="bg-teal-600 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full">
                   AUTO
                 </span>
               </Link>
@@ -245,27 +245,27 @@ export default function StorefrontLayout() {
                         <Link 
                           to="/mi-cuenta" 
                           onClick={() => setIsUserDropdownOpen(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-900 transition-colors"
+                          className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-900 transition-colors"
                         >
-                          <Package size={16} className="text-amber-600" />
+                          <Package size={16} className="text-teal-600" />
                           <span>Mis Pedidos & Re-órdenes</span>
                         </Link>
 
                         <Link 
                           to="/cotizador-libros" 
                           onClick={() => setIsUserDropdownOpen(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-900 transition-colors"
+                          className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-900 transition-colors"
                         >
-                          <BookOpen size={16} className="text-amber-600" />
+                          <BookOpen size={16} className="text-teal-600" />
                           <span>Cotizador de Libros & Revistas</span>
                         </Link>
 
                         <Link 
                           to="/b2b" 
                           onClick={() => setIsUserDropdownOpen(false)}
-                          className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-900 transition-colors"
+                          className="flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-teal-50 hover:text-teal-900 transition-colors"
                         >
-                          <Building2 size={16} className="text-amber-600" />
+                          <Building2 size={16} className="text-teal-600" />
                           <span>Portal B2B Distribuidores</span>
                         </Link>
 
@@ -381,7 +381,7 @@ export default function StorefrontLayout() {
             {/* Drawer Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-teal-500 text-white flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-teal-500 text-neutral-950 flex items-center justify-center">
                   <Printer size={18} strokeWidth={2.5} />
                 </div>
                 <div>
@@ -406,7 +406,7 @@ export default function StorefrontLayout() {
                     {user.photoURL ? (
                       <img src={user.photoURL} alt="Perfil" className="w-10 h-10 rounded-full border border-slate-200" />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-teal-500 text-white flex items-center justify-center font-bold text-sm">
+                      <div className="w-10 h-10 rounded-full bg-teal-500 text-neutral-950 flex items-center justify-center font-bold text-sm">
                         {user.email?.[0].toUpperCase()}
                       </div>
                     )}
@@ -428,7 +428,7 @@ export default function StorefrontLayout() {
                   <button 
                     onClick={login}
                     disabled={isLoggingIn}
-                    className="px-3.5 py-1.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-60 text-white text-xs font-bold rounded-full shadow-xs transition-colors"
+                    className="px-3.5 py-1.5 bg-teal-500 hover:bg-teal-400 disabled:opacity-60 text-neutral-950 text-xs font-bold rounded-full shadow-xs transition-colors"
                   >
                     {isLoggingIn ? 'Ingresando...' : 'Ingresar'}
                   </button>
@@ -471,13 +471,13 @@ export default function StorefrontLayout() {
 
               <Link 
                 to="/b2b" 
-                className="flex items-center justify-between px-3.5 py-3 rounded-2xl bg-amber-50/70 border border-amber-200/60 text-amber-950 font-bold text-sm transition-colors"
+                className="flex items-center justify-between px-3.5 py-3 rounded-2xl bg-teal-50/70 border border-teal-200/60 text-teal-950 font-bold text-sm transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <Building2 size={18} className="text-amber-600" />
+                  <Building2 size={18} className="text-teal-600" />
                   <span>Portal B2B Mayoristas</span>
                 </div>
-                <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md">DTO</span>
+                <span className="bg-teal-500 text-neutral-950 text-[9px] font-black px-1.5 py-0.5 rounded-md">DTO</span>
               </Link>
 
               <Link 
@@ -590,9 +590,9 @@ export default function StorefrontLayout() {
       )}
 
       {/* FOOTER (Diseño Cálido, Moderno y Confiable con Medios de Pago Colombianos) */}
-      <footer className="bg-slate-950 text-slate-400 py-12 lg:py-16 mt-auto border-t border-amber-500/20 relative overflow-hidden">
+      <footer className="bg-slate-950 text-slate-400 py-12 lg:py-16 mt-auto border-t border-teal-500/20 relative overflow-hidden">
         {/* Glow ambient background lights */}
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-1/4 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -604,7 +604,7 @@ export default function StorefrontLayout() {
                 {config.branding.logoLightUrl ? (
                   <img src={config.branding.logoLightUrl} alt={config.branding.siteName} className="h-9 w-auto object-contain" />
                 ) : (
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 flex items-center justify-center font-black shadow-md">
+                  <div className="w-9 h-9 rounded-xl bg-teal-400 hover:bg-teal-300 text-slate-950 flex items-center justify-center font-black shadow-md">
                     <Printer size={20} strokeWidth={2.5} />
                   </div>
                 )}
@@ -612,7 +612,7 @@ export default function StorefrontLayout() {
                   <span className="font-black text-xl tracking-tight text-white block leading-none">
                     {config.branding.siteName || 'FUSIÓN'}
                   </span>
-                  <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest">
+                  <span className="text-[9px] font-black text-teal-400 uppercase tracking-widest">
                     Comunicación Gráfica W2P
                   </span>
                 </div>
@@ -620,8 +620,8 @@ export default function StorefrontLayout() {
               <p className="text-xs sm:text-sm leading-relaxed font-medium text-slate-400">
                 Tu imprenta litográfica y Web-to-Print de confianza en Colombia. Especialistas en libros, revistas, papelería corporativa, etiquetas y empaques con acabados prémium.
               </p>
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-300 bg-amber-950/60 p-2.5 rounded-xl border border-amber-500/30 w-fit">
-                <ShieldCheck size={16} className="text-amber-400" />
+              <div className="flex items-center gap-2 text-xs font-bold text-teal-300 bg-teal-950/60 p-2.5 rounded-xl border border-teal-500/30 w-fit">
+                <ShieldCheck size={16} className="text-teal-400" />
                 <span>{config.branding.guaranteeBadgeText || '300 DPI CTP • Calidad Litográfica'}</span>
               </div>
             </div>
@@ -630,7 +630,7 @@ export default function StorefrontLayout() {
             {config.footerColumns?.slice(0, 2).map((col) => (
               <div key={col.id}>
                 <h3 className="text-white font-extrabold text-sm sm:text-base mb-4 tracking-tight flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400"></span>
                   <span>{col.title}</span>
                 </h3>
                 <ul className="space-y-2.5 text-xs sm:text-sm font-medium">
@@ -639,12 +639,12 @@ export default function StorefrontLayout() {
                       <Link 
                         to={link.url} 
                         className={`transition-colors flex items-center gap-1.5 ${
-                          link.isHighlight ? 'text-amber-400 font-bold hover:text-amber-300' : 'text-slate-400 hover:text-white'
+                          link.isHighlight ? 'text-teal-400 font-bold hover:text-teal-300' : 'text-slate-400 hover:text-white'
                         }`}
                       >
                         <span>{link.label}</span>
                         {link.badge && (
-                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-black px-1.5 py-0.2 rounded-md">
+                          <span className="bg-teal-500/20 text-teal-300 border border-teal-500/30 text-[9px] font-black px-1.5 py-0.2 rounded-md">
                             {link.badge}
                           </span>
                         )}
@@ -663,7 +663,7 @@ export default function StorefrontLayout() {
               </h3>
               <ul className="space-y-3 text-xs sm:text-sm font-medium">
                 <li className="flex items-start gap-2.5">
-                  <MapPin size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                  <MapPin size={16} className="text-teal-400 shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold text-slate-200">Planta Litográfica & Oficinas</span>
                     <p className="text-[11px] text-slate-400">
@@ -706,9 +706,9 @@ export default function StorefrontLayout() {
             </div>
 
             <div className="flex items-center gap-4 text-xs text-slate-400">
-              <Link to="/terminos" className="hover:text-amber-400 transition-colors">Términos</Link>
-              <Link to="/privacidad" className="hover:text-amber-400 transition-colors">Privacidad</Link>
-              <Link to="/legal" className="hover:text-amber-400 transition-colors">Aviso Legal</Link>
+              <Link to="/terminos" className="hover:text-teal-400 transition-colors">Términos</Link>
+              <Link to="/privacidad" className="hover:text-teal-400 transition-colors">Privacidad</Link>
+              <Link to="/legal" className="hover:text-teal-400 transition-colors">Aviso Legal</Link>
             </div>
           </div>
 
@@ -729,8 +729,8 @@ export default function StorefrontLayout() {
         >
           <div className="relative">
             <MessageCircle size={20} className="fill-white" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full animate-ping"></span>
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full"></span>
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-teal-400 rounded-full animate-ping"></span>
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-teal-400 rounded-full"></span>
           </div>
           <div className="hidden sm:flex flex-col text-left">
             <span className="text-[11px] font-black leading-none">¿Dudas con tu diseño?</span>
