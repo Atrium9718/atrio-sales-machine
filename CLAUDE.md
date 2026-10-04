@@ -18,7 +18,10 @@ El servidor expone tres herramientas: `search` (busca una operación por palabra
    - `build_script`: `build`
    - `output_directory`: `dist`
    - `entry_file`: `server.cjs` (es relativo a `output_directory`)
-   - Sitio actual: **tienda.fusioncg.com** (usuario `u442727583`)
+   - Usuario de hosting: `u442727583`.
+   - **Sitio en línea:** `tienda-fusioncg-com-289706.hostingersite.com`, la dirección temporal que usan los clientes. Hostinger renombró ese sitio por su cuenta.
+   - Existe un segundo sitio llamado `tienda.fusioncg.com`, que aún no es accesible: el DNS de fusioncg.com está en Cloudflare, en una cuenta a la que el usuario no tiene acceso. Hasta resolver el DNS, **desplegar siempre en el sitio en línea** y confirmar con `/api/health` que el `uptime` se reinició.
+   - Hostinger a veces tarda en responder (HTTP 503 "no healthy upstream"). En ese caso, reintentar la consulta. No se debe reenviar la escritura.
 4. Revisar los logs de build (`hosting_show-js-deployment-logs`).
 5. Comprobar `https://<dominio>/api/health` → `{"status":"ok"}`.
 
