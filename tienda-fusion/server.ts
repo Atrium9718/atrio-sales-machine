@@ -6,6 +6,7 @@ import { db } from './src/db';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 
 // El servidor compilado (dist/server.cjs) siempre corre en modo producción, aunque el
 // hosting no defina NODE_ENV. En desarrollo se usa "npm run dev" (tsx server.ts).
@@ -14,12 +15,18 @@ if (isBundled && !process.env.NODE_ENV) {
   process.env.NODE_ENV = 'production';
 }
 
+// El hosting puede arrancar el servidor desde la raíz del proyecto o desde dist/:
+// se buscan las carpetas junto al bundle y, si no, en el directorio de trabajo.
+const resolveDir = (...candidates: string[]) => candidates.find(dir => fs.existsSync(dir)) || candidates[candidates.length - 1];
+const bundleDir = isBundled ? __dirname : process.cwd();
+
 async function runMigrations() {
   // Aplica automáticamente las migraciones pendientes de ./drizzle al arrancar.
   // Ideal en hosting compartido sin terminal. Se desactiva con AUTO_MIGRATE=false.
   if (process.env.AUTO_MIGRATE === 'false') return;
   try {
-    await migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
+    const migrationsFolder = resolveDir(path.join(bundleDir, '..', 'drizzle'), path.join(bundleDir, 'drizzle'), path.join(process.cwd(), 'drizzle'));
+    await migrate(db, { migrationsFolder });
     console.log('Migraciones de base de datos al día.');
   } catch (err: any) {
     console.error('No se pudieron aplicar las migraciones:', err?.message || err);
@@ -69,7 +76,7 @@ async function bootstrap() {
       vite.middlewares(req, res, next);
     });
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = resolveDir(isBundled ? __dirname : '', path.join(process.cwd(), 'dist'));
     // Los archivos de /assets llevan hash en el nombre: se pueden cachear un año
     expressApp.use('/assets', express.static(path.join(distPath, 'assets'), { maxAge: '1y', immutable: true }));
     expressApp.use(express.static(distPath));

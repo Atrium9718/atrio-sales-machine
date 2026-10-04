@@ -12,11 +12,13 @@ El servidor expone tres herramientas: `search` (busca una operación por palabra
 
 1. Validar antes de subir, en `tienda-fusion/`: `npm ci && npx tsc --noEmit && npm run build`.
 2. Empaquetar con `tienda-fusion/scripts/hostinger-archive.sh`. Usa `git archive`, así que solo sube lo que está commiteado (sin `node_modules`, `dist` ni `.env`). Límite: 50 MB.
-3. Desplegar con la herramienta `hosting_deploy-js-application`, con esta configuración:
-   - Node.js **22**
-   - Instalación: `npm ci`
-   - Build: `npm run build`
-   - Archivo de entrada: `dist/server.cjs`
+3. Desplegar con la herramienta `hosting_deploy-js-application`. La autodetección de Hostinger elige mal la versión de Node y el archivo de arranque. Si la build usa otros valores, relanzarla con `hosting_nodejs_start-build` (y guardarlos con `hosting_nodejs_update-build-settings`):
+   - `node_version`: **22** (obligatorio: `firebase-admin` exige Node 22)
+   - `app_type`: `nest`
+   - `build_script`: `build`
+   - `output_directory`: `dist`
+   - `entry_file`: `server.cjs` (es relativo a `output_directory`)
+   - Sitio actual: **tienda.fusioncg.com** (usuario `u442727583`)
 4. Revisar los logs de build (`hosting_show-js-deployment-logs`).
 5. Comprobar `https://<dominio>/api/health` → `{"status":"ok"}`.
 
